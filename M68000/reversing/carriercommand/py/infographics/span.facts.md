@@ -31,6 +31,23 @@ Doc: `render.md` section 5.
 | "most-called routine in the game" | render.md 5 (2079 calls per 1.2M steps); not recomputed here |
 | colours | shifter palette registers in c_s30.snap (strategy screen) |
 
+### Prose added for readers new to the game (lead, captions, "How we know")
+
+| claim | source |
+|---|---|
+| filled-polygon 3D on an 8 MHz 68000 with no FPU or blitter | render.md intro |
+| most-called routine, 2079 calls per 1.2M steps (written as "1.2 million emulated instructions": a step is one instruction, `instructionsPerFrame` in `Program.fs`) | render.md 5 |
+| `$494c` patches opcodes, branch and immediates per colour; 16 solid, 48 dithers | render.md 5 |
+| ST low-resolution bitplane layout, 16 colours | ST hardware, general knowledge (as the row above) |
+| interior groups are two longword stores (A0 planes 0-1, A5 planes 2-3); edges masked | render.md 5 |
+| 8D5C = or (set), C75C = and (clear); plane 0 first | table above |
+| "the filler never decides anything per pixel or per word" | reading of the patched code: the edge and middle paths contain no colour test (render.md 5, disassembly rows above) |
+| bvs never / bvc always, because the add cannot overflow | render.md 5 |
+| phase from the screen row, pattern fixed to the screen (from code) | render.md 5 |
+| widening rule proven, purpose inferred | render.md 5 |
+| c_s30 is a Strategy game in progress | README.md snapshot table |
+| control 531/2183 | render.md 5; `gen_span.py` |
+
 ## Flags
 
 - render.md 5 does not say what D7's high word holds. `$4598`/`$45b4` load it with the screen row used to build A6, so

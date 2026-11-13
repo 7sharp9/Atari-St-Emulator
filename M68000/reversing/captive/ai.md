@@ -203,7 +203,7 @@ member, aware and hostile) stood at (13,4) with the party at (14,5). Over five a
 value 0 at (13,4)), turned E (3 at (13,3)), stepped E to (14,3), turned S and stepped S to (14,4), next to the
 party, where it stayed for the remaining 124 of 200 frames. Replaying the gate model on each pre-move state gives the
 same five labels: the first three are trail moves on dig-tree values unchanged since `req4.snap`, and the last two
-are sight moves (the party 2 and then 1 cell S). This chase follows the dig tree into the party's catchment; it does
+are sight moves, both decided at (14,3) with the party 2 cells S (the step leaves it 1 away). This chase follows the dig tree into the party's catchment; it does
 not read a footprint.
 
 ## Wander and hostility (`$10464`-`$1051e`)

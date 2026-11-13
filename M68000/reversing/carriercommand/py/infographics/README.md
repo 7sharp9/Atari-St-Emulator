@@ -5,7 +5,10 @@ material (`7sharp9.github.io/IDEAS.md` entry 9). Each `gen_*.py` writes `<name>.
 `scratchpad/carrier/infographics/` and prints every number it draws; `<name>.facts.md` maps each fact in the
 figure to its doc section or computation and flags what the work found wrong or unclear in the docs.
 PNG: `cd M68000/scratchpad/carrier/infographics && rsvg-convert -z 2 <name>.svg -o <name>.png`.
-Run from `M68000/` with `uv run python reversing/carriercommand/py/infographics/<script>`.
+Run from `M68000/` with `uv run python reversing/carriercommand/py/infographics/<script>`. Each figure opens with a
+lead paragraph, gives every panel a "How to read" and "Takeaway" caption and ends with a "How we know" strip;
+`igtext.py` wraps that prose (Helvetica metrics via PIL). The prose's sources are in each facts file's "Prose added"
+table.
 
 | Figure | Script | Doc | Evidence it computes or re-runs |
 |---|---|---|---|

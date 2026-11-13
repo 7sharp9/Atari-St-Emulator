@@ -27,7 +27,54 @@ ROWS = [
 ]
 W, ROWH = 900, 25
 top = 250
-H = top + ROWH * (len(ROWS) + 1) + 108
+
+
+def wrap(t, w, size, cw=0.5):
+    n, out, cur = int(w / (size * cw)), [], ''
+    for word in t.split():
+        if cur and len(cur) + 1 + len(word) > n:
+            out.append(cur)
+            cur = word
+        else:
+            cur = (cur + ' ' + word) if cur else word
+    return out + ([cur] if cur else [])
+
+
+# lead and notes: strategy.md "$51538 group-order table", "Proof of the commander AI", "The executor, proven";
+# README "Design digest" (group_soa.facts.md, "Lead and captions")
+LEAD = [
+ 'PowerMonger (Bullfrog / Electronic Arts, 1990) is a war game in which the player and the computer lords command '
+ 'armies through captains. Each side has six captains, and each captain leads a group of men; group 0 is the side\'s '
+ 'first captain\'s own group. The game keeps all six groups of a side in one 316-byte record, but not as six records '
+ 'of fields: each field is an array of six words, one word per group (a structure of arrays). Field n of group k is '
+ 'the word at side base + n + 2k.',
+ 'This matters for anyone reading the code. The commander AI walks the groups with 2k in register D7 and reads every '
+ 'field of the current group as n(A1), A1 = base + 2k. The order executor and the men\'s handlers instead carry a '
+ 'group offset D2 and reach the same word at offset n-76. The figure is the map between the two: which word holds what, '
+ 'at which byte offset, for each of the six groups.',
+]
+NOTES = [
+ ('How to read the table', 'Each row is one field. n(A1) is its offset in the AI\'s frame and "group" its offset '
+  'from the group offset D2 (n-76). The six cells give the byte offset of that field for groups k = 0 to 5, counted '
+  'from the side base; the yellow column is group 2, followed through in the worked example above. The border of the '
+  'meaning cell shows the evidence for that meaning. Groups are walked by the AI from group 5 down to group 0.'),
+ ('Terms', 'A1, A3, D2 and D7 are 68000 registers; n(A1) means "the word n bytes past A1". $6564 is the commander '
+  'AI\'s per-group loop, $6ac6 the executor\'s routing step, $9090 the captain panel the player sees. Proven means a '
+  'gate passed: a Python rewrite of the routine was run beside the game\'s own 68000 code from captured states and '
+  'every changed byte matched; 323/323 and 44/44 are states that matched out of states compared. A whole-image scan '
+  'reads every instruction in the game\'s code for accesses to the field. Code read means from the disassembly only.'),
+]
+LW = W - 40
+lead_rows = []
+for i, t in enumerate(LEAD):
+    lead_rows += wrap(t, LW, 12.5) + ([''] if i < len(LEAD) - 1 else [])
+DY = 60 + len(lead_rows) * 17 + 14 - 54
+note_rows = []
+for h, t in NOTES:
+    note_rows.append(('h', h))
+    note_rows += [('', r) for r in wrap(t, LW, 11.5)]
+    note_rows.append(('', ''))
+H = top + ROWH * (len(ROWS) + 1) + 108 + DY + 10 + 16 * len(note_rows)
 cx0, cw = 222, 50          # six word cells
 o = []
 a = o.append
@@ -56,6 +103,10 @@ text{font-family:Helvetica, Arial, sans-serif;fill:#1f2328;font-size:12px}
 a(f'<rect x="0" y="0" width="{W}" height="{H}" fill="#ffffff"/>')
 a('<text x="20" y="26" class="t">Group fields are six-word arrays: group k\'s word n is at side base + n + 2k</text>')
 a('<text x="20" y="45" class="c">Meaning-cell border = evidence for the field\'s role. Yellow column: group 2, the worked example below.</text>')
+for i, r in enumerate(lead_rows):
+    if r:
+        a(f'<text x="20" y="{68 + i * 17}" style="font-size:12.5px">{html.escape(r)}</text>')
+a(f'<g transform="translate(0,{DY})">')
 for x, cls, lab in ((20,"pv","proven (gated routine or whole-image scan)"),(300,"cr","code read"),(395,"na","not named")):
     a(f'<rect x="{x}" y="54" width="22" height="12" class="{cls}"/><text x="{x+27}" y="64" class="s">{lab}</text>')
 # frames box
@@ -120,6 +171,11 @@ foot = [
 ]
 for j, t in enumerate(foot):
     a(f'<text x="20" y="{fy + j*16}" class="s">{html.escape(t)}</text>')
+ny = fy + len(foot) * 16 + 14
+for j, (cls, t) in enumerate(note_rows):
+    if t:
+        a(f'<text x="20" y="{ny + j*16}"{" class=%s" % chr(34) + cls + chr(34) if cls else ""}>{html.escape(t)}</text>')
+a('</g>')
 a('</svg>')
 out = os.path.join(os.environ.get("PM_WORK", here), "group_soa.svg")
 open(out, "w").write("\n".join(o) + "\n")

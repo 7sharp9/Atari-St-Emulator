@@ -38,3 +38,16 @@ figures are the doc's. The chunk-to-step mapping (chunk n covers 2G + (n-1) x 25
   1499) and 1836..1851 in chunks 1..10 of k108 (chunk 1 is 1841), so 1500 and 1843 are the chunk-1 values and the
   pre-crossing rate is flat to about 2%, as the figure draws it. `$6522` stays at 1468..1507 / 1838..1866 in every
   chunk, post-stall included. Chunk 15 of k80 re-executed from `W5G_k80_c14.snap` reproduces 1505 / 168.
+
+## Lead and captions
+
+| text added | source |
+|---|---|
+| game, publisher, year; commander AI `$6522` runs once per tick | README.md title line; strategy.md "Where it runs" |
+| a camped group waits 20 ticks after its camp stamp | strategy.md `$51538` table (row 256: "`$6522` waits `$14` ticks after it") |
+| both numbers 16-bit words, signed compare; wraps at 32768; waits about 34,800 ticks | strategy.md "The signed-clock stall" |
+| the AI routine keeps running while the decisions stop | strategy.md "Isolation by clock pokes" (`$6522` 604 against 599) |
+| the real ST / Hatari behaviour is inferred | strategy.md "Isolation by clock pokes", Status |
+| `bgt` is the 68000's signed "branch if greater" | general 68000 knowledge |
+| k80, k108 are Play Random Land builds | strategy.md "Natural coverage" (75 unpoked Play Random Land lands; `py/arms/`) |
+| panel C is proven by prediction | strategy.md Status ("proven in the emulator by the poke table") |

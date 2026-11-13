@@ -29,9 +29,24 @@ Every dot is a captured game value; the only model output drawn is the red froze
 | thresholds pinned by the data to (594, 654] and (1974, 2034] | recomputed here |
 | last on-deck tick moved 107.2 over the sea (carrier 47.5); hand-off speed 108 = 60 + 48 | computed from captured positions; hand-off captured |
 
+### Prose added for readers new to the game (lead, captions, "How we know")
+
+| claim | source |
+|---|---|
+| the player's carrier launches craft; the Manta is an aircraft that comes up a lift, rolls along the deck and climbs off the bow | vehicles.md 5 (lift, launch, take-off; the launch refusal message "No aircraft available for launch") |
+| until it leaves the deck the Manta is a deck offset rotated by the carrier's current heading and added to its position | vehicles.md 5 |
+| a tick is one main-loop update; headings 65536 to the turn | vehicles.md 5 ("main ticks"), 2 |
+| the two runs give identical carrier-frame values, all 43 ticks | table above (asserted by the script) |
+| 98 across, frozen heading 81 away, hand-off 60 + 48 = 108 | table above |
+| slot +28 deck state (2 = taking off), +29 phase | vehicles.md 5 (slot fields) |
+| nudged-constant method and the threshold intervals | vehicles.md 5; table above |
+| both runs from c_s30 (carrier at Vulcan) with the game's own lift `$11386` and launch `$11af6`; turning run pokes yaw `$644` and target speed `$648` | `gen_takeoff.py` docstring; README.md snapshot table |
+| pitch units and sign inferred | table above |
+
 ## Flags
 
-- Tick count. `vehicles.md` 5 says "the take-off takes 42 ticks (9 rising, 10 rolling, 23 climbing)". From the launch
+- Tick count (now settled: `vehicles.md` 5 gives 43 ticks, 10 rising, 10 rolling, 23 climbing, as this figure does).
+  It said "the take-off takes 42 ticks (9 rising, 10 rolling, 23 climbing)". From the launch
   command it takes 43 updates with 10 rising: `takeoff_proof.py` starts at the first `$1cab4` entry after the launch,
   when the first update (altitude 180 to 182) has already run. `manta_snaps.log` shows the same (`launch` at 180,
   `T0` at 182, `T42` airborne), and the model matches that tick too (43/43 here). The "42/42" proof count is right as

@@ -17,7 +17,7 @@ Inputs, all computed or read here, never typed in:
   - reversing/captive/py/world/universe.py (the proven model); the step-counting chain below is a second copy of
     the same routines, asserted equal to it and to RAM.
 """
-import base64, io, json, os, struct, subprocess, sys
+import base64, html, io, json, os, struct, subprocess, sys, textwrap
 from collections import Counter
 
 
@@ -273,8 +273,7 @@ print('first names:', names[:6], 'targets:', [(i, names[i]) for i, o in enumerat
 W, H = 900, 1632
 s = []; a = s.append
 INK, MUTE, ACC, BAD, GRID, GOLD = '#1f2328', '#656d76', '#0969da', '#cf222e', '#d0d7de', '#9a6700'
-a(f'<svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" viewBox="0 0 {W} {H}" '
-  f'width="{W}" height="{H}" role="img" aria-labelledby="t d">')
+a('')                                       # the <svg> header, written once the height is known
 a('<title id="t">A galaxy from one number</title>')
 a('<desc id="d">Captive (Mindscape, 1990) builds each mission\'s star map, 50 planets, 100 moons, a space station, '
   '10 targets and their landing sites from one 16-bit linear congruential generator seeded with the mission '
@@ -283,20 +282,53 @@ a('<desc id="d">Captive (Mindscape, 1990) builds each mission\'s star map, 50 pl
   'Facts: universe.facts.md.</desc>')
 a('<style>text{font-family:Helvetica,Arial,sans-serif;fill:%s;font-size:12px}.t{font-size:20px;font-weight:bold}'
   '.h{font-size:14px;font-weight:bold}.m{fill:%s}.c{font-family:Menlo,monospace;font-size:11.5px}'
-  '.s{font-size:11px;fill:%s}.e{font-size:11px;font-style:italic;fill:%s}</style>' % (INK, MUTE, MUTE, ACC))
-a(f'<rect width="{W}" height="{H}" fill="#ffffff"/>')
+  '.s{font-size:11px;fill:%s}.e{font-size:11px;font-style:italic;fill:%s}.l{font-size:12.5px}.k{font-size:11px;fill:%s}</style>'
+  % (INK, MUTE, MUTE, ACC, INK))
+a('')                                       # the background, sized with the header
+PANELS = {}
+
+
+def para(x, y, w, txt, cls='s', lh=15, lead=None, cpx=5.3):
+    """Wrap txt to w pixels (cpx pixels per character), with an optional bold lead-in. Returns the next baseline."""
+    full = (lead + ' ' if lead else '') + txt
+    for k, line in enumerate(textwrap.wrap(full, int(w / cpx))):
+        body = html.escape(line, quote=False)
+        if k == 0 and lead:
+            body = '<tspan style="font-weight:bold;fill:%s">%s</tspan>%s' % (INK, html.escape(lead, quote=False),
+                                                                             html.escape(line[len(lead):], quote=False))
+        a(f'<text x="{x}" y="{y}" class="{cls}">{body}</text>')
+        y += lh
+    return y
+
+
+def close(idx, bottom):
+    x, y, w = PANELS[idx]
+    s[idx] = f'<rect x="{x}" y="{y}" width="{w}" height="{bottom - y}" rx="6" fill="none" stroke="{GRID}"/>'
+    return bottom
+
+
 a('<text x="24" y="38" class="t">A galaxy from one number</text>')
-a('<text x="24" y="60" class="m">Captive (Antony Crowther, Mindscape, 1990): every mission\'s star map is regenerated '
-  'from the mission number. Nothing of it is on the disk.</text>')
+LEAD = ('Captive (Antony Crowther, Mindscape, 1990) is a real-time dungeon crawler: four droids raid procedurally '
+        'generated bases on a series of planets. The player picks where to land on a star map holding a space station, '
+        '50 planets, 100 moons and 10 numbered targets per mission. None of it is stored on the disk. When a mission '
+        'starts, the game runs one 16-bit random number generator, seeded with the mission number, through a fixed chain '
+        'of steps (panel A), so the same mission always gets the same map. A small table turns each draw into a position '
+        'on the map screen and keeps every dot off the grid lines (B, C). The bodies\' names come from the same generator, '
+        'reseeded per body (D), and a different seed gives a different galaxy (E).')
+ly_ = para(24, 62, 852, LEAD, 'l', 17, cpx=6.0)
 
 
 def panel(x, y, w, h, title, ev, below=False):
-    a(f'<rect x="{x}" y="{y}" width="{w}" height="{h}" rx="6" fill="none" stroke="{GRID}"/>')
+    """Draw a panel's title; close() sizes its frame once its text is laid out."""
+    idx = len(s)
+    a('')
+    PANELS[idx] = (x, y, w)
     a(f'<text x="{x+14}" y="{y+24}" class="h">{title}</text>')
     if below:
         a(f'<text x="{x+14}" y="{y+42}" class="e">{ev}</text>')
     else:
         a(f'<text x="{x+w-14}" y="{y+24}" text-anchor="end" class="e">{ev}</text>')
+    return idx
 
 
 def esc(t):
@@ -304,8 +336,8 @@ def esc(t):
 
 
 # A: the chain ---------------------------------------------------------------------------------------
-AY = 80
-panel(24, AY, 852, 300, 'A. One generator, one pass ($30280)',
+AY = ly_ + 8
+pA = panel(24, AY, 852, 300, 'A. One generator, one pass ($30280)',
       f'proven: model = RAM {M1["ok"][0]}/51, {M1["ok"][1]}/100, {M1["ok"][2]}/150; final D0 = callcap D0')
 a(f'<text x="44" y="{AY+52}" class="c">D0 = (D0 &#215; ${A:x} + ${C:x}) mod 65536</text>')
 a(f'<text x="44" y="{AY+68}" class="s">$3049c: mulu, addi.w; the output D1 = ror.w #2 of D0.</text>')
@@ -348,10 +380,19 @@ footA = [f'Mission 1 (index 0): {M1["n"]} draws, ending at D0 = ${M1["fin"]:04x}
          f'Site bytes use raw D0, whose low bits are short-period: their low nibble repeats every 16 objects ({rep16}/{150-16} in RAM), the low bit alternates ({par}/149).']
 for k, t in enumerate(footA):
     a(f'<text x="44" y="{AY+256+15*k}" class="s">{t}</text>')
+y = para(44, AY + 256 + 15 * len(footA) + 6, 812, 'The boxes are the generator\'s steps in the order they run, left to '
+         'right; each hands its random state, in register D0, to the next. "steps" is how many random numbers the step '
+         'drew for mission 1, and "rejected" counts draws thrown away (a coordinate of 0, a duplicate, a target already '
+         'given out). Under each box: where the result goes in memory and the rule that turns a draw into it.',
+         lead='How to read.')
+y = para(44, y + 4, 812, 'Each step starts from the state the previous one left, so a rejected draw changes every later '
+         'draw, yet the whole map is still fixed by the seed: the model reproduces every table and the final state exactly.',
+         lead='Takeaway.')
+close(pA, y + 6)
 
 # B: the screen --------------------------------------------------------------------------------------
-BY = AY + 314
-panel(24, BY, 470, 490, 'B. Mission 1, generated over its real screen', f'proven: {fit_n}/51 generated dots on white pixels, {unexpl} white pixels unexplained', True)
+BY = y + 20
+pB = panel(24, BY, 470, 490, 'B. Mission 1, generated over its real screen', f'proven: {fit_n}/51 generated dots on white pixels, {unexpl} white pixels unexplained', True)
 cx0, cy0, cw, Z = 60, 67, 90, 4
 crop = scr.crop((cx0, cy0, cx0 + cw, cy0 + cw))
 ix, iy = 24 + (470 - cw * Z) / 2, BY + 52
@@ -385,10 +426,14 @@ capB = ['The map screen of mission1.snap, pixels &#215;4. Red rings: the 50 gene
         f'The fit was searched, not assumed: pixel = ({FX}, {FY}) + {FS} &#215; cell.']
 for k, t in enumerate(capB):
     a(f'<text x="44" y="{ly+14*k}" class="s">{t}</text>')
+bend = para(44, ly + 14 * len(capB) + 6, 432, 'A screenshot of the game\'s own mission 1 map, enlarged; the white pixels '
+            'are planets as the game drew them, and the rings and box are where the model puts them.', lead='How to read.')
+bend = para(44, bend + 4, 432, 'Every planet the game draws is one the model generated, and every white pixel is accounted '
+            'for.', lead='Takeaway.')
 
 # C: the coordinate table ----------------------------------------------------------------------------
 CX = 506
-panel(CX, BY, 370, 490, 'C. No dot on a grid line', f'proven: {on_line} of {len(allc)} coordinates (missions 1, 2, 8) on a line', True)
+pC = panel(CX, BY, 370, 490, 'C. No dot on a grid line', f'proven: {on_line} of {len(allc)} coordinates (missions 1, 2, 8) on a line', True)
 a(f'<text x="{CX+20}" y="{BY+62}" class="s">The 5-bit field (0..31) indexes the 32-byte table at $3047c:</text>')
 gx0, gy0, cwid = CX + 30, BY + 100, 8.0
 for c in range(-1, 40):
@@ -415,10 +460,18 @@ capC = [f'Rows: index; columns: cell. The table skips {", ".join(str(v) for v in
         'no dot can touch a line. Index 0 is never used: column 0 is empty.']
 for k, t in enumerate(capC):
     a(f'<text x="{CX+20}" y="{cy_+14*k}" class="s">{t}</text>')
+cend = para(CX + 20, cy_ + 14 * len(capC) + 6, 334, 'Each blue dot is one entry of the table: its row is the 5-bit value '
+            'drawn (0 to 31), its column the map cell that value becomes. Brown lines are where the screen draws its grid.',
+            lead='How to read.')
+cend = para(CX + 20, cend + 4, 334, 'The 32-entry table is what keeps dots off the lines: it lists only cells inside the '
+            'grid squares. The cost is the first row and column of the first square, which no draw reaches.',
+            lead='Takeaway.')
+close(pB, max(bend, cend) + 6)
+close(pC, max(bend, cend) + 6)
 
 # D: names -------------------------------------------------------------------------------------------
-DY = BY + 504
-panel(24, DY, 852, 310, 'D. A name for every body ($3066e)', 'proven on screen for object 13 only; other names inferred')
+DY = max(bend, cend) + 20
+pD = panel(24, DY, 852, 310, 'D. A name for every body ($3066e)', 'proven on screen for object 13 only; other names inferred')
 a(f'<text x="44" y="{DY+50}" class="s">Not stored and not part of the chain: each name is recomputed when shown, with the same LCG reseeded per body.</text>')
 steps_ = [('seed', f'mission &#215; 150 + object = {OBJ}', d4[0]), ('LCG', '', d4[1]), ('ror.w #8', 'byte swap', d4[2]),
           ('LCG', '', d4[3]), ('LCG', '', d4[4])]
@@ -458,10 +511,18 @@ a(f'<text x="44" y="{DY+266}" class="s">string STATION ($306fe). Objects 1..50 p
   f'here except {nm} is computed by the model, not read off the screen.</text>')
 a(f'<text x="44" y="{DY+286}" class="s">The entry takes D3 = 149 &#8722; object and forms mission &#215; 150 + 149 &#8722; D3 ($30686..$30692); '
   f'the seed is mission &#215; 150 + object either way.</text>')
+y = para(44, DY + 306, 812, f'The top row works the name generator through for object {OBJ} of mission 1; each arrow is '
+         'one operation on the 16-bit state. The four rows below are the game\'s syllable tables, and the boxed entry in '
+         'each is the one picked by that nibble (4 bits) of the final state. The pixel strip is the game\'s own screen.',
+         lead='How to read.')
+y = para(44, y + 4, 812, 'Names are not stored. One 16-bit seed per body regenerates the name whenever the body is labelled '
+         '(inferred from the code), and four syllables picked by four nibbles give 16^4 = 65,536 possible spellings.',
+         lead='Takeaway.')
+close(pD, y + 6)
 
 # E: three missions ----------------------------------------------------------------------------------
-EY = DY + 324
-panel(24, EY, 852, H - EY - 24, 'E. Three missions, three galaxies (moons and targets drawn)',
+EY = y + 20
+pE = panel(24, EY, 852, 0, 'E. Three missions, three galaxies (moons and targets drawn)',
       'proven: each 51/51, 100/100, 150/150 vs RAM')
 mw = 250
 for j, idx in enumerate((0, 1, 7)):
@@ -498,7 +559,30 @@ a(f'<text x="44" y="{ey2}" class="s">White: planets; yellow square: the station;
   f'is 512); red rings: targets 1..10.</text>')
 a(f'<text x="44" y="{ey2+14}" class="s">Mission 1 always puts target 1 on object 0 ({names[0]}). Missions 2 and 8: index poked into 14776(A6), '
   f'$302c6 re-run under callcap, model = every table.</text>')
+y = para(44, ey2 + 34, 812, 'Each square is one mission\'s whole map, drawn from the model\'s tables, which equal the '
+         'game\'s memory for that mission. The seed is the mission index, the mission number minus one.',
+         lead='How to read.')
+y = para(44, y + 4, 812, 'Only the seed changes between the three maps. The layout rules stay the same: dots inside grid '
+         'squares, moons at the eight compass points around their planet.', lead='Takeaway.')
+close(pE, y + 6)
+y += 32
+a(f'<text x="24" y="{y}" class="h">How we know</text>')
+y = para(24, y + 20, 852, 'a linear congruential generator computes each number from the last as x × a + c, keeping '
+         'the low 16 bits. D0 and D1 are 68000 registers; ror.w #2 rotates a 16-bit word right by 2 bits. Hex numbers '
+         'such as $30280 are addresses of the game\'s code; 13566(A6) and the like are addresses of its tables, '
+         'counted from the register A6 that points at the game\'s variables.', 'k', lead='Terms.')
+y = para(24, y + 3, 852, 'universe.py is a Python model of every step. "model = RAM 51/51" means its 51 map dots equal '
+         'the 51 the game holds in memory. mission1.snap and star.snap are saved emulator states of the game at its star '
+         'map. callcap makes the emulator call one game routine from a saved state and record the registers and memory it '
+         'changes; for missions 2 and 8 the mission number was written into memory ("poked") and the generator re-run '
+         'this way.', 'k', lead='Checks.')
+y = para(24, y + 3, 852, 'proven: checked against the game in an Atari ST emulator. computed: worked out by this '
+         'figure\'s script. inferred: read from the code but not checked.', 'k', lead='Labels.')
+H = y + 16
 a('</svg>')
+s[0] = (f'<svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" viewBox="0 0 {W} {H}" '
+        f'width="{W}" height="{H}" role="img" aria-labelledby="t d">')
+s[4] = f'<rect width="{W}" height="{H}" fill="#ffffff"/>'
 p = os.path.join(OUT, 'universe.svg')
 open(p, 'w').write('\n'.join(s))
 print('wrote', p)

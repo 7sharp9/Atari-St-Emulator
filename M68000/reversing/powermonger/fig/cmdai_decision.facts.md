@@ -32,3 +32,16 @@ All from `reversing/powermonger/strategy.md` unless marked. Branch addresses wer
 - 65 deciding groups = the 24 first groups + 41 of the 394 non-lead groups; the figure says so.
 - The short census counts `$69b4` calls (95) and the 75-land census counts `$65c8` issues (3507): different addresses, not
   comparable. The figure labels each.
+
+## Lead and captions
+
+| text added | source |
+|---|---|
+| game, publisher, year; "you give orders, not controls"; the AI uses the same order path | README.md title line, "Design digest" ("What carries the game") |
+| one group per tick per side; `$6564` walks 5..0; skip no group / pending | strategy.md "The commander AI `$6522`" ("At most one order is issued per slot per tick") |
+| fixed priority list; with the entity modes it is the whole autonomous AI | strategy.md "The AI as modern pseudocode" ("there is nothing else") |
+| follow-up table chains food, men, equipment, invention orders | README "Design digest" ("Get men, food, follow-ups") |
+| posture 2/3/4 = aggressive/neutral/passive | strategy.md `$51538` table (posture row) |
+| order codes `$08` get men, `$0c` march and engage, `$06` get food, `$04` transfer, `$02` from the recheck | the figure's own arm boxes; strategy.md orders table |
+| AI groups start with `$5fff` food; the food test never binds in any run; the AI writes posture 4 on attackers | README "Design digest" ("The opponent is simple"; "Combat") |
+| census counts compared in the takeaway (31122, 3507, 2286) | the figure's own numbers (strategy.md "Natural coverage") |

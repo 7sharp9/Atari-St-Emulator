@@ -124,7 +124,7 @@ def cell(ch, label, ids):
 def reach():
     out = []
     for ch, moves in PLAN:
-        out.append('<div class="who"><h3>%s <span>chain limit %d hits · box table %05x</span></h3><div class="cells">' % (CHAR[ch], C.combo_limit(ch), C.box_base(ch)))
+        out.append('<div class="who"><h3>%s <span>chain counter limit %d (%d hits) · box table %05x</span></h3><div class="cells">' % (CHAR[ch], C.combo_limit(ch), C.combo_limit(ch) // 2 + 1, C.box_base(ch)))
         out.extend(cell(ch, l, ids) for l, ids in moves)
         out.append("</div></div>")
     return "".join(out)

@@ -1,4 +1,4 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 900 830" width="900" height="830" role="img" aria-labelledby="t2 d2" xml:space="preserve">
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 900 1427" width="900" height="1427" role="img" aria-labelledby="t2 d2" xml:space="preserve">
 <title id="t2">The signed-clock stall of the camp wait</title>
 <desc id="d2">The camp wait compares stamp + $14 with the sim clock word $2df72 as signed words, so a group camped before tick 32768 waits about 34,800 ticks once the clock passes 32768.
 Sources (reversing/powermonger/strategy.md): "Where it runs" (the $13000 listing: $1302e addq.l #1,$2df70), "The commander AI `$6522`" bullet "The signed-clock stall" (mechanism, W5G_k80 / W5G_k108 chunks: 1500 and 1843 decisions per chunk, 168 / 93 in the crossing chunk, 0 after; clock 32599 / 32674; stamps 2088 / 2038),
@@ -22,7 +22,7 @@ text{font-family:Helvetica, Arial, sans-serif;fill:#1f2328;font-size:12px}
 .ln{stroke:#424a53;stroke-width:1.3;fill:none;marker-end:url(#a)}
 </style>
 <defs><marker id="a" viewBox="0 0 8 8" refX="7" refY="4" markerWidth="7" markerHeight="7" orient="auto"><path d="M0,0 L8,4 L0,8 z" fill="#424a53"/></marker></defs>
-<rect x="0" y="0" width="900" height="830" fill="#ffffff"/>
+<rect x="0" y="0" width="900" height="1427" fill="#ffffff"/>
 
 <text x="20" y="26" class="t">The signed-clock stall: the camp wait compares tick numbers as signed words</text>
 <text x="20" y="45" class="c">Box border = evidence. Green bars: the group decides ($65b4 reached); grey bars: it waits at $65a6.</text>
@@ -31,7 +31,16 @@ text{font-family:Helvetica, Arial, sans-serif;fill:#1f2328;font-size:12px}
 <rect x="290" y="54" width="22" height="12" class="cr"/><text x="317" y="64" class="s">code read</text>
 <rect x="405" y="54" width="22" height="12" class="in"/><text x="432" y="64" class="s">inferred</text>
 
-<!-- Panel A: three sites -->
+
+<text x="20" y="90.5" style="font-family:Helvetica, Arial, sans-serif;font-size:12.5px;font-weight:normal;fill:#1f2328">PowerMonger (Bullfrog / Electronic Arts, 1990) is a war game in which the computer lords command armies through captains' groups. Their</text>
+<text x="20" y="107.5" style="font-family:Helvetica, Arial, sans-serif;font-size:12.5px;font-weight:normal;fill:#1f2328">commander AI ($6522) runs once per tick, the game's simulation step, and offers each group an order. A group that has just gone back to</text>
+<text x="20" y="124.5" style="font-family:Helvetica, Arial, sans-serif;font-size:12.5px;font-weight:normal;fill:#1f2328">camp is held for 20 ticks first: the game stores the tick at which it camped (its camp stamp) and waits while stamp + 20 is greater than</text>
+<text x="20" y="141.5" style="font-family:Helvetica, Arial, sans-serif;font-size:12.5px;font-weight:normal;fill:#1f2328">the current tick.</text>
+<text x="20" y="163.4" style="font-family:Helvetica, Arial, sans-serif;font-size:12.5px;font-weight:normal;fill:#1f2328">The bug: both numbers are 16-bit words and the compare is signed. Once the tick count passes 32768 the clock word reads as a negative</text>
+<text x="20" y="180.4" style="font-family:Helvetica, Arial, sans-serif;font-size:12.5px;font-weight:normal;fill:#1f2328">number, so every group stamped before then looks as if it camped in the future and waits about 34,800 more ticks, until the clock wraps</text>
+<text x="20" y="197.4" style="font-family:Helvetica, Arial, sans-serif;font-size:12.5px;font-weight:normal;fill:#1f2328">past 65536 and climbs back to its stamp. In a long game the computer's camped armies stop deciding. Panel A shows the code, B the</text>
+<text x="20" y="214.4" style="font-family:Helvetica, Arial, sans-serif;font-size:12.5px;font-weight:normal;fill:#1f2328">arithmetic, C the experiment that proves the cause, D the stall in untouched play.</text>
+<g transform="translate(0,159.75)"><!-- Panel A: three sites -->
 <text x="20" y="92" class="h">A. The three instructions</text>
 <rect x="20" y="100" width="270" height="74" rx="4" class="cr"/>
 <text x="30" y="118" class="m">$1302e addq.l #1,$2df70</text>
@@ -49,7 +58,11 @@ text{font-family:Helvetica, Arial, sans-serif;fill:#1f2328;font-size:12px}
 <text x="600" y="152">wait while stamp + 20 &gt; clock, signed;</text>
 <text x="600" y="167" class="s">the only reader: literal scan finds $2df72 twice</text>
 
-<!-- Panel B: clock axis -->
+</g>
+<text x="20" y="357.2" style="font-family:Helvetica, Arial, sans-serif;font-size:11.5px;font-weight:normal;fill:#1f2328">How to read: the three instructions that touch the clock word $2df72. Left: the tick adds one to the long clock, whose low word is $2df72. Middle: a</text>
+<text x="20" y="372.8" style="font-family:Helvetica, Arial, sans-serif;font-size:11.5px;font-weight:normal;fill:#1f2328">group going back to camp copies that word into its record. Right: the wait test. bgt is the 68000's signed "branch if greater", so a clock word of</text>
+<text x="20" y="388.2" style="font-family:Helvetica, Arial, sans-serif;font-size:11.5px;font-weight:normal;fill:#1f2328">32768 or more is read as negative. A literal scan of the game finds $2df72 in these two instructions only.</text>
+<g transform="translate(0,225.275)"><!-- Panel B: clock axis -->
 <text x="20" y="204" class="h">B. One camped group, stamp 2088 (k80 group 0): clock in ticks since the land was built</text>
 <!-- scale: x = 60 + tick * 800/70000 -->
 <rect x="84" y="226" width="350" height="22" class="on"/>
@@ -68,7 +81,11 @@ text{font-family:Helvetica, Arial, sans-serif;fill:#1f2328;font-size:12px}
 <text x="60" y="316" class="s">At tick 34104 the word reads -31432 and 2108 &gt; -31432, so the group waits. Groups that re-camp every few ticks (k143, k44: stamps within 20 ticks</text>
 <text x="60" y="331" class="s">of the clock) do not stall. Steps per tick differ per land, so the crossing falls at a different step count in each land.</text>
 
-<!-- Panel C: pokes -->
+</g>
+<text x="20" y="578.8" style="font-family:Helvetica, Arial, sans-serif;font-size:11.5px;font-weight:normal;fill:#1f2328">How to read: a number line of the clock in ticks since the land was built, with the signed value the compare sees underneath. The group camped at</text>
+<text x="20" y="594.3" style="font-family:Helvetica, Arial, sans-serif;font-size:11.5px;font-weight:normal;fill:#1f2328">tick 2088, so from tick 2108 it may decide (green). At 32768 the signed value jumps to -32768, 2108 is now "greater" than the clock, and the group</text>
+<text x="20" y="609.8" style="font-family:Helvetica, Arial, sans-serif;font-size:11.5px;font-weight:normal;fill:#1f2328">waits (grey) until the clock wraps and reaches 65536 + 2108.</text>
+<g transform="translate(0,290.8)"><!-- Panel C: pokes -->
 <rect x="14" y="348" width="872" height="236" rx="4" class="lv" fill-opacity="0.35"/>
 <text x="24" y="368" class="h">C. Isolation by clock pokes: one write of $2df72, all from L2G_k80_c8.snap (clock 11729, about 167k steps per tick)</text>
 <text x="24" y="390" class="s">clock poked</text><text x="132" y="390" class="s">$65b4 hits</text>
@@ -101,7 +118,13 @@ text{font-family:Helvetica, Arial, sans-serif;fill:#1f2328;font-size:12px}
 
 <text x="24" y="572" class="s">Each prediction was written before its run; 5 of 5 met. With $7ff0, $6522 still runs (604 hits against 599), so only the compare at $65a0..$65a6 gates the decisions.</text>
 
-<!-- Panel D: natural onset -->
+</g>
+<text x="20" y="898.3" style="font-family:Helvetica, Arial, sans-serif;font-size:11.5px;font-weight:normal;fill:#1f2328">How to read: one row per run. Every run starts from the same saved state, writes one value into the clock word and nothing else, and counts how often</text>
+<text x="20" y="913.8" style="font-family:Helvetica, Arial, sans-serif;font-size:11.5px;font-weight:normal;fill:#1f2328">the decision point $65b4 is reached (the first instruction after the compare). The bar is steps after the poke: green where decisions happen, grey</text>
+<text x="20" y="929.3" style="font-family:Helvetica, Arial, sans-serif;font-size:11.5px;font-weight:normal;fill:#1f2328">where the group waits. Steps are emulated 68000 instructions; M is a million, G a thousand million.</text>
+<text x="20" y="949.8" style="font-family:Helvetica, Arial, sans-serif;font-size:11.5px;font-weight:normal;fill:#1b5e20">Takeaway: changing only the clock word switches the decisions off and on exactly where the signed compare predicts, and the AI routine itself keeps</text>
+<text x="20" y="965.3" style="font-family:Helvetica, Arial, sans-serif;font-size:11.5px;font-weight:normal;fill:#1b5e20">running, so the compare is the cause.</text>
+<g transform="translate(0,392.35)"><!-- Panel D: natural onset -->
 <text x="20" y="612" class="h">D. Natural onset (W5G runs, py/arms/batch4.sh: 2G steps, then 20 chunks of 250M; $65b4 hits per chunk)</text>
 <!-- scale: x = 160 + (G - 2) * 700/5 -->
 <text x="24" y="643" class="m">k108</text>
@@ -116,9 +139,22 @@ text{font-family:Helvetica, Arial, sans-serif;fill:#1f2328;font-size:12px}
 <text x="24" y="704" class="s">steps from land start</text>
 <text x="24" y="726" class="s">Bars are live counts; the pre-crossing rate is drawn flat from the one figure the doc gives. Chunk n covers 2G + (n-1) x 250M to 2G + n x 250M.</text>
 
-<text x="20" y="756" class="s">Status: the compare is the cause in the emulator (proven by panel C). The same stall on a real ST or in Hatari is inferred from the code, not run.</text>
+</g>
+<text x="20" y="1143.8" style="font-family:Helvetica, Arial, sans-serif;font-size:11.5px;font-weight:normal;fill:#1f2328">How to read: two lands built with the game's Play Random Land option (the runs named k80 and k108) left to play with no input for 7G steps. Each bar</text>
+<text x="20" y="1159.3" style="font-family:Helvetica, Arial, sans-serif;font-size:11.5px;font-weight:normal;fill:#1f2328">segment is one 250M-step chunk; the number is how often $65b4 was reached in it. The short segment is the chunk in which the clock passes 32768.</text>
+<text x="20" y="1179.9" style="font-family:Helvetica, Arial, sans-serif;font-size:11.5px;font-weight:normal;fill:#1b5e20">Takeaway: in untouched play the decisions stop within one chunk, at a different step count per land, because a tick costs a different number of steps</text>
+<text x="20" y="1195.4" style="font-family:Helvetica, Arial, sans-serif;font-size:11.5px;font-weight:normal;fill:#1b5e20">on each land.</text>
+<g transform="translate(0,478.4)"><text x="20" y="756" class="s">Status: the compare is the cause in the emulator (proven by panel C). The same stall on a real ST or in Hatari is inferred from the code, not run.</text>
 <text x="20" y="772" class="s">Consequence: a natural run past 4.5G to 5.75G steps loses its idle camped groups' decisions for about the next 6G steps; zero late decisions do not mean an arm is unreachable.</text>
 <rect x="20" y="784" width="860" height="36" rx="4" class="pv"/>
 <text x="30" y="799" class="s">Second route into the wait: a LOAD restores the saved camp stamps but keeps the destination's clock. lo.st into rand1 (clock 441), stamp 2088: first $65b4</text>
 <text x="30" y="814" class="s">predicted at clock 2108, about 279.2M steps; observed at clock 2108 after 276,745,802 steps (0.9% early). py/saveload/camp_stamps.py, proven by prediction.</text>
+</g>
+<text x="20" y="1325.4" style="font-family:Helvetica, Arial, sans-serif;font-size:13px;font-weight:bold;fill:#1f2328">Terms and evidence</text>
+<text x="20" y="1346.5" style="font-family:Helvetica, Arial, sans-serif;font-size:11.5px;font-weight:normal;fill:#1f2328">Proven: shown in the emulator by an experiment whose outcome was predicted before it ran (panel C, 5 of 5 predictions met; the LOAD route, one</text>
+<text x="20" y="1362.0" style="font-family:Helvetica, Arial, sans-serif;font-size:11.5px;font-weight:normal;fill:#1f2328">prediction). Live: seen running in the emulator and counted. Code read: from the disassembly only. Inferred: a conclusion from the code that was not</text>
+<text x="20" y="1377.5" style="font-family:Helvetica, Arial, sans-serif;font-size:11.5px;font-weight:normal;fill:#1f2328">run; here, that a real ST or the Hatari emulator stalls the same way, since the code is the game's own. A $ value is a RAM address in the game;</text>
+<text x="20" y="1393.0" style="font-family:Helvetica, Arial, sans-serif;font-size:11.5px;font-weight:normal;fill:#1f2328">256(A1) is the camp stamp word of the group the AI loop is looking at. L2G_k80_c8.snap, rand1 and lo.st are saved states and a save file used as</text>
+<text x="20" y="1408.5" style="font-family:Helvetica, Arial, sans-serif;font-size:11.5px;font-weight:normal;fill:#1f2328">starting points.</text>
+<g transform="translate(0,597.475)"></g>
 </svg>

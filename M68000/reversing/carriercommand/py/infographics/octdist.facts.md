@@ -21,6 +21,22 @@ The error curve is computed from the game's integer formula; the heat map is `py
 | panel D: model pick = game `$11ba` in all 11 of `ai/nat2/e2..e12` | `gen_octdist.py` (asserts it) |
 | true distance changes 3 of 11 picks: e2 (48 past the cutoff), e4 (51: octagonal 3,040,768, true 2,752,325), e6 (46 nearer, 1,110,500 vs 1,144,186, but at 28 deg reads +11.8%, 47 at 83 deg +5.4%) | counterfactual, computed; **inferred** that the game would play differently, since nothing downstream of the pick was run |
 
+### Prose added for readers new to the game (lead, captions, "How we know")
+
+| claim | source |
+|---|---|
+| the player's carrier and a computer-controlled enemy carrier compete for 64 islands | README.md opening paragraph; ai.md intro |
+| the enemy scores every island on each decision; distance is one term; first maximum is the target | ai.md 2 |
+| the 68000 has no square-root instruction | general knowledge |
+| exact on the axes, +11.8% worst, +6.1% diagonal, +8.7% mean; never short apart from the dropped half unit | table above (computed) |
+| three inline copies in `$2337a`, one for the travel countdown | table above |
+| `ai/nat/d1` taken at the return of `$2337a`, carrier at island 56 | table above; ai.md 2 (snapshots at `bp $1ad02`) |
+| beyond the cutoff an island scores -15000 | ai.md 2 |
+| 48 TWILIGHT: +10.4%, -8271, would score 5325 (computed, not run); the game picks 48 next from 55 | table above |
+| e2..e12: consecutive arrivals from c_s30, each forced with countdown 1, which `$2337a` does not read | ai.md 2; Flags below |
+| 3 of 11 picks change; that the game would play differently is inferred | table above |
+| gate: 21 snapshots, 1344/1344 words, 21/21 targets | ai.md 2 |
+
 ## Flags
 
 - There is no distance routine to give an address for. `ai.md` 1 writes `octdist(carrier, target)` as if it

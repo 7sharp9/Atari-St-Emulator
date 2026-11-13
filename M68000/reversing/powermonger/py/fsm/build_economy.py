@@ -18,6 +18,22 @@ W, H = 900, 1026
 s = Svg(W, H, 'PowerMonger economy: what moves a lord\'s food, men, goods and loyalty',
         'Flows into and out of one lord record $4e514 (32 bytes); every flow is a write by a named routine')
 
+# ------------------------------------------------------------------ lead (README "Design digest"; economy.md Summary,
+# Headline, 1, 6; see economy.facts.md "Lead and captions")
+FW = W - 32
+y0 = s.para(16, 74, FW, 'PowerMonger (Bullfrog / Electronic Arts, 1990) is a war game on a height-mapped land of '
+            'settlements. Each settlement belongs to a lord, and each lord has a 32-byte record holding four things '
+            'the player has to manage: his food store, his men at home, eight goods counters and a loyalty pressure '
+            'that turns the lord to another side when it reaches 600. The armies the player and the computer lords '
+            'command are captains\' groups that take food, men and goods from their lords.', size=12.5, lh=17)
+y0 = s.para(16, y0 + 4, FW, 'There is no economy routine that grows a population or balances food once per '
+            'period. Every change to those four numbers is a single write made by one man\'s state-machine handler '
+            '(his "mode", written $xx) or by an order. The figure collects every such write for one lord record: the '
+            'civilians who fill it on the left, the record in the middle, the armies that draw on it on the right.',
+            size=12.5, lh=17)
+DY = y0 + 8 - 70
+s.begin(0, DY)
+
 # columns
 LX, LW = 16, 248           # producers (civilian jobs)
 CX, CW = 336, 228          # the lord record
@@ -113,14 +129,51 @@ flow('L', 724, ['winter park, mode $7c, first', 'pulse after a park only:', 'hun
 flow('L', 798, ['revolt $550e at >= 600: 10 of the', '27 natural calls (17: conquest $539a)'], 'proven', 'out', '')
 
 # ------------------------------------------------------------------ notes
-s.lines(16, 880, [
-    ('Reading the figure', {'weight': 'bold'}),
-    'shift = posture - 2 ($30fe): aggressive takes all, neutral half, passive a quarter. Men and goods are separate ledgers:',
-    'goods never become men. Food and goods meet only in the trade. The winter park (mode $7c) needs the season word',
-    '$57fd0 == 0: farmers ($16), merchants ($4e) and fishers ($5e) park there, so upkeep and loyalty move only in winter',
-    '(a man idling in $7e pulses too, never on that first-pulse edge). Mission 1 builds both enemy lords at 608; the first winter pulse resets them to 300.',
-    'Gates: gate_fsm15.py (job modes, 18452/18452 bytes), gate_orders.py ($600a, $60dc, $61f8, $6352, $638c, $63f4),',
-    'gate_equip.py ($160f8, 385/385 over 201 states), diff_revolt.py (1778/1778 over 49 states), heartbeat block (99/99).',
-], size=11.5, lh=16)
-s.legend(16, 1006, ['proven', 'live', 'code'])
+s.end()
+y = 880 + DY
+s.text(16, y, 'How to read it', size=13, weight='bold')
+y += 18
+y = s.para(16, y, FW, 'Middle: the lord record, one box per field, named by its byte offset in the record (+6 is '
+           'byte 6). Left: civilian men in their job modes. Right: the army, a captain\'s group record and its men. '
+           'Each arrow is one kind of write: an arrow into the middle adds to the field, an arrow out of it subtracts, '
+           'a pair of arrows does both. The label on the arrow is the change per event; "slice" and ">> shift" are '
+           'the posture-scaled amounts explained below. The first line of each box names the event and the routine '
+           'or mode that makes the write; the fill is the evidence for that flow.', size=11.5, lh=15.5) + 8
+s.text(16, y, 'What to take from it', size=13, weight='bold')
+y += 18
+for lead, t in [
+    ('Food.', 'Food comes in only from fishermen (+4 a catch) and farmers coming home (+2). It leaves to armies, to '
+     'gatherers whose delivery has no group, and to the winter upkeep, one per parked man per pulse.'),
+    ('Men.', 'Men are conserved: every arrow on the men field moves one man between the lord, a group or another '
+     'lord, and none is born after the world build (observed over traced runs, not proven absent). The pigeon '
+     'landing is the one path that adds a man without taking him from elsewhere: it revives a dead man\'s record.'),
+    ('Goods.', 'Goods come in one at a time from felled trees, heavily throttled, and are spent by armies to equip '
+     'and upgrade their men. What the game calls invention is that upgrade, not a research timer. Men and goods are '
+     'separate ledgers: goods never become men, and food and goods meet only in the trade.'),
+    ('Loyalty.', 'A lord\'s towns that go hungry in winter push his loyalty pressure up; at 600 he and his '
+     'settlements change side and the pressure resets to 300. This is the game\'s own clock, not something the '
+     'player triggers.'),
+]:
+    y = s.para(16, y, FW, lead + ' ' + t, size=11.5, lh=15.5) + 3
+y += 6
+s.text(16, y, 'Terms and evidence', size=13, weight='bold')
+y += 18
+for t in [
+    'shift = posture - 2 ($30fe). Posture is the group\'s aggression setting (2, 3 or 4), and an order moves food '
+    '>> shift: aggressive takes all, neutral half, passive a quarter. 36(group) is the group\'s own food, which the '
+    'captain panel labels "Food:". troops_field is the lord\'s men at home, not in an army. The winter park (mode '
+    '$7c) needs the season word $57fd0 == 0: farmers ($16), merchants ($4e) and fishers ($5e) park there, so upkeep '
+    'and loyalty move only in winter (a man idling in $7e pulses too, never on that first-pulse edge). Mission 1 builds '
+    'both enemy lords at 608; the first winter pulse resets them to 300.',
+    'Proven means a gate passed: a Python rewrite of the routine was run beside the game\'s own 68000 code from many '
+    'saved states and every changed byte matched (18452/18452 is matching bytes out of bytes compared). Gates: '
+    'gate_fsm15.py (job modes, 18452/18452 bytes), gate_orders.py ($600a, $60dc, $61f8, $6352, $638c, $63f4), '
+    'gate_equip.py ($160f8, 385/385 over 201 states), diff_revolt.py (1778/1778 over 49 states), heartbeat block '
+    '(99/99). Live means seen running in the emulator and counted: "live: town 22 -> 11" is one run in which a '
+    'town\'s food went from 22 to 11; "k5_s4, 100M" is a saved state on land 5 run for 100 million emulated '
+    'instructions. Code read means from the disassembly only.',
+]:
+    y = s.para(16, y, FW, t, size=11.5, lh=15.5) + 5
+s.legend(16, y + 14, ['proven', 'live', 'code'])
+s.h = int(y + 30)
 s.save(os.path.join(out, 'economy.svg'))

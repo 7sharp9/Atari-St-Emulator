@@ -28,6 +28,22 @@ Regenerate: `cd M68000 && reversing/carriercommand/py/infographics/bsp_order_all
 | object layer: 18-byte nodes at `$5a82a`, 128 max, `$5d94` walks far to near | render.md 1, labelled "from code" |
 | model layer: 1264 draws of 6 models, every item, face sign and polygon in model.py's order | `bsp_order_all.sh` totals below |
 
+### Prose added for readers new to the game (lead, captions, "How we know")
+
+| claim | source |
+|---|---|
+| filled-polygon 3D on an 8 MHz 68000 with no FPU or blitter; no z-buffer; three stacked methods | render.md intro, 4 |
+| painter's method, z-buffer gloss, the one-paragraph BSP explanation | general knowledge, generic; nothing in it is attributed to the game beyond render.md 4 |
+| the Manta takes off from the carrier's deck | vehicles.md 5 (launch and take-off) |
+| item = a group of polygons sharing one back-face test | render.md 4 item 3 ("each leaf item can carry three test vertices"); the tree parse (L4: 8 items, 10 polygons; item "6 7 8" in panel C) |
+| node and leaf byte layout; flag `$ff` draws A first | render.md 4 |
+| `m_deck`: Manta 0 on the flight deck with the lift stopped | scratchpad/ANCHORS.md |
+| 10 of 20 items culled; leaf order; the model.py walk agrees | `gen_bsp.py` printout from the cached capture |
+| layer tags: "from code" = inferred (render.md 1: "read from code (inferred)"); "proven" = callcap 120/120 | render.md 1, 4; proof table |
+| 12314/12314, 6189/6189, 12228/12228, 684/684; reversed walk differs 228/228 | `bsp/order_sum.txt` via `gen_bsp.py` printout |
+| 31 runs from seven snapshots, 24 with the Manta's angles poked | render.md 4 |
+| not covered: the clipping path (no polygon took it), P1/P2 flags always equal (4 of 8 patterns) | render.md 4 |
+
 ## The drawing-order check (render.md 7 first item, session item 5)
 
 Command: `M68000/reversing/carriercommand/py/infographics/bsp_order_all.sh`, raw totals in

@@ -27,6 +27,23 @@ Doc: `packer.md`.
 | 20,737 literal runs carry 53,130 bytes, 39,743 matches carry 270,066; longest match 1,023, farthest offset 4,382, longest literal run 906 | token log; the two byte counts sum to 323,196 |
 | lz4 -9 143,721, gzip -9 119,914, zstd -19 110,368, xz -9e 97,100; Automation 134,660 (payload incl. header) | run by the script on stdin: lz4 1.9.4, Apple gzip 479, zstd 1.5.6, xz 5.6.4 |
 
+### Prose added for readers new to the game (lead, captions, "How we know")
+
+| claim | source |
+|---|---|
+| the copy is from the Zuul #45 compilation; Automation Packer belongs to this copy, not the game | packer.md opening; README.md "Design digest" ("The crack's stack leak and the Automation Packer belong to this copy") |
+| 794-byte stub, 134,660 bytes into 323,196 in the same memory, no second buffer | table above |
+| writes from the top downward, reads from the stream end downward; only consumed bytes are overwritten | packer.md "How it depacks" 1 |
+| tbase: where the program file is loaded (text segment base) | packer.md (addresses relative to `tbase`, `$a304`) |
+| header = `LSD!`, u32 unpacked size, u32 packed length | packer.md "Algorithm" |
+| literal runs widen or keep the gap, 36,575/39,743 matches narrow it; start gap 188,766 | table above (script variables) |
+| safe while every remaining part packs into its length plus 218; 3,414 spare until the last 4 KB | packer.md "How it depacks" 1 (the condition); table above |
+| 219 binding; 219 lower exact, 220 lower corrupts 5 | table above |
+| LZ77, fixed prefix codes, no entropy coding; sentinel bit reader | packer.md "Algorithm" |
+| lz4 has no entropy coding, gzip/zstd/xz do | general knowledge of those formats |
+| c80 RAM match 322,880 of 323,168, the rest presumably game variables | table above |
+| mover from code only | packer.md, table above |
+
 ## Flags
 
 - **218 is the closest approach, but not the margin that matters.** packer.md says the closest approach is 218 on all six
@@ -39,7 +56,7 @@ Doc: `packer.md`.
   (short ones whose bits straddle byte loads) do not shrink it either. The gap shrinks overall because matches dominate.
 - **Literal count is 1..1,038, not 1..1,039** (packer.md "Algorithm"): the 10-bit tier gives v + 14 + 1 with v at most
   1,023, and the shorter tiers stop one below all ones.
-- **Start gap 188,762** (packer.md) is not reproduced: write at `$400` + 323,196 = 324,220 against the payload end
+- **Start gap 188,762** (packer.md, since corrected there to 188,766, matching this figure) was not reproduced: write at `$400` + 323,196 = 324,220 against the payload end
   `$31a` + 134,660 = 135,454 gives 188,766 before any read (188,770 after the first bit-buffer byte). Inferred: the doc
   measured the read pointer 4 bytes higher (A0 before the `subq #4`?); not checked against the stub.
 - **gzip and zstd figures in "Ratios"** (119,933, 110,371) are file-mode outputs: from stdin they are 119,914 and 110,368.

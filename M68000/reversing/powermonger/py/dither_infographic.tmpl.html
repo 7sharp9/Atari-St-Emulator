@@ -76,6 +76,7 @@ th{color:var(--muted);font-weight:600;font-size:.82rem}
 svg text{font:12px var(--mono);fill:var(--ink)}
 .kv{display:grid;grid-template-columns:auto 1fr;gap:2px 12px;font-size:.92rem}
 .kv dt{color:var(--muted)} .kv dd{margin:0;font-family:var(--mono);font-size:.88rem}
+.kv.terms{grid-template-columns:minmax(5.5em,10em) 1fr} .kv.terms dd{font-family:inherit;font-size:.92rem} .kv.terms dt{font-weight:600;color:var(--ink)}
 footer{margin-top:3em;color:var(--muted);font-size:.85rem}
 </style>
 </head>
@@ -83,26 +84,48 @@ footer{margin-top:3em;color:var(--muted);font-size:.85rem}
 <main>
 
 <h1>How PowerMonger paints its terrain</h1>
-<p class="lede">The island has no texture map and no flat colours. Every triangle carries one number, and that number selects a 16 by 16 stipple tile. The screen position picks the pixel inside the tile. This page is built from the game's own RAM: the pattern table is the real one, and each picture below is rebuilt from it and checked against the game's frame buffer.</p>
+<p class="lede">PowerMonger (Bullfrog and Electronic Arts, 1990; this is the Atari ST version) is a war strategy game. You command a captain and his men across an island seen from above at an angle, and you give orders (go here, attack that town, fetch food) rather than steering units. The island is a height map, drawn in perspective by the game's own software renderer as two flat triangles per square of ground, and it can be turned and zoomed.</p>
+<p>The ST can show only 16 colours at once. Shading hills by their slope needs more tones than that, and the game also wants grass that changes with the seasons and sea that moves. Its answer is a table of 16 by 16 pixel stipple tiles. Every triangle carries one number, its <b>colour byte</b>. That number picks a tile, and the pixel's screen position picks the pixel inside the tile. A darker or lighter shade is just a tile with a few more pixels of the next colour, so a slope fades from one colour to another by dithering, without the palette ever changing. Seasons are done by rewriting some of the tiles; the moving sea by stepping the colour byte through four tiles.</p>
+<p>This page is built from the game's own memory, captured while it ran in an emulator: the tile table is the real one, the triangles are the ones the game drew, and every picture below is rebuilt from those two alone and compared with the screen the game itself produced. Section 1 lets you follow any pixel through the rule; sections 2 to 5 explain the steps, the tiles, how the tiles are built and how the seasons change them.</p>
 
 <div class="panel">
 <dl class="kv">
 <dt>The rule</dt><dd>pixel(x, y) = tile[colourByte][(y + phase/8) mod 16][x mod 16]</dd>
-<dt>colourByte</dt><dd>the colour byte of the triangle (colour plane A at +0 or colour plane B at -8257 of $438ee: a slope shade built from the altitude plane), +tick if below 12, or 0x1c if forced</dd>
+<dt>colourByte</dt><dd>the triangle's byte from one of the cell's two colour planes (offset 0 or -8257 from $438ee; both are slope shades baked from the altitudes when the island is built), +tick if below 12 (water), or 0x1c if forced</dd>
 <dt>table</dt><dd>16 KB at $2e000: 128 bytes per colour byte = 16 rows of 8 bytes = one 16x16 tile of 4-bit pixels</dd>
 <dt>checked</dt><dd id="proofline">loading</dd>
+</dl>
+</div>
+<p class="note">The panel above is the whole method in three lines; the rest of the page unpacks it. <i>x</i> and <i>y</i> are screen coordinates, <i>mod</i> is the remainder, and a number written <code>0x1c</code> or <code>$2e000</code> is hexadecimal.</p>
+
+<h3>Terms used on this page</h3>
+<div class="panel">
+<dl class="kv terms">
+<dt>cell</dt><dd>one square of the island's height map grid. Its four corners have altitudes; it is drawn as two triangles split along one diagonal.</dd>
+<dt>colour byte</dt><dd>the number a triangle is filled with. It does not name a colour: it names a tile.</dd>
+<dt>tile, slot</dt><dd>a 16 by 16 pattern of palette colours. The table holds them one after another in 128-byte slots, slot n for colour byte n.</dd>
+<dt>palette index</dt><dd>a pixel's value, 0 to 15: which of the 16 screen colours it shows.</dd>
+<dt>bit plane</dt><dd>the ST stores 16 pixels as four 16-bit words; each word holds one bit of each pixel's palette index, and the four bits together make the index.</dd>
+<dt>scanline</dt><dd>one row of screen pixels; <i>y</i> counts them from the top.</dd>
+<dt>phase</dt><dd>a shift of 0 or 8 rows applied to every tile read, which flips whenever the camera moves (section 2, step 5).</dd>
+<dt>tick</dt><dd>one step of the game's simulation. The view is redrawn once per tick at normal speed. The <i>water tick</i> is that counter's lowest two bits, 0 to 3.</dd>
+<dt><code>$</code> addresses</dt><dd>where a routine or table sits in the running game's memory. They are citations into the reverse-engineering notes; the text says what each one does.</dd>
+<dt>RAM image, scene</dt><dd>a copy of the game's memory saved from the emulator. Names like <code>pm78_settle.ram</code> are labels for those files. Each scene below is one of them.</dd>
+<dt>reference renderer</dt><dd>a Python rewrite of the game's terrain drawing (<code>tools/pm_render_ref.py</code>), checked against the game's own frames.</dd>
+<dt>proven</dt><dd>reproduced exactly by a rewrite, compared byte for byte with the real routine run in the emulator (<code>callcap</code>: run one routine from a saved state and record every byte it changes). A count such as 125219/125219 is bytes matched out of bytes compared.</dd>
 </dl>
 </div>
 
 <h2>1. Follow one pixel</h2>
 <p>Click anywhere on the island. The panel on the right shows every step the game takes to colour that pixel, using the real bytes.</p>
+<p class="note"><b>How to read it.</b> The picture is the game's 8 by 8 cell window of the island, enlarged; black is screen the terrain does not cover. <i>Scene</i> switches between the saved games. <i>Layer</i> repaints the same triangles to show one ingredient at a time: <i>Result</i> is the dithered terrain as the game draws it; <i>Colour byte</i> gives every distinct colour byte its own flat colour, running from blue for the lowest byte in view to red for the highest, so you can see which triangles share a tile; <i>Source plane</i> shows which of the cell's two colour planes each triangle took its byte from (blue offset 0, orange offset -8257); <i>Forced</i> marks in magenta the triangles whose byte was replaced by 0x1c; <i>The game's own frame</i> is the screen the game drew, sprites included; <i>Difference</i> shows in red every pixel where this page's rebuild disagrees with it. <i>Triangle edges</i> outlines the triangles: solid where some of a triangle is still visible, dashed where nearer ground covers it completely. <i>Water tick</i> and <i>Phase</i> override the two values the game had when it drew the frame. The close-up beside the picture follows the pointer and marks the 16-pixel tile grid. The legend under the picture lists the tiles in use and how many pixels each paints; click one to highlight it in section 3.</p>
 
 <div class="bar" id="toolbar">
   <label>Scene <select id="selScene"></select></label>
   <label>Layer <select id="selLayer">
     <option value="final">Result (dithered)</option>
     <option value="cb">Colour byte per triangle</option>
-    <option value="plane">Source plane (type / height)</option>
+    <option value="plane">Source plane (+0 / -8257)</option>
     <option value="forced">Forced to 0x1c</option>
     <option value="game">The game's own frame</option>
     <option value="diff">Difference from the game</option>
@@ -131,15 +154,17 @@ footer{margin-top:3em;color:var(--muted);font-size:.85rem}
 <h2>2. The steps behind the panel</h2>
 <ol class="steps">
   <li><b>The cell.</b> The 8 by 8 window of the map is projected to screen corners. Each cell is split into two triangles. The cell's flag byte, bit 7, picks which diagonal splits it. The two triangles are drawn far to near, so nearer ones overwrite farther ones.</li>
-  <li><b>The colour byte.</b> One triangle of the cell takes the cell's <span class="chip t">type</span> byte, the other takes its <span class="chip h">height</span> byte. Inland the two differ by a few steps, which is the two-tone split you see on slopes. A byte below 12 is water and gets the water tick (0 to 3) added, which makes the sea shimmer.</li>
-  <li><b>The forced colour.</b> Before filling, the game orders the triangle's vertices by screen height. If the middle one is on the left, the triangle is wound the other way round, which in practice means it faces away from the eye. The game then ignores the terrain byte and uses <code>0x1c</code> <span class="chip f">forced</span>. <span id="forcedStat"></span></li>
+  <li><b>The colour byte.</b> The game keeps two colour bytes per cell, in two parallel 8 KB arrays (the colour planes), and each triangle of the cell takes one: one from the plane at offset 0 <span class="chip t">plane +0</span>, the other from the plane 8257 bytes below it <span class="chip h">plane -8257</span>. Neither is a stored "terrain type". Both are slope shades worked out from the four corner altitudes once, when the island is built (routine <code>$10058</code>, proven against the game on 16 land builds, 125219 of 125219 bytes): a shade from 0 to 15, from the height differences across that half of the cell, added to a base value, one base for land and another for coast. So the lighting is baked into the map, and the two halves of a sloping cell usually get different bytes, which is the two-tone split you see on slopes. Open sea is byte 0. A byte below 12 is water and gets the water tick (0 to 3) added, which makes the sea shimmer.</li>
+  <li><b>The forced colour.</b> Before filling, the game orders the triangle's vertices by screen height. If the middle one is on the left, the triangle is wound the other way round. The game then ignores the terrain byte and uses <code>0x1c</code> <span class="chip f">forced</span>. Where this was measured (the mission 1 start view) the forced triangles were mostly ones facing away from the eye, so almost all of their pixels are later covered by nearer ground and only a few dark pixels survive along the island's outline. Other camera angles have not been measured. <span id="forcedStat"></span></li>
   <li><b>The slot.</b> The table starts at <code>$2e000</code>. A colour byte owns <code>128</code> bytes from there. No terrain cell ever holds byte 0x1c itself, so that slot exists only for the forced rule.</li>
   <li><b>The row.</b> The 128 bytes are 16 rows of 8 bytes. Scanline y reads row <code>(y + phase/8) mod 16</code>. The game advances its read pointer by 8 bytes per scanline and lets the low byte wrap, which is where the mod comes from. The phase is 0 or 64 bytes; it flips every time the camera moves and the grid is re-projected.</li>
   <li><b>The 16 pixels.</b> The 8 bytes are two longwords. The first holds bit planes 0 and 1, the second planes 2 and 3. Pixel column <code>x mod 16</code> is bit <code>15 - (x mod 16)</code> of each of the four 16-bit words, and those four bits form a palette index 0 to 15. The fill loop repeats the same 16 pixels along the whole span of the scanline.</li>
 </ol>
+<p><b>Why this is cheap.</b> The tile row for a scanline is two longwords already laid out in the ST's own screen format, so the fill loop just copies the same 8 bytes across the span, 16 pixels at a time; only the two ends of the span need masking. Because the row depends on the absolute scanline and the column on the absolute screen x, the pattern is fixed to the screen, not to the ground, so neighbouring triangles with the same byte join without a seam. There is no texture map, no lighting step and no palette change anywhere in the terrain path.</p>
 
 <h2>3. Every tile the terrain can use</h2>
 <p>Click a tile to light up, in the preview, every pixel that came from it. The number under a tile is how many pixels of the selected scene it paints. The coloured bar shows the palette mix of the tile. The four sea tiles are the water shimmer: drag <em>Water tick</em> in section 1 and the sea swaps between them. The counter advances once per simulation tick, so the sea repeats every four ticks.</p>
+<p class="note"><b>How to read it.</b> The tiles are grouped by what the table uses them for and labelled with their colour byte in hex. Each is drawn at four times its size in the real palette. The thin bar under a tile shows its mix of palette colours, each in proportion to its pixel count. The preview on the right is the scene from section 1; with a tile selected, everything painted from other tiles is dimmed. Bytes 0x41 and above (the stored season tables) are shown in section 5 instead.</p>
 <div class="row">
   <div class="grow" style="flex:1 1 440px" id="atlasHost"></div>
   <div style="flex:0 0 auto;max-width:100%;position:sticky;top:8px;align-self:flex-start">
@@ -149,12 +174,14 @@ footer{margin-top:3em;color:var(--muted);font-size:.85rem}
 </div>
 
 <h2>4. The tiles are dither ramps</h2>
-<p>Colour byte is also brightness. Along the terrain, byte rises with height, so the table is a set of ramps: each step swaps about an eighth of the tile's pixels from one palette colour to the next. The ramps are built in two different ways.</p>
+<p>Colour byte is also shade. The island build turns each half-cell's slope into a step along a ramp (lighter or darker with the tilt), so the table is a set of ramps: each step swaps about an eighth of the tile's pixels from one palette colour to the next. The ramps are built in two different ways.</p>
+<p>The standard way to make a smooth ramp out of two colours is <b>ordered dithering</b>: give each pixel of the tile a fixed rank, and at step k of the ramp switch every pixel whose rank is k or less to the second colour. Each step then contains all the switched pixels of the step before plus a few more, so a slope that moves from one byte to the next changes only by adding dots, and the pattern stays even at every density. The rock ramp is built exactly this way. The grass ramps are not: their dot patterns at neighbouring steps share far fewer pixels than an ordered dither would, and for some neighbours fewer than two unrelated random patterns would be expected to share.</p>
 
 <div class="row">
   <div class="grow panel">
     <h3>Rock ramp, bytes 0x0c to 0x1b: one fixed threshold map</h3>
     <p class="note">Each pixel has a rank: the first slot of the ramp at which it switches to the next colour. The same map drives both halves (colour 1 to 2, then 2 to 3), and each slot's set of switched pixels contains the previous one's.</p>
+    <p class="note"><b>How to read it.</b> The square is the rank map, read from the real tiles: the brighter a pixel is drawn in this square, the earlier in the ramp it switches (rank 0 brightest; rank 8 darkest, meaning it does not switch within these eight slots). The square's shading shows rank only, not the tile's colours. The text beside it counts the pixels of each rank and confirms the two properties claimed above. The strip below is the first half of the ramp, slots 0x0c to 0x13, with the number of pixels in the second colour under each tile.</p>
     <div class="row" style="align-items:center">
       <canvas id="cvRank" width="16" height="16" style="width:192px;height:192px"></canvas>
       <div id="rankInfo" class="note mono"></div>
@@ -164,13 +191,16 @@ footer{margin-top:3em;color:var(--muted);font-size:.85rem}
   <div class="grow panel">
     <h3>Grass ramp, bytes 0x1f to 0x2d: five scatters, not nested</h3>
     <p class="note">Five fixed scatters of 32, 80, 128, 192 and 224 pixels, and they are not nested: a denser one does not contain the sparser one. The same five are reused for each colour pair (13 over 1, 12 over 13, 11 over 12). The table compares neighbours: how many pixels of the first scatter are still set in the next, against what two independent scatters of those densities would share.</p>
+    <p class="note"><b>How to read the table.</b> Each row is a pair of neighbouring slots in the spring table. <i>colour</i> is the palette colour being added; <i>pixels</i> is how many pixels have that colour in the first slot and in the second; <i>kept</i> is how many of the first slot's pixels still have it in the second; <i>if independent</i> is the overlap expected by chance (first count times second count divided by 256). An ordered dither would keep all of them. Why the game's artists or tools built the grass this way is not known.</p>
     <p class="note" id="grassSame"></p>
     <div id="grassInfo"></div>
   </div>
 </div>
 
 <h2>5. The four seasons rewrite part of the table</h2>
-<p>Slots 0x1d to 0x2e are a working copy. The table also stores three finished versions of those 18 slots. When the season changes, the game copies 16 pixels per tick from the new version into the live slots, visiting them in the order of a 13-bit linear congruential sequence. A full change takes 8191 steps, about 512 ticks. Drag the slider to freeze the change part-way.</p>
+<p>Slots 0x1d to 0x2e are a working copy. The table also stores three finished versions of those 18 slots. When the season changes, the game takes 16 steps per tick towards the new version, each step copying at most one pixel into the live slots, visiting them in the order of a 13-bit linear congruential sequence. A full change takes 8191 steps, about 512 ticks. Drag the slider to freeze the change part-way.</p>
+<p>The trick is in the visiting order. A linear congruential generator (here <code>x = (x * $24a1 + $24df) &amp; $1fff</code>) with a full period steps through every 13-bit value exactly once before repeating, in an order that looks random. The game reads each value as a pixel address: the top 9 bits pick an 8-byte tile row, the low 4 bits a pixel in it. So one pass of the generator copies every pixel of the live slots but one exactly once, scattered over the whole table, and the grass changes colour as a fine, even dissolve instead of a wipe. Values that point past the 18 live slots (about 44 in every 100) copy nothing, so the 16 steps per tick copy about 9 pixels on average. The only pixel never visited is the one at value 0, where the pass ends; it is colour 2 in every season's table, so the gap cannot be seen. When a pass ends, the season advances and the next pass begins.</p>
+<p class="note"><b>How to use it.</b> <i>From</i> and <i>To</i> pick the two seasons; <i>LCG steps</i> is how far through the pass to stop (0 is all <i>From</i>, 8191 all <i>To</i>). The picture redraws the scene from section 1 with that table, and every other picture on the page follows it. The strips show the 18 live tiles at that moment, then the three stored tables for comparison. <i>Use the captured table</i> goes back to the tiles as they were in the saved game. The check beside the slider runs the same model from winter to spring for the number of steps recorded in <code>pm74_late.ram</code>, a RAM image saved part-way through a season change, and compares the result with the live tiles in that image.</p>
 <div class="bar">
   <label>From <select id="selFrom"></select></label>
   <label>To <select id="selTo"></select></label>
@@ -185,17 +215,23 @@ footer{margin-top:3em;color:var(--muted);font-size:.85rem}
 <p class="note">The autumn table is the spring table: the game uses the same source for both. Bytes 0x2f and above are not replaced, so high ground keeps the same colours in every season; its slots are also the stored summer table.</p>
 
 <h2>6. Reference</h2>
+<p class="note">Every range of colour bytes, the palette colours its tiles use (palette indices, 0 to 15), and where the byte comes from. "No map checked" refers to seven RAM images from five different islands.</p>
 <table>
 <thead><tr><th>Colour byte</th><th>Palette colours</th><th>Where it comes from</th></tr></thead>
 <tbody>
 <tr><td class="mono">0x00 to 0x03</td><td>0 (black), 14, 15</td><td>Open sea. Byte 0 plus the water tick. Four stipples of the same three colours.</td></tr>
 <tr><td class="mono">0x04 to 0x0b</td><td>0/14/15 and 4/14/15</td><td>Water bytes 4 to 11. Not produced by any map checked (every sub-12 byte seen was 0). 0x04 to 0x07 are four identical tiles, as are 0x08 to 0x0b.</td></tr>
 <tr><td class="mono">0x0c to 0x1b</td><td>1, 2, 3</td><td>Low ground, coast and rock: two 8-step ramps, dark brown to grey.</td></tr>
-<tr><td class="mono">0x1c</td><td>0, 1, 6</td><td>Only ever the forced colour for away-facing triangles.</td></tr>
+<tr><td class="mono">0x1c</td><td>0, 1, 6</td><td>Only ever the forced colour (section 2, step 3); no terrain cell holds this byte.</td></tr>
 <tr><td class="mono">0x1d to 0x2e</td><td>season dependent</td><td>Grass and slopes. Live copy of the current season's table.</td></tr>
 <tr><td class="mono">0x2f to 0x40</td><td>6, 7, 9, 11, 12, 13</td><td>High ground. Fixed; these slots are also the stored summer table.</td></tr>
 <tr><td class="mono">0x41 to 0x64</td><td>various</td><td>The spring and winter tables, stored. Terrain bytes seen on the maps checked never exceed 0x3f.</td></tr>
 </tbody></table>
+
+<h2>7. How we know</h2>
+<p>Three levels of evidence stand behind this page. First, the game's renderer has been rewritten and the rewrite reproduces the game's own finished frames: 100% of pixels on 27 captures from 12 views on four islands (lands 0, 5, 25 and 60), scored against the game's screen. Second, the triangle fill is byte-exact against a single-stepped live run of one whole frame (all 128 calls of the fill routine), including the dither phase on every scanline of two traced triangles. Third, this page's own build re-derives every picture from just two things, the list of triangles with their colour bytes and the 16 KB tile table, and refuses to build unless that rebuild equals the reference renderer pixel for pixel; it also refuses unless the season model reproduces the captured half-changed table.</p>
+<p>The percentages in the <i>checked</i> line at the top are the third level, compared against the game's real frame buffer. They are below 100% for the two scenes because the game's frame also has units, markers and other sprites drawn over the terrain, which this page does not draw; the four coast captures in a row show the water shimmer stepping through its four tiles with a match of 99.9% or better each tick.</p>
+<p class="note">What is not established: the forced colour <code>0x1c</code> has been measured at one camera pose only; colour bytes 4 to 11 exist in the table but no island checked produces them; the slots above <code>0x64</code> are other data, not tiles.</p>
 
 <footer id="foot"></footer>
 </main>
@@ -343,7 +379,7 @@ function drawLegend(){
   const tick=tickNow(), counts={}; sc.tris.forEach(t=>{const c=colourOf(t,tick); counts[c]=(counts[c]||0)+t.px;});
   const rk=rank(sc);
   const add=(sw,txt)=>{const s=document.createElement("span");const i=document.createElement("i");i.style.background=sw;s.appendChild(i);s.append(txt);el.appendChild(s);};
-  if(S.layer==="plane"){ add("rgb(31,95,139)","colour plane A"); add("rgb(180,70,30)","colour plane B"); }
+  if(S.layer==="plane"){ add("rgb(31,95,139)","colour plane at offset 0"); add("rgb(180,70,30)","colour plane at offset -8257"); }
   else if(S.layer==="forced"){ add("rgb(176,48,138)","forced to 0x1c"); add("#444","other, dimmed"); }
   else if(S.layer==="diff"){ add("rgb(230,50,50)","differs from the game"); add("#444","equal, dimmed"); }
   else if(S.layer==="game"){ add("#888","the game's frame buffer, sprites included"); }
@@ -390,7 +426,7 @@ function drawProbe(){
   const bytes=[p[0]>>8,p[0]&255,p[1]>>8,p[1]&255,p[2]>>8,p[2]&255,p[3]>>8,p[3]&255].map(b=>b.toString(16).padStart(2,"0")).join(" ");
   const other=sc.tris.findIndex((u,i)=>i!==n-1 && u.cell[0]===t.cell[0] && u.cell[1]===t.cell[1]);
   const o=sc.tris[other], oc=colourOf(o,tick);
-  const chips=(u)=>`<span class="chip ${u.src==="type"?"t":"h"}">${u.src}</span>${u.raw<12?`<span class="chip w">+tick ${tick}</span>`:""}${u.forced?'<span class="chip f">forced</span>':""}`;
+  const chips=(u)=>`<span class="chip ${u.src==="type"?"t":"h"}">${u.src==="type"?"plane +0":"plane -8257"}</span>${u.raw<12?`<span class="chip w">+tick ${tick}</span>`:""}${u.forced?'<span class="chip f">forced</span>':""}`;
   const gm=sc.ref[y*W+x];
   el.innerHTML=`<b>Pixel (${x}, ${y})</b>
   <ol class="steps" style="margin-top:6px">
@@ -412,7 +448,7 @@ const atlasGroups=[
   ["Open sea (byte 0 plus the tick)","0x00 to 0x03, four stipples of the same colours",0x00,0x03],
   ["Water bytes 4 to 11","copies; no map checked produces them",0x04,0x0b],
   ["Rock ramp","low ground, coast",0x0c,0x1b],
-  ["Forced","away-facing triangles only",0x1c,0x1c],
+  ["Forced","the forced colour only (section 2, step 3)",0x1c,0x1c],
   ["Season slots","live working copy",0x1d,0x2e],
   ["High ground","never replaced; also the stored summer table",0x2f,0x40],
 ];

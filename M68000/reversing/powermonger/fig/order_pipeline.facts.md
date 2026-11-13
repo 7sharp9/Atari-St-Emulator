@@ -32,3 +32,13 @@
 - strategy.md says the arrival is `$4220`, ai.md `$41dc`: not a contradiction. `$41dc` is the arrival block's entry,
   `$4220` its `clr.w -72(A0)` (disassembly).
 - In natural play the pending word is cleared only at `$4220`; the direct branch `$6b20` is dead in play (ai.md).
+
+## Lead and captions
+
+| text added | source |
+|---|---|
+| game, publisher, year; order icons and a target click; AI uses the same slots and executor; first captain's group acts at once, others by pigeon | README.md "Design digest" ("You give orders, not controls", "The AI uses the same path") |
+| the AI skips a group while its pending word is set | strategy.md "The commander AI `$6522`" (skip on `4() != 0`) |
+| first group dies: pigeons freed, pending words stay, later orders copy the dead sender | strategy.md "The pending word"; README "Design digest" ("Pigeons can leak") |
+| 357 / 183 / 142 / 141 | the figure's own pending-census line (strategy.md "The pending word") |
+| `$58016` one 6-byte slot per side | strategy.md "`$58016` command buffer" |

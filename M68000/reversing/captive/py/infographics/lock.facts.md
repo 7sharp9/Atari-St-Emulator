@@ -62,3 +62,20 @@ States: `agents/ai/req4.snap` (D0 = 1 base, three kind-2 coded doors), `base1/ou
 - `compound.json` (the 40 generator calls behind "3 of 40") was not regenerated, only re-parsed; seed (0,0) agrees
   with `outside.snap`.
 - `req4.snap` was written by a different DLL (stserver warning); every re-run matched the report's numbers.
+
+## Explanatory text (lead, "How to read", "Takeaway", "How we know")
+
+| claim in the added text | source |
+|---|---|
+| Captive is a real-time dungeon crawler; four droids raid procedurally generated bases on a series of planets | `README.md` opening paragraph |
+| some doors are combination locks: four corners clicked in order, one of 24 orders opens, no sign of progress until the fourth click, a wrong guess costs four clicks | ai.md "The coded doors" ("no per-corner feedback, so a wrong order always costs four presses"); census above |
+| the DIE normally rolls a random face; facing a coded door of the kind found inside a base (kind 2) it shows a four with one red pip in the next corner | ai.md "Door hints: the die and Ratt's message"; req4's three doors are kind 2 (die_all.py row above) |
+| the MESSAGE FROM RATT spells out one order, right for the first door of mission 1 | ai.md "Door hints" (code 8, mission 1 target 1's compound door) |
+| a door remembers only its code and the corners pressed; 24 orders each used once; entry 9's fourth corner inconsistent, ignored by the lock, read by the die | ai.md "The coded doors" (state word, table); Flags above |
+| nothing tells a right corner from a wrong one until the fourth click | ai.md "The coded doors" (nothing checked until the fourth press; no per-corner feedback). The per-corner marker `$a492` draws pressed corners (inferred there), which shows progress but not correctness |
+| kind 2 / kind 4 = door types from the low bits of the tile (tile & `$17`); req4's doors kind 2, mission 1's compound door kind 4 | ai.md "Door hints" (tile & `$17` = 2; compound door tile `$44` is kind 4) |
+| the die reads the order from the table; at most 4 rolls and 4 clicks; counts lit corners without checking; code-9 fourth hint wrong | ai.md "Door hints"; this file's census rows and Flags |
+| blind average assumes every code equally likely and no order tried twice; 50 vs at most 8 | this file's cost row (computed, `blind_mean`, `die_cost`) |
+| for the compound door the die gives no hint and the RATT note is the only clue | ai.md "Door hints" (kind 4, 1200/1200 random); panel D's existing note text |
+| stserver, labelled pokes, census, control, re-run scripts | `DEVELOPING.md` "Memory hooks and the `stserver` process"; this file's header and rows |
+| req4 = mission 1's base after the request-word poke to 4; outside.snap = the compound, the surface level where the party lands, in front of the base door | ai.md opening paragraph and "Getting into a base" (compound = mode 1 level after landing, door `$44` at (22,21)) |

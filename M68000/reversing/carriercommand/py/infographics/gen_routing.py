@@ -235,11 +235,69 @@ FIN = fin_series[-1]
 print('late: %d calls, last change at call %d, finite entries %d' % (CALLS, last_change, FIN))
 
 # ---- svg ----------------------------------------------------------------------------------------
-W, H = 900, 1356
+from igtext import para, height
+W = 900
 s = []
 a = s.append
+NOTE = '#f6f8fa'
+CAPW = 820
+
+def caption(x, y, w, read, take):
+    y = para(a, '**How to read.** ' + read, x, y, w, size=11.5, color='#1f2328')
+    return para(a, '**Takeaway.** ' + take, x, y + 4, w, size=11.5, color='#1f2328')
+
+def caption_h(w, read, take):
+    return height('**How to read.** ' + read, w, 11.5) + 4 + height('**Takeaway.** ' + take, w, 11.5)
+
+LEAD = ('Carrier Command (Realtime Games, 1988) is a real-time strategy and vehicle game: the player\'s aircraft '
+        'carrier and the computer\'s compete for a 64-island archipelago, and the islands each side holds form its '
+        'supply network. Islands make goods, and the goods travel as packets, island to island along the links, '
+        'until they reach their destination. No packet carries a route. Instead the game keeps one table of the '
+        'shortest distance between every pair of islands and improves a few rows of it on each pass of its main '
+        'loop; at every island a packet simply steps to the neighbour that is closest to where it is going. This '
+        'is distance-vector routing, the scheme of early internet routers (RIP), with islands for routers. A link '
+        'is usable only when both its islands have the same owner, so capturing an island cuts the other '
+        'side\'s routes through it.')
+A_READ = (f'Dots are islands at their positions on the game\'s map; lines are the {84} links between them. The '
+          'blue line is the route a goods packet takes from OBSIDIAN 46 to VULCAN 0, the player\'s base. The '
+          'small numbers on it are edge costs, which double as travel time: at each hop the packet waits that '
+          'many economy ticks (the production and transport code runs every 4th main frame). The ownership '
+          'is hypothetical. In the saved game c_s30 the player holds only VULCAN, so to get a network worth '
+          'drawing every free island is given to the player; red islands are the enemy\'s, as in c_s30, and '
+          'dashed grey links join islands of different owners, so they are off.')
+A_TAKE = (f'Make STAVROS 28 free and its links go off; once the table is rebuilt the same packet detours along '
+          f'the dashed gold line, {len(PATH_CUT)-1} hops at cost {COST_CUT} instead of {COST}. Free DUESSA 5 '
+          f'instead and {iso5} player islands lose every route to VULCAN. The packet itself never needed to '
+          f'know any of this.')
+B_READ = ('Each square is the whole 64 x 64 distance table at one moment, with the same ownership as A, starting '
+          'from a reset in which every entry is $ffff (no route) except 0 on the diagonal. Row i, column k is '
+          'the distance from island i to island k: darker blue is further, blank is no route yet. One call of '
+          'the relaxation routine updates 8 rows, and the game makes one call per main-loop pass, so a full '
+          'sweep of the 64 rows takes 8 calls. The curve counts, after each call, the entries that have some '
+          'route (dashed) and the entries already at their final value (blue); the black vertical line is the '
+          'last call that changed anything.')
+B_TAKE = (f'One sweep is not enough, because a row can only copy distances that its neighbours\' rows already '
+          f'hold. Here the last entry changes at call {last_change}, and the sweep after it changes nothing and '
+          f'clears the "busy" flag $122f at call {CALLS}; packets wait (timer held at 1) until then. The final '
+          f'{FIN} entries are 55 x 55 for VULCAN\'s connected group, 1 for TREASURE 51 (which no link reaches), '
+          f'8 x 8 for the enemy\'s islands, and 8 more in column 4 from the stray write described in C.')
+C_READ = ('Pseudocode transcribed from the 68000 disassembly of the two routines. M is the distance table, '
+          'links(i) is island i\'s list of (cost c, neighbour j) pairs, and "on" is the link\'s enabled bit. '
+          'An entry of $8000 or more means no route.')
+C_TAKE = ('The relaxation is the Bellman-Ford update: a route to k through neighbour j costs j\'s own distance '
+          'plus the link. The next-hop rule needs only the table, so a packet stores just where it is, where it '
+          'is going, what it carries and how long to wait.')
+KNOW = ('**How we know.** **Proven** means observed in an emulator running the game\'s own code, with a count of '
+        'matches (N/N = matches out of cases). The routing code was ported to Python from the disassembly. The '
+        'emulator then ran the real game from c_s30, a saved Strategy game with the player\'s carrier at '
+        'Vulcan, after writing ("poking") the ownership and a packet into memory. Four runs: two recorded the '
+        'whole table before every relaxation call and compared it with the port; two followed one packet hop '
+        'by hop. Figures A and B are drawn from the port; the counts on them are those runs. **Inferred** means '
+        'read from the code only: the stray write is seen happening, but calling it a bug, and what it was meant '
+        'to do, are inferences. $hex numbers are addresses in the game\'s memory, given as citations.')
+lead_h = height(LEAD, 852, 13)
 INK, MUTE, ACC, BAD, GRID, ENEMY, ALT = '#1f2328', '#656d76', '#0969da', '#cf222e', '#d0d7de', '#cf222e', '#bf8700'
-a(f'<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 {W} {H}" width="{W}" height="{H}" role="img" aria-labelledby="t d">')
+a('<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 900 __H__" width="900" height="__H__" role="img" aria-labelledby="t d">')
 a('<title id="t">Packets that route themselves</title>')
 a('<desc id="d">Carrier Command (1988) keeps a 64 x 64 all-pairs distance matrix over its island graph, relaxed 8 rows '
   'per main-loop pass; each goods packet takes its next hop from it. Source: reversing/carriercommand/economy.md '
@@ -248,17 +306,17 @@ a('<desc id="d">Carrier Command (1988) keeps a 64 x 64 all-pairs distance matrix
 a('<style>text{font-family:Helvetica,Arial,sans-serif;fill:%s;font-size:12px}.t{font-size:20px;font-weight:bold}'
   '.h{font-size:14px;font-weight:bold}.m{fill:%s}.c{font-family:Menlo,monospace;font-size:11.5px}'
   '.s{font-size:11px;fill:%s}.n{font-size:9px;fill:%s}</style>' % (INK, MUTE, MUTE, MUTE))
-a(f'<rect width="{W}" height="{H}" fill="#ffffff"/>')
+a('<rect width="900" height="__H__" fill="#ffffff"/>')
 a('<text x="24" y="38" class="t">Packets that route themselves</text>')
-a('<text x="24" y="60" class="m">Carrier Command (Realtime Games, 1988): goods cross the archipelago hop by hop, '
-  'each hop read from a distance table the game keeps relaxing.</text>')
+para(a, LEAD, 24, 64, 852, size=13, color=INK)
 
 def panel(x, y, w, h, title):
     a(f'<rect x="{x}" y="{y}" width="{w}" height="{h}" rx="6" fill="none" stroke="{GRID}"/>')
     a(f'<text x="{x+14}" y="{y+24}" class="h">{title}</text>')
 
 # A: the map -------------------------------------------------------------------------------------
-PA_Y, PA_H = 80, 520
+PA_Y = int(64 + lead_h + 2)
+PA_H = 524 + caption_h(CAPW, A_READ, A_TAKE) - 2
 panel(24, PA_Y, 852, PA_H, 'A. The island graph and one packet\'s route (hypothetical ownership)')
 a(f'<text x="38" y="{PA_Y+42}" class="s">c_s30\'s 64 islands and 84 links; every island that is free in c_s30 given to the player. '
   'Link labels are the edge cost, which is also the hop\'s time in economy ticks.</text>')
@@ -325,12 +383,14 @@ if RL and RC:
            f'and the detour, {RC["match"]}/{RC["n"]}; each hop\'s timer was the edge cost and the packet landed.')
 else:
     chk = 'Routes computed by the port (emulator drive not run).'
-a(f'<text x="38" y="{PA_Y+PA_H-36}" class="s">{chk}</text>')
-a(f'<text x="38" y="{PA_Y+PA_H-20}" class="s">Ownership is poked, not played: in c_s30 the player holds only VULCAN, '
+a(f'<text x="38" y="{PA_Y+484}" class="s">{chk}</text>')
+a(f'<text x="38" y="{PA_Y+500}" class="s">Ownership is poked, not played: in c_s30 the player holds only VULCAN, '
   'whose row of the matrix is then just its own 0.</text>')
+caption(38, PA_Y + 524, CAPW, A_READ, A_TAKE)
 
 # B: the matrix filling --------------------------------------------------------------------------
-PB_Y, PB_H = PA_Y + PA_H + 14, 404
+PB_Y = PA_Y + PA_H + 14
+PB_H = 402 + caption_h(CAPW, B_READ, B_TAKE) - 2
 panel(24, PB_Y, 852, PB_H, 'B. The 64 x 64 matrix at $67b40 filling in, 8 rows per main-loop pass')
 gap_med = statistics.median(FL['gaps']) if FL else None
 a(f'<text x="38" y="{PB_Y+42}" class="s">Same ownership as A, from the reset. Row i, column k: distance from island i to k; '
@@ -386,11 +446,11 @@ a(f'<text x="{tx}" y="{cy0+44}" class="s">Last change at call {last_change}; the
 a(f'<text x="{tx}" y="{cy0+58}" class="s">sweep after it changes nothing and</text>')
 a(f'<text x="{tx}" y="{cy0+72}" class="s">clears $122f at call {CALLS}. Packets</text>')
 a(f'<text x="{tx}" y="{cy0+86}" class="s">wait (timer 1) until then.</text>')
+caption(38, PB_Y + 402, CAPW, B_READ, B_TAKE)
 
 # C: the code ------------------------------------------------------------------------------------
 PC_Y = PB_Y + PB_H + 14
-PC_H = H - PC_Y - 20
-panel(24, PC_Y, 852, PC_H, 'C. The code, from the disassembly, checked against the emulator')
+C_TOP = len(s)
 code = [
     ('$21e8a  relax, 8 rows per call', [
         'for i in row .. row+7:',
@@ -436,6 +496,16 @@ bug = ['Inferred bug: the island tick writes 500 at $1817e with A0 reloaded to r
        'field it sets M[63][4] = 500 and the relaxation spreads a 500-cost "route" to CHARISSA 4 through the enemy block.']
 for m, l in enumerate(bug):
     a(f'<text x="38" y="{by+m*15}" class="s" style="fill:{BAD}">{l}</text>')
+by += len(bug) * 15 + 12
+by = caption(38, by, CAPW, C_READ, C_TAKE)
+PC_H = by - PC_Y - 2
+s.insert(C_TOP, f'<rect x="24" y="{PC_Y}" width="852" height="{PC_H:.1f}" rx="6" fill="none" stroke="{GRID}"/>'
+         f'<text x="38" y="{PC_Y+24}" class="h">C. The code, from the disassembly, checked against the emulator</text>')
+KY = PC_Y + PC_H + 14
+kh = height(KNOW, CAPW, 11.5)
+a(f'<rect x="24" y="{KY:.1f}" width="852" height="{kh+16:.1f}" rx="6" fill="{NOTE}" stroke="{GRID}"/>')
+para(a, KNOW, 38, KY + 20, CAPW, size=11.5, color=INK)
+H = int(KY + kh + 30)
 a('</svg>')
-(OUT / 'routing.svg').write_text('\n'.join(s))
+(OUT / 'routing.svg').write_text('\n'.join(s).replace('__H__', str(H)))
 print('wrote', OUT / 'routing.svg')

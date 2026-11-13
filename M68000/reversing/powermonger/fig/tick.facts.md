@@ -25,3 +25,17 @@ Evidence colours: proven = gated routines; live = the four routines counted in t
 - Animals (`$4ccd6`), arrows (`$4be00`) and pigeons (`$4c112`) are separate pools moved by `$3e06`, not 50-byte object
   records (ai.md "What the loop actually is"; README "The simulation: entities, scheduler, combat").
 - Steps per tick is quoted as "about 200k" (ai.md `$2a`), "~216k" (ai.md `$34` watch) and "~231k" (economy.md, `$1abaa` period / 512). Not contradictory (different lands and phases), but no doc states the range; the figure says 200k to 230k.
+
+## Lead and captions
+
+| text added | source |
+|---|---|
+| game, publisher, year; "you give orders, not controls"; the AI uses the same order path | README.md title line, "Design digest" ("What carries the game") |
+| one tick runs `$13000` once; AI decides, records step, screen redrawn | strategy.md "Where it runs" listing |
+| no per-unit-type AI, mode transitions are the behaviour (labelled observed, not proven absent) | ai.md "What the loop actually is" (Observed tag) |
+| drawing calls `$1870`, `$12ce0`, `$178ae`, `$f898` are the only ones behind the divider; divider 1 at normal speed | strategy.md "Where the calls sit" |
+| byte 5 owner 0 / < 0 / > 0; 75-entry table at `$14bb4` | ai.md "The iterator" listing |
+| epilogue vetoes a water step by mode `$00` and relinks the record into its cell bucket | ai.md epilogue table (`$161c4`, `$16228`), "`$163ea` maintain the per-cell entity buckets" |
+| buckets: a neighbour query walks one chain, not all 511 records | ai.md "`$163ea`" ("broad-phase") |
+| VBL is the ST's per-frame interrupt; "compute-bound" | strategy.md "Measured cadence" (`$1270` VBL IRQ, once per displayed frame) |
+| what "proven", N/N, callcap and a gate mean | README.md "Differential testing against the real 68000"; ai.md "Evidence taxonomy" |

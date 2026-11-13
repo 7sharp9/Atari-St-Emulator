@@ -169,9 +169,89 @@ for nm, n, g, fg, gl, gla, b0, b1 in others:
 for nm, b in ratios: print(f'  {nm}: {b} ({100*b/SIZE:.1f}%)')
 
 # ---- svg -----------------------------------------------------------------------------------------
-W, H = 900, 1192
+from igtext import para, height
+W = 900
 s = []
 a = s.append
+NOTE = '#f6f8fa'
+
+def caption(x, y, w, read, take):
+    y = para(a, '**How to read.** ' + read, x, y, w, size=11.5, color='#1f2328')
+    return para(a, '**Takeaway.** ' + take, x, y + 4, w, size=11.5, color='#1f2328')
+
+def caption_h(w, read, take):
+    return height('**How to read.** ' + read, w, 11.5) + 4 + height('**Takeaway.** ' + take, w, 11.5)
+
+LEAD = (f'Carrier Command (Realtime Games, 1988) is a real-time strategy and vehicle game. The copy studied here '
+        f'comes from a cracked compilation disk (Zuul #45), on which the game\'s program file is wrapped in '
+        f'Automation Packer V2.3r, an executable packer; the packer belongs to this copy, not to the game. The '
+        f'packed file carries its own depacker, a {TL}-byte stub, which expands {PLEN:,} bytes into the '
+        f'{SIZE:,}-byte program inside the same block of memory, with no second buffer. The trick is to work '
+        f'backwards: output is written from the top of the block downward while the compressed stream is read '
+        f'from its end downward, so the writer stays above the reader and only ever overwrites stream bytes '
+        f'already used. How close the two pointers come decides whether that is safe.')
+A_READ = (f'Each bar is the same block of memory, low addresses on the left, starting at tbase (where the program '
+          f'file is loaded). Top: before depacking. The packed stream (blue) sits just after the stub and the 12-byte header (grey: "LSD!", '
+          f'the unpacked size and the packed length); '
+          f'the depacker writes output from the top of the block (red marker) downward and reads the stream from '
+          f'its end (blue marker) downward. Bottom: after depacking, the output fills the block from offset 1024 '
+          f'($400) to the top.')
+A_TAKE = (f'Output and input share the memory. The stream\'s first byte and the output\'s first byte are a fixed '
+          f'{final} bytes apart, so the pointers can never finish closer than that.')
+B_READ = ('Across: bytes written so far. Up: where each pointer is, as an offset from tbase. Red: the write '
+          'pointer, falling one byte per byte of output. Blue: the read pointer, falling as compressed bits are '
+          'used. The green band between them is the gap, which must stay positive or the writer would overwrite '
+          'input not yet read.')
+B_TAKE = (f'The writer starts {g0:,} bytes above the reader and falls faster, because the output is larger than '
+          f'the input. A literal run copies its bytes verbatim plus a few count bits, so it widens or keeps the '
+          f'gap ({lit_widen:,} of {nlit:,} here); a match writes more than it reads and narrows it ({match_shrink:,} of {nmatch:,}).')
+C_READ = (f'The same gap on a logarithmic scale against bytes written, so that the end is visible. The dashed '
+          f'line is the {final}-byte final distance.')
+C_TAKE = (f'gap = {final} + (bytes still to write) - (stream bytes still unread). The depack is safe as long as '
+          f'every remaining part of the file packs into no more than its own length plus {final}; this program '
+          f'keeps at least {second:,} bytes to spare until its last 4 KB.')
+D_READ = ('A zoom on the last 48 bytes written, file offset 47 down to 0. Up: the gap. Blue dots are moments when '
+          'stream bytes are still unread, so an overwrite would corrupt input; red dots come after the last read, '
+          'when nothing is left to overwrite.')
+D_TAKE = (f'The {gmin} is reached only after the last read, so the distance that matters is {glive}. The test '
+          f'agrees: with the destination moved {glive} bytes lower the depack is still exact, and {glive+1} lower '
+          f'corrupts {bad_live1} bytes.')
+E_READ = ('The layout of one token. Fields are read as bits, most significant first, from the end of the stream '
+          'backwards, and the literal bytes come from the same byte stream. The boxes are the fields in order with '
+          'their value ranges; the table gives each field\'s prefix code (for example match length "110" plus one '
+          'more bit means 4 or 5).')
+E_TAKE = ('This is LZ77 (either copy literal bytes, or copy a run of earlier output) with fixed prefix codes and '
+          'no entropy coding, so the decoder is a short loop of shifts and table lookups. The bit reader keeps a '
+          'sentinel bit in its byte register: when a shift empties the register the next byte is loaded, so one '
+          'shift both returns a bit and tests for empty.')
+F_READ = (f'The unpacked program run through four modern compressors at their strongest settings (from standard '
+          f'input on this machine), beside the Automation payload (header included, stub not). Bar length is the '
+          f'size as a share of the {SIZE:,}-byte original.')
+F_TAKE = ('Automation lands between lz4 and gzip. The tools that beat it all add entropy coding, which Automation '
+          'does without.')
+KNOW = (f'**How we know.** The depack loop was read from the stub\'s 68000 code and transcribed into Python '
+        f'(py/autopack_depack.py). This figure runs that transcription in one shared memory image laid out exactly '
+        f'as the stub lays it out, logging both pointers at every token, so an overwrite of unread input would '
+        f'show as wrong output. The output matches the sha256 recorded in packer.md and the program image in the '
+        f'emulator\'s memory after the real stub ran (saved state c80): {ram_same:,} of {SIZE-0x1c:,} bytes past '
+        f'the program header, the rest presumably variables the game had already written. The margin was tested '
+        f'by rerunning the depack with the destination lowered. The mover in screen memory is read from code only. '
+        f'$hex numbers are addresses or offsets, given as citations.')
+lead_h = height(LEAD, 852, 13)
+T0 = 64 + lead_h + 2
+hA = 272 - 80 + caption_h(820, A_READ, A_TAKE) - 2
+dyA = T0 - 80
+hBC = 630 - 284 + max(caption_h(392, B_READ, B_TAKE), caption_h(392, C_READ, C_TAKE)) - 2
+dyB = T0 + hA + 14 - 284
+hD = 828 - 634 + caption_h(820, D_READ, D_TAKE) - 2
+dyD = 284 + dyB + hBC + 14 - 634
+hE = 1092 - 844 + caption_h(820, E_READ, E_TAKE) - 2
+dyE = 634 + dyD + hD + 14 - 844
+hF = 1188 - 1094 + caption_h(820, F_READ, F_TAKE) - 2
+dyF = 844 + dyE + hE + 14 - 1094
+KY = 1094 + dyF + hF + 14
+kh = height(KNOW, 820, 11.5)
+H = int(KY + kh + 30)
 INK, MUTE, ACC, BAD, GRID, OK = '#1f2328', '#656d76', '#0969da', '#cf222e', '#d0d7de', '#1a7f37'
 a(f'<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 {W} {H}" width="{W}" height="{H}" role="img" aria-labelledby="t d">')
 a('<title id="t">Backwards in-place depack, 218 bytes apart at the end</title>')
@@ -185,8 +265,7 @@ a('<style>text{font-family:Helvetica,Arial,sans-serif;fill:%s;font-size:12px}.t{
   '.s{font-size:11px;fill:%s}</style>' % (INK, MUTE, MUTE))
 a(f'<rect width="{W}" height="{H}" fill="#ffffff"/>')
 a('<text x="24" y="38" class="t">Backwards in-place depack, 218 bytes apart at the end</text>')
-a(f'<text x="24" y="60" class="m">Carrier Command (Realtime Games, 1988), packed by Automation Packer V2.3r: {PLEN:,} bytes '
-  f'become {SIZE:,} in the same memory, with no second buffer.</text>')
+para(a, LEAD, 24, 64, 852, size=13, color=INK)
 
 def panel(x, y, w, h, title):
     a(f'<rect x="{x}" y="{y}" width="{w}" height="{h}" rx="6" fill="none" stroke="{GRID}"/>')
@@ -195,7 +274,8 @@ def panel(x, y, w, h, title):
 def kfmt(v): return f'{v/1000:.0f}K' if v else '0'
 
 # A: memory layout at start and end ---------------------------------------------------------------
-panel(24, 80, 852, 190, 'A. One block of memory, before and after (offsets from tbase)')
+a(f'<g transform="translate(0,{dyA:.1f})">')
+panel(24, 80, 852, hA, 'A. One block of memory, before and after (offsets from tbase)')
 mx0, mw = 110, 740
 TOP = AD.DEST_OFS + SIZE
 def MX(o): return mx0 + mw * o / TOP
@@ -223,7 +303,10 @@ a(f'<text x="{mx0}" y="{y2+56}" class="s">A mover copied into screen memory then
   f'(packer.md, from the stub\'s code at $a43c).</text>')
 
 # B: the two pointers -------------------------------------------------------------------------------
-panel(24, 284, 420, 336, 'B. Both pointers, token by token')
+caption(38, 272, 820, A_READ, A_TAKE)
+a('</g>')
+a(f'<g transform="translate(0,{dyB:.1f})">')
+panel(24, 284, 420, hBC, 'B. Both pointers, token by token')
 bx, by, bw, bh = 96, 324, 324, 210
 def BX(written): return bx + bw * written / SIZE
 def BY(o): return by + bh * (TOP - o) / TOP
@@ -248,7 +331,8 @@ a(f'<text x="38" y="592" class="s">The write pointer falls one byte per byte wri
 a(f'<text x="38" y="607" class="s">pointer {PLEN-12:,} in all. Matches close the gap, literals widen it.</text>')
 
 # C: the gap, log scale -----------------------------------------------------------------------------
-panel(456, 284, 420, 336, 'C. The gap shrinks to its minimum at the end')
+caption(38, 630, 392, B_READ, B_TAKE)
+panel(456, 284, 420, hBC, 'C. The gap shrinks to its minimum at the end')
 cx0, cy0, cw, ch = 530, 324, 324, 210
 glo, ghi = 100, 300000
 def CX(left): return cx0 + cw * (1 - left / SIZE)
@@ -270,7 +354,10 @@ a(f'<text x="470" y="592" class="s">gap = {final} + (bytes still to write) - (st
 a(f'<text x="470" y="607" class="s">Before the last 4 KB it never drops below {second:,}.</text>')
 
 # D: the last 48 bytes -------------------------------------------------------------------------------
-panel(24, 634, 852, 196, 'D. The last 48 bytes written: what the margin really is')
+caption(470, 630, 392, C_READ, C_TAKE)
+a('</g>')
+a(f'<g transform="translate(0,{dyD:.1f})">')
+panel(24, 634, 852, hD, 'D. The last 48 bytes written: what the margin really is')
 dx0, dy0, dw, dh = 96, 670, 470, 110
 glo2, ghi2 = 214, 6 * math.ceil(max(g for _, g, _ in tail) / 6)
 def DX(off): return dx0 + dw * (47 - off) / 47
@@ -304,7 +391,10 @@ o3 = [f'{k} {v}' for k, v in o_l.items() if v not in (218,) and k != 'PACT2']
 a(f'<text x="{tx}" y="{dy0+136}" class="s">{", ".join(o3)}; all six end at 218.</text>')
 
 # E: the token format ---------------------------------------------------------------------------------
-panel(24, 844, 852, 236, 'E. One token: bits read backwards, MSB first, from the same bytes as the literals')
+caption(38, 828, 820, D_READ, D_TAKE)
+a('</g>')
+a(f'<g transform="translate(0,{dyE:.1f})">')
+panel(24, 844, 852, hE, 'E. One token: bits read backwards, MSB first, from the same bytes as the literals')
 def box(x, y, w, txt, col, sub=None):
     a(f'<rect x="{x}" y="{y}" width="{w}" height="26" rx="3" fill="{col}" fill-opacity="0.15" stroke="{col}"/>')
     a(f'<text x="{x+w/2}" y="{y+17}" text-anchor="middle" class="c">{txt}</text>')
@@ -334,7 +424,10 @@ a(f'<text x="40" y="{yy+6}" class="s">In this file {nlit:,} literal runs carry {
   f'(longest {maxlen:,}, farthest {maxoff:,}). Fixed codes, no Huffman.</text>')
 
 # F: ratios -------------------------------------------------------------------------------------------
-panel(24, 1094, 852, 84, f'F. The same {SIZE:,}-byte program through other compressors (run here, stdin)')
+caption(38, 1092, 820, E_READ, E_TAKE)
+a('</g>')
+a(f'<g transform="translate(0,{dyF:.1f})">')
+panel(24, 1094, 852, hF, f'F. The same {SIZE:,}-byte program through other compressors (run here, stdin)')
 for i, (nm, b) in enumerate(ratios):
     col = BAD if nm.startswith('Automation') else ACC
     xi = 40 + i * 168
@@ -342,6 +435,10 @@ for i, (nm, b) in enumerate(ratios):
     a(f'<text x="{xi}" y="{yb}" class="h" style="font-size:12px;fill:{col}">{nm}</text>')
     a(f'<text x="{xi}" y="{yb+16}" class="s">{b:,} bytes, {100*b/SIZE:.1f}%</text>')
     a(f'<rect x="{xi}" y="{yb+24}" width="{300*b/SIZE:.1f}" height="7" fill="{col}" fill-opacity="0.6"/>')
+caption(38, 1188, 820, F_READ, F_TAKE)
+a('</g>')
+a(f'<rect x="24" y="{KY:.1f}" width="852" height="{kh+16:.1f}" rx="6" fill="{NOTE}" stroke="{GRID}"/>')
+para(a, KNOW, 38, KY + 20, 820, size=11.5, color=INK)
 a('</svg>')
 (OUT / 'depack.svg').write_text('\n'.join(s))
 print('wrote', OUT / 'depack.svg')

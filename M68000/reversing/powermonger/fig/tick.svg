@@ -1,8 +1,17 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 900 925" width="900" height="925">
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 900 1388" width="900" height="1388">
 <defs><marker id="ah" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="#424242"/></marker></defs>
-<rect x="0" y="0" width="900" height="925" fill="#ffffff"/>
+<rect x="0" y="0" width="900" height="1388" fill="#ffffff"/>
 <text x="16.0" y="28.0" font-family='Helvetica, Arial, sans-serif' font-size="18" font-weight="bold" fill="#212121" text-anchor="start">PowerMonger: one simulation tick and the entity iterator</text>
 <text x="16.0" y="47.0" font-family='Helvetica, Arial, sans-serif' font-size="12" font-weight="normal" fill="#424242" text-anchor="start">The tick body $13000 runs every call; only the present-rate block sits behind the $57ff0/$57fee divider</text>
+<text x="16.0" y="74.0" font-family='Helvetica, Arial, sans-serif' font-size="12.5" font-weight="normal" fill="#212121" text-anchor="start">PowerMonger (Bullfrog / Electronic Arts, 1990) is a war game on a height-mapped land of settlements: the player gives orders to captains,</text>
+<text x="16.0" y="91.0" font-family='Helvetica, Arial, sans-serif' font-size="12.5" font-weight="normal" fill="#212121" text-anchor="start">the computer lords give orders through the same path, and every man carries them out on his own. The game advances in ticks. Each tick</text>
+<text x="16.0" y="108.0" font-family='Helvetica, Arial, sans-serif' font-size="12.5" font-weight="normal" fill="#212121" text-anchor="start">runs the routine $13000 once, and that routine moves the whole world one step: the commander AI decides, every man, boat and building</text>
+<text x="16.0" y="125.0" font-family='Helvetica, Arial, sans-serif' font-size="12.5" font-weight="normal" fill="#212121" text-anchor="start">takes one step of its own small state machine, and the screen is redrawn.</text>
+<text x="16.0" y="146.0" font-family='Helvetica, Arial, sans-serif' font-size="12.5" font-weight="normal" fill="#212121" text-anchor="start">The figure shows one tick. Left: the calls $13000 makes, in order. Right: the loop $14b62 that walks every object record once and jumps to</text>
+<text x="16.0" y="163.0" font-family='Helvetica, Arial, sans-serif' font-size="12.5" font-weight="normal" fill="#212121" text-anchor="start">the handler for its current mode. Lower right: the other data pools the same tick moves. The point to take away is that there is no</text>
+<text x="16.0" y="180.0" font-family='Helvetica, Arial, sans-serif' font-size="12.5" font-weight="normal" fill="#212121" text-anchor="start">separate AI per unit type (observed in every record traced, not proven absent): a record holds a mode number, the loop runs that mode's</text>
+<text x="16.0" y="197.0" font-family='Helvetica, Arial, sans-serif' font-size="12.5" font-weight="normal" fill="#212121" text-anchor="start">handler, and the handler's choice of the next mode is the behaviour.</text>
+<g transform="translate(0,158)">
 <rect x="16.0" y="62.0" width="380.0" height="678.0" rx="8" fill="none" stroke="#9e9e9e" stroke-width="1"/>
 <text x="26.0" y="80.0" font-family='Helvetica, Arial, sans-serif' font-size="13" font-weight="bold" fill="#212121" text-anchor="start">The tick: $13000, in call order</text>
 <rect x="28.0" y="90.0" width="356.0" height="26.0" rx="4" fill="#ffffff" stroke="#757575" stroke-width="1.2"/>
@@ -131,19 +140,62 @@
 <text x="544.0" y="697.0" font-family='Menlo, Consolas, "DejaVu Sans Mono", monospace' font-size="11" font-weight="normal" fill="#212121" text-anchor="start">$47970, one chain/cell</text>
 <text x="740.0" y="697.0" font-family='Menlo, Consolas, "DejaVu Sans Mono", monospace' font-size="11" font-weight="normal" fill="#212121" text-anchor="start">every mover</text>
 <text x="422.0" y="720.0" font-family='Helvetica, Arial, sans-serif' font-size="10.5" font-weight="normal" fill="#424242" text-anchor="start">The bucket chains link all pools by offsets from $51b66 (negative below it).</text>
-<text x="16.0" y="768.0" font-family='Helvetica, Arial, sans-serif' font-size="11.5" font-weight="bold" fill="#212121" text-anchor="start">Reading the figure</text>
-<text x="16.0" y="784.0" font-family='Helvetica, Arial, sans-serif' font-size="11.5" font-weight="normal" fill="#212121" text-anchor="start">Cadence (3M-instruction trace, mission 1): 13 ticks per 250 VBLs, about 2.6 Hz; one tick body costs about 19 VBLs of</text>
-<text x="16.0" y="800.0" font-family='Helvetica, Arial, sans-serif' font-size="11.5" font-weight="normal" fill="#212121" text-anchor="start">instructions (compute-bound). $6522, $d322, $3e06 and $6a3a 13 hits each, $14b62 14. About 200k to 230k steps per tick.</text>
-<text x="16.0" y="816.0" font-family='Helvetica, Arial, sans-serif' font-size="11.5" font-weight="normal" fill="#212121" text-anchor="start">A man, boat, building or marker is one 50-byte record and runs its mode handler once per tick inside $14b62. Animals,</text>
-<text x="16.0" y="832.0" font-family='Helvetica, Arial, sans-serif' font-size="11.5" font-weight="normal" fill="#212121" text-anchor="start">pigeons, arrows and trees are separate pools moved by $3e06 near the top of the same tick; they are not entity records.</text>
-<text x="16.0" y="848.0" font-family='Helvetica, Arial, sans-serif' font-size="11.5" font-weight="normal" fill="#212121" text-anchor="start">Mission 1, settled view: about 50 of the 511 slots are in use and about 26 reach a handler each tick.</text>
-<text x="16.0" y="864.0" font-family='Helvetica, Arial, sans-serif' font-size="11.5" font-weight="normal" fill="#212121" text-anchor="start">Proven: $14b62 prologue and epilogues (675/675, 1335/1335 tracked bytes), $1623c 275/275, animals and pigeons</text>
-<text x="16.0" y="880.0" font-family='Helvetica, Arial, sans-serif' font-size="11.5" font-weight="normal" fill="#212121" text-anchor="start">45094/45094, arrows 4210/4210, $4342 8 of 9 branches. Live: the trace counts above. Code read: the call order listing.</text>
-<text x="16.0" y="908.0" font-family='Helvetica, Arial, sans-serif' font-size="11" font-weight="bold" fill="#212121" text-anchor="start">Evidence:</text>
-<rect x="80.0" y="897.0" width="14.0" height="14.0" rx="3" fill="#d9f0d3" stroke="#2e7d32" stroke-width="1.3"/>
-<text x="99.0" y="908.0" font-family='Helvetica, Arial, sans-serif' font-size="11" font-weight="normal" fill="#212121" text-anchor="start">proven (gate vs the real 68000)</text>
-<rect x="298.2" y="897.0" width="14.0" height="14.0" rx="3" fill="#dbe9f7" stroke="#1565c0" stroke-width="1.3"/>
-<text x="317.2" y="908.0" font-family='Helvetica, Arial, sans-serif' font-size="11" font-weight="normal" fill="#212121" text-anchor="start">live (seen running, counted)</text>
-<rect x="497.8" y="897.0" width="14.0" height="14.0" rx="3" fill="#ffffff" stroke="#757575" stroke-width="1.3"/>
-<text x="516.8" y="908.0" font-family='Helvetica, Arial, sans-serif' font-size="11" font-weight="normal" fill="#212121" text-anchor="start">code read</text>
+</g>
+<text x="16.0" y="928.0" font-family='Helvetica, Arial, sans-serif' font-size="13" font-weight="bold" fill="#212121" text-anchor="start">How to read each panel</text>
+<text x="16.0" y="948.0" font-family='Helvetica, Arial, sans-serif' font-size="11" font-weight="bold" fill="#212121" text-anchor="start">The tick (left)</text>
+<text x="16.0" y="962.5" font-family='Helvetica, Arial, sans-serif' font-size="11" font-weight="normal" fill="#212121" text-anchor="start">Each row is one call made by $13000, top to bottom</text>
+<text x="16.0" y="977.0" font-family='Helvetica, Arial, sans-serif' font-size="11" font-weight="normal" fill="#212121" text-anchor="start">in the order it runs: the routine's address, what</text>
+<text x="16.0" y="991.5" font-family='Helvetica, Arial, sans-serif' font-size="11" font-weight="normal" fill="#212121" text-anchor="start">it does, and a fill for how sure we are (legend at</text>
+<text x="16.0" y="1006.0" font-family='Helvetica, Arial, sans-serif' font-size="11" font-weight="normal" fill="#212121" text-anchor="start">the foot). The two purple italic lines are not</text>
+<text x="16.0" y="1020.5" font-family='Helvetica, Arial, sans-serif' font-size="11" font-weight="normal" fill="#212121" text-anchor="start">calls; they mark where the drawing block behind</text>
+<text x="16.0" y="1035.0" font-family='Helvetica, Arial, sans-serif' font-size="11" font-weight="normal" fill="#212121" text-anchor="start">the divider starts and ends.</text>
+<text x="16.0" y="1053.5" font-family='Helvetica, Arial, sans-serif' font-size="11" font-weight="normal" fill="#1b5e20" text-anchor="start">Takeaway: the commander AI $6522, the entity loop</text>
+<text x="16.0" y="1068.0" font-family='Helvetica, Arial, sans-serif' font-size="11" font-weight="normal" fill="#1b5e20" text-anchor="start">$14b62 and the order executor $6a3a run on every</text>
+<text x="16.0" y="1082.5" font-family='Helvetica, Arial, sans-serif' font-size="11" font-weight="normal" fill="#1b5e20" text-anchor="start">tick. Only the four drawing calls $1870, $12ce0,</text>
+<text x="16.0" y="1097.0" font-family='Helvetica, Arial, sans-serif' font-size="11" font-weight="normal" fill="#1b5e20" text-anchor="start">$178ae and $f898 sit behind the divider, and at</text>
+<text x="16.0" y="1111.5" font-family='Helvetica, Arial, sans-serif' font-size="11" font-weight="normal" fill="#1b5e20" text-anchor="start">normal speed the divider is 1, so they run every</text>
+<text x="16.0" y="1126.0" font-family='Helvetica, Arial, sans-serif' font-size="11" font-weight="normal" fill="#1b5e20" text-anchor="start">tick too.</text>
+<text x="312.0" y="948.0" font-family='Helvetica, Arial, sans-serif' font-size="11" font-weight="bold" fill="#212121" text-anchor="start">The iterator (right)</text>
+<text x="312.0" y="962.5" font-family='Helvetica, Arial, sans-serif' font-size="11" font-weight="normal" fill="#212121" text-anchor="start">A flowchart for one record; the arrow on the right</text>
+<text x="312.0" y="977.0" font-family='Helvetica, Arial, sans-serif' font-size="11" font-weight="normal" fill="#212121" text-anchor="start">goes back for the next record until the end of the</text>
+<text x="312.0" y="991.5" font-family='Helvetica, Arial, sans-serif' font-size="11" font-weight="normal" fill="#212121" text-anchor="start">array. Byte 5 is the owner: 0 is a free slot,</text>
+<text x="312.0" y="1006.0" font-family='Helvetica, Arial, sans-serif' font-size="11" font-weight="normal" fill="#212121" text-anchor="start">negative a dying man, positive a live one. A live</text>
+<text x="312.0" y="1020.5" font-family='Helvetica, Arial, sans-serif' font-size="11" font-weight="normal" fill="#212121" text-anchor="start">record's mode (byte 31) indexes a table of 75</text>
+<text x="312.0" y="1035.0" font-family='Helvetica, Arial, sans-serif' font-size="11" font-weight="normal" fill="#212121" text-anchor="start">handler offsets at $14bb4.</text>
+<text x="312.0" y="1053.5" font-family='Helvetica, Arial, sans-serif' font-size="11" font-weight="normal" fill="#1b5e20" text-anchor="start">Takeaway: one jump table replaces any per-type</text>
+<text x="312.0" y="1068.0" font-family='Helvetica, Arial, sans-serif' font-size="11" font-weight="normal" fill="#1b5e20" text-anchor="start">logic. The handler moves the record one tick and</text>
+<text x="312.0" y="1082.5" font-family='Helvetica, Arial, sans-serif' font-size="11" font-weight="normal" fill="#1b5e20" text-anchor="start">usually writes a new mode; the epilogue clamps the</text>
+<text x="312.0" y="1097.0" font-family='Helvetica, Arial, sans-serif' font-size="11" font-weight="normal" fill="#1b5e20" text-anchor="start">position, vetoes a step onto water by setting mode</text>
+<text x="312.0" y="1111.5" font-family='Helvetica, Arial, sans-serif' font-size="11" font-weight="normal" fill="#1b5e20" text-anchor="start">$00, and relinks the record into its map-cell</text>
+<text x="312.0" y="1126.0" font-family='Helvetica, Arial, sans-serif' font-size="11" font-weight="normal" fill="#1b5e20" text-anchor="start">bucket.</text>
+<text x="608.0" y="948.0" font-family='Helvetica, Arial, sans-serif' font-size="11" font-weight="bold" fill="#212121" text-anchor="start">The pools (lower right)</text>
+<text x="608.0" y="962.5" font-family='Helvetica, Arial, sans-serif' font-size="11" font-weight="normal" fill="#212121" text-anchor="start">One row per data pool: what it holds, its base</text>
+<text x="608.0" y="977.0" font-family='Helvetica, Arial, sans-serif' font-size="11" font-weight="normal" fill="#212121" text-anchor="start">address and record size, and the routine that</text>
+<text x="608.0" y="991.5" font-family='Helvetica, Arial, sans-serif' font-size="11" font-weight="normal" fill="#212121" text-anchor="start">moves it each tick. "511 x 50 B" means 511 records</text>
+<text x="608.0" y="1006.0" font-family='Helvetica, Arial, sans-serif' font-size="11" font-weight="normal" fill="#212121" text-anchor="start">of 50 bytes.</text>
+<text x="608.0" y="1024.5" font-family='Helvetica, Arial, sans-serif' font-size="11" font-weight="normal" fill="#1b5e20" text-anchor="start">Takeaway: only men, boats, buildings and markers</text>
+<text x="608.0" y="1039.0" font-family='Helvetica, Arial, sans-serif' font-size="11" font-weight="normal" fill="#1b5e20" text-anchor="start">are object records. Animals, pigeons, arrows and</text>
+<text x="608.0" y="1053.5" font-family='Helvetica, Arial, sans-serif' font-size="11" font-weight="normal" fill="#1b5e20" text-anchor="start">trees are smaller pools moved near the top of the</text>
+<text x="608.0" y="1068.0" font-family='Helvetica, Arial, sans-serif' font-size="11" font-weight="normal" fill="#1b5e20" text-anchor="start">tick. The cell buckets let a man find neighbours</text>
+<text x="608.0" y="1082.5" font-family='Helvetica, Arial, sans-serif' font-size="11" font-weight="normal" fill="#1b5e20" text-anchor="start">by walking one chain instead of scanning all 511</text>
+<text x="608.0" y="1097.0" font-family='Helvetica, Arial, sans-serif' font-size="11" font-weight="normal" fill="#1b5e20" text-anchor="start">records.</text>
+<text x="16.0" y="1154.5" font-family='Helvetica, Arial, sans-serif' font-size="13" font-weight="bold" fill="#212121" text-anchor="start">Numbers and how we know them</text>
+<text x="16.0" y="1172.5" font-family='Helvetica, Arial, sans-serif' font-size="11.5" font-weight="normal" fill="#212121" text-anchor="start">Cadence, from a 3-million-instruction trace of mission 1: 13 ticks per 250 VBLs (the ST's screen interrupt, one per displayed frame), about 2.6 ticks</text>
+<text x="16.0" y="1188.0" font-family='Helvetica, Arial, sans-serif' font-size="11.5" font-weight="normal" fill="#212121" text-anchor="start">a second; one tick costs about 19 VBLs of instructions, so the game is limited by computation, not by the display. $6522, $d322, $3e06 and $6a3a ran</text>
+<text x="16.0" y="1203.5" font-family='Helvetica, Arial, sans-serif' font-size="11.5" font-weight="normal" fill="#212121" text-anchor="start">13 times each in that trace, $14b62 14 times. One tick is about 200k to 230k emulated instructions ("steps").</text>
+<text x="16.0" y="1224.0" font-family='Helvetica, Arial, sans-serif' font-size="11.5" font-weight="normal" fill="#212121" text-anchor="start">A man, boat, building or marker is one 50-byte record and runs its mode handler once per tick inside $14b62. Animals, pigeons, arrows and trees are</text>
+<text x="16.0" y="1239.5" font-family='Helvetica, Arial, sans-serif' font-size="11.5" font-weight="normal" fill="#212121" text-anchor="start">separate pools moved by $3e06 near the top of the same tick; they are not entity records. Mission 1, settled view: about 50 of the 511 slots are in</text>
+<text x="16.0" y="1255.0" font-family='Helvetica, Arial, sans-serif' font-size="11.5" font-weight="normal" fill="#212121" text-anchor="start">use and about 26 reach a handler each tick.</text>
+<text x="16.0" y="1275.5" font-family='Helvetica, Arial, sans-serif' font-size="11.5" font-weight="normal" fill="#212121" text-anchor="start">Proven means a gate passed: a Python rewrite of the routine was run beside the game's own 68000 code, called in isolation from many saved states (the</text>
+<text x="16.0" y="1291.0" font-family='Helvetica, Arial, sans-serif' font-size="11.5" font-weight="normal" fill="#212121" text-anchor="start">emulator's callcap command), and every changed byte matched; "675/675" is matching bytes out of bytes compared. Proven here: the $14b62 prologue and</text>
+<text x="16.0" y="1306.5" font-family='Helvetica, Arial, sans-serif' font-size="11.5" font-weight="normal" fill="#212121" text-anchor="start">epilogues (675/675 and 1335/1335 tracked bytes), the dying path $1623c 275/275, animals and pigeons 45094/45094, arrows 4210/4210, the forest animator</text>
+<text x="16.0" y="1322.0" font-family='Helvetica, Arial, sans-serif' font-size="11.5" font-weight="normal" fill="#212121" text-anchor="start">$4342 8 of 9 branches. Live: the trace counts above. Code read: the call-order listing, read from the disassembly. A $ value is a RAM address in the</text>
+<text x="16.0" y="1337.5" font-family='Helvetica, Arial, sans-serif' font-size="11.5" font-weight="normal" fill="#212121" text-anchor="start">game, cited so it can be checked.</text>
+<text x="16.0" y="1372.0" font-family='Helvetica, Arial, sans-serif' font-size="11" font-weight="bold" fill="#212121" text-anchor="start">Evidence:</text>
+<rect x="80.0" y="1361.0" width="14.0" height="14.0" rx="3" fill="#d9f0d3" stroke="#2e7d32" stroke-width="1.3"/>
+<text x="99.0" y="1372.0" font-family='Helvetica, Arial, sans-serif' font-size="11" font-weight="normal" fill="#212121" text-anchor="start">proven (gate vs the real 68000)</text>
+<rect x="298.2" y="1361.0" width="14.0" height="14.0" rx="3" fill="#dbe9f7" stroke="#1565c0" stroke-width="1.3"/>
+<text x="317.2" y="1372.0" font-family='Helvetica, Arial, sans-serif' font-size="11" font-weight="normal" fill="#212121" text-anchor="start">live (seen running, counted)</text>
+<rect x="497.8" y="1361.0" width="14.0" height="14.0" rx="3" fill="#ffffff" stroke="#757575" stroke-width="1.3"/>
+<text x="516.8" y="1372.0" font-family='Helvetica, Arial, sans-serif' font-size="11" font-weight="normal" fill="#212121" text-anchor="start">code read</text>
 </svg>

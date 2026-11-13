@@ -136,3 +136,17 @@ table.data td.n, table.data th.n { text-align: right; font-family: var(--f-mono)
 #tip { position: fixed; display: none; z-index: 10; pointer-events: none; max-width: 300px; background: var(--ink); color: var(--bg); font-family: var(--f-mono); font-size: 12px; padding: 6px 9px; border-radius: 4px; line-height: 1.4; }
 @media (max-width: 640px) { .ax text, .ax .tick { font-size: 12px; } .ann { font-size: 9px; } }
 @media (prefers-reduced-motion: no-preference) { .cell .bx { transition: fill-opacity 0.12s; } }
+/* explanatory blocks added for readers who do not know the game */
+.lead p { color: var(--ink); max-width: 72ch; }
+.note { margin-top: 16px; background: var(--surface); border-left: 3px solid var(--hurt); padding: 12px 14px; max-width: 80ch; font-size: .95rem; }
+.terms { display: grid; gap: 10px 24px; grid-template-columns: repeat(auto-fit, minmax(min(100%, 300px), 1fr)); margin: 14px 0 0; }
+.terms div { border-top: 1px solid var(--line); padding-top: 8px; min-width: 0; }
+.terms dt { font: 600 .86rem var(--f-mono); margin-bottom: 3px; }
+.terms dd { margin: 0; color: var(--muted); font-size: .93rem; line-height: 1.5; }
+.terms dd b, .terms dd em { color: var(--ink); }
+h3.sub { margin-top: 22px; font-size: .95rem; color: var(--muted); }
+.steps { margin: 14px 0 0; padding-left: 1.4em; display: grid; gap: 8px; max-width: 76ch; }
+.steps li { padding-left: 4px; }
+.read { margin-top: 14px; font-size: .92rem; background: var(--surface); border: 1px solid var(--line); padding: 10px 14px; max-width: 84ch; color: var(--muted); }
+.read b, .take b { color: var(--ink); }
+.take { margin-top: 16px; border-left: 3px solid var(--atk); padding-left: 12px; max-width: 76ch; }

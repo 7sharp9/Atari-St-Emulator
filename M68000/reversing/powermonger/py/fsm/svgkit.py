@@ -39,6 +39,39 @@ class Svg:
                 self.text(x, y + i * lh, r, size=size, **kw)
         return y + len(rows) * lh
 
+    @staticmethod
+    def wrap(s, w, size=12, cw=0.5):
+        """Greedy word wrap of `s` to width `w` px, using an average glyph width of cw * size."""
+        n = max(10, int(w / (size * cw)))
+        out, cur = [], ''
+        for word in s.split():
+            if cur and len(cur) + 1 + len(word) > n:
+                out.append(cur)
+                cur = word
+            else:
+                cur = (cur + ' ' + word) if cur else word
+        if cur:
+            out.append(cur)
+        return out
+
+    def para(self, x, y, w, s, size=12, lh=None, lead=None, **kw):
+        """A wrapped paragraph; `lead` is an optional bold run-in heading drawn on its own line. Returns the y after it."""
+        lh = lh or size * 1.35
+        if lead:
+            self.text(x, y, lead, size=size, weight='bold', **kw)
+            y += lh
+        rows = self.wrap(s, w, size)
+        for i, r in enumerate(rows):
+            self.text(x, y + i * lh, r, size=size, **kw)
+        return y + len(rows) * lh
+
+    def begin(self, dx=0, dy=0):
+        """Shift every element drawn until end() by (dx, dy)."""
+        self.el.append('<g transform="translate(%g,%g)">' % (dx, dy))
+
+    def end(self):
+        self.el.append('</g>')
+
     def box(self, x, y, w, h, ev='plain', rx=6, dash=False, sw=1.3):
         f, s = EVID[ev]
         self.el.append('<rect x="%.1f" y="%.1f" width="%.1f" height="%.1f" rx="%d" fill="%s" stroke="%s" stroke-width="%s"%s/>'
@@ -71,6 +104,7 @@ class Svg:
                 '<defs><marker id="ah" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" '
                 'orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="#424242"/></marker></defs>\n'
                 % (self.w, self.h, self.w, self.h))
+        self.el[0] = '<rect x="0" y="0" width="%d" height="%d" fill="#ffffff"/>' % (self.w, self.h)
         open(path, 'w').write(head + '\n'.join(self.el) + '\n</svg>\n')
         png = os.path.splitext(path)[0] + '.png'
         subprocess.run(['rsvg-convert', '-b', 'white', '-w', str(self.w * 2), path, '-o', png], check=True)

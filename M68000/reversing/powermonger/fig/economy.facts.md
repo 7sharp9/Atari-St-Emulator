@@ -36,3 +36,22 @@
   the pm_fsm_ref `h_mode7c` note ("`troops_field*4`: ==0 -> epilogue / >= reserve -> +2 / < reserve -> -1"). The figure
   omits the `== 0` exit.
 - Order `$12` (`$3bc0`) is shown as live (one run, town 22 -> 147).
+
+## Lead and captions
+
+| text added | source |
+|---|---|
+| game, publisher, year; "you give orders, not controls"; the AI uses the same order path | README.md title line, "Design digest" ("What carries the game") |
+| a lord owns settlements; the record holds food, men at home, 8 goods counters, loyalty pressure; 600 changes side | economy.md Headline table, section 3 |
+| no economy routine that grows population or balances food per period; every change is a write by a handler or an order | economy.md Headline ("no single economy tick") |
+| food in only from fishermen (+4) and farmers (+2) | economy.md Summary, Headline table, section 1 flows |
+| men conserved (observed, not proven absent); pigeon landing revives a dead man's record | economy.md "Evidence level" (negatives Observed), section 6, ascii picture under "Complete picture"; README "Design digest" ("Men are conserved") |
+| goods throttled, spent to equip and upgrade; invention is the upgrade, not research | economy.md Summary |
+| loyalty: hungry towns push it up in winter; 600 changes side, reset 300; the player does not trigger it | README "Design digest" ("The player does not trigger it"); economy.md 3, 3a |
+| posture 2/3/4 = aggressive/neutral/passive; all/half/quarter | strategy.md `$51538` table (posture row); README "Design digest" ("Food is the pressure") |
+| 36(group) is the group food the captain panel labels "Food:" | economy.md Headline table |
+| `k5_s4` is a snapshot on land 5 | economy.md 1 ("Plough doubling", land 5) and 2a ("`pm121/run/k5_s4.snap`") |
+
+Disagreement: economy.md section 1 (the `$3bc0` row) says order `$12`'s settlement food drop is proven by
+`gate_orders.py` (344 states, 1292/1292); the figure keeps the box blue (live, one run). Not changed (brief: no
+number or label changes without an owner decision).

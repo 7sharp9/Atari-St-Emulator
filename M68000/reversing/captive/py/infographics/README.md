@@ -3,7 +3,9 @@
 One explanatory figure per algorithm, computed from the proven model or the game's own captured values, as blog
 material (`7sharp9.github.io/IDEAS.md` entry 9). Each `gen_*.py` writes `<name>.svg` to
 `scratchpad/captive/infographics/` and prints every number it draws; `<name>.facts.md` maps each fact in the
-figure to its doc section or computation and flags what the work found wrong or unclear in the docs. Cached
+figure to its doc section or computation and flags what the work found wrong or unclear in the docs. Each figure opens with a lead
+paragraph and gives every panel a "How to read" and a "Takeaway", with a "How we know" strip that explains the proof
+labels, gates and snapshot names; the facts file's "Explanatory text" table sources each of those sentences. Cached
 emulator results and helper inputs live in `scratchpad/captive/infographics/data/`. gen_trail, gen_digger and
 gen_lock recreate a missing cache themselves (gen_lock's `--emu` also needs the curios helper scripts, `HELPERS`,
 default `scratchpad/captive/agents/curios/`); gen_universe's three callcap deltas are made by the command in its

@@ -46,3 +46,23 @@ Labels: ai.md mode tables, economy.md 2a, strategy.md orders table, `powermonger
 - **`$3c` (rout)**: only `$5590` stamps prev `$3c` on the target (`$561c`); the mode is entered at that man's next walk arrival (`$14fdc`). A routed group member does not enter `$3c` from that stamp: the rout tail's unlink `$1b8c` calls `$3c08` again and replaces the prev with his job home mode. That drops the mark (`$1534c`) that makes his attacker break off, so `$56a6` re-engages him (`$5708`, `$32`) and `$5590` routs him again as a man outside a group. Live, 100M steps each (`py/fsm/rout_fate.py`): `rand1` 23 of 44 stamps arrive as `$3c`, 3 arrive in another mode, 18 are re-routed; `k48` 54, 1 and 34 of 89; the 52 second stamps arrive as `$3c`, none dies or is left at the run end (ai.md, "`$5590`, outcomes").
 - Mode/prev pairing is by nearest write address within a walk. It matches every pair checked by hand (`$16`, `$52`, `$54`, `$56`, `$86`, `$88`, `$3c08`, `$600a`, `$4f68` tail), but it is a heuristic.
 - The call edges stop at depth 1 (a mode's direct callees and one intermediate). The `$16848 -> $5c2c -> $4bc8` owner-mismatch path, reachable from every job arrival, is not drawn.
+
+## Lead and captions (both figures)
+
+Both figures are now wrapped by `build_fsm.py` `compose()`: the title moved out of the graphviz label into the wrapper
+(the graph keeps the same lanes and edges), a lead above and reading notes below.
+
+| text added | source |
+|---|---|
+| game, publisher, year; every man and boat a 50-byte record; mode byte 31; one handler per tick; no other per-unit AI | README.md title line; ai.md "What the loop actually is" |
+| job is a bit of byte 7 | ai.md object record row 7 (as the lanes) |
+| two-step walk: prev in byte 30, mode `$10`, arrival `$14fdc` copies 30 into 31 | this file, "Structure" (`$14fdc` row) |
+| proven examples 18452/18452 over 1889 states, 1043/1043 | this file, "Evidence" |
+| three whole-graph cycles (pot maker via `$600a`, fisher via `$3c08` bit 2, picker `$4f68` tail) | ai.md "The entity FSM" |
+| farmers, merchants and fishers park in `$7c` in winter | economy.md 3a; economy.facts.md (`$7c` park row) |
+| `$4f68` arms share one tail: `$34` shoot or `$10` chase ending in `$2e` | ai.md "The entity FSM" (`$531c`, `$5334`) |
+| melee `$32`, `$5590` kill or rout at zero health, rout stamps prev `$3c` | README "Design digest" ("Combat is a health grind"); this file, "`$3c` (rout)" |
+| water veto `$36 -> $66`, seen live only under a one-byte poke | this file, "`$66`" |
+
+Disagreement: ai.md "The entity FSM" says 177 edges; this file's header says 178 (the water-veto edge added). The figures
+do not print the count.

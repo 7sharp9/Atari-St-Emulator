@@ -43,3 +43,22 @@ for N = 1, 7, and the same without the poke for `cc_m0.json`. The script asserts
   shared planet of targets 1 and 9. Whether the site-byte repetition is visible in play is not checked.
 - Names use the same LCG constants as the generator chain but a separate seed per body, `mission * 150 + object`
   (`$30686..$30692`), recomputed on display; they are not drawn from the chain.
+
+## Explanatory text (lead, "How to read", "Takeaway", "How we know")
+
+| claim in the added text | source |
+|---|---|
+| Captive is a real-time dungeon crawler; four droids raid procedurally generated bases on a series of planets | `README.md` opening paragraph |
+| the player picks where to land on a star map; station, 50 planets, 100 moons, 10 numbered targets per mission | world.md 1 ("Names for the bodies", "Targets and landing seeds", the targets step 1..10); that each target leads to a base is world.md "Seeds passed to `fed_MapGen`" |
+| none of it is stored on the disk | world.md 1 ("Nothing in the galaxy is stored on disk") |
+| one 16-bit generator seeded with the mission number (index = number - 1), a fixed chain of steps passing D0 | world.md 1 ("What the generator builds") |
+| a small table turns each draw into a position and keeps dots off grid lines | world.md 1 ("The coordinate table and the grid") |
+| names from the same generator reseeded per body | world.md 1 ("Body names") |
+| "rejected" = a coordinate of 0, a duplicate, a target already given out | world.md 1 table (dots, moons, targets rules) |
+| a rejected draw changes every later draw: each step starts from the state the previous left | follows from the chain passing D0 (world.md 1); the model reproducing every table and final D0 is this file's proven rows |
+| every planet drawn is one the model generated; every white pixel accounted for | panel B row above (50/51, 0 unexplained) |
+| the 32-entry table lists only cells inside grid squares; first row and column of the first square unreachable | world.md 1 ("The coordinate table and the grid") |
+| names regenerated whenever labelled (inferred); 65,536 spellings | world.md 1 ("Body names", inferred there); 16^4 computed |
+| layout rules stay: dots in squares, moons at the eight compass points around the planet | world.md 1 (table, map units row: "the 8 compass points at ±160 units") |
+| LCG definition; ror.w; registers D0/D1; A6 base register | standard definitions; A6 = `$1b5ce` is the base of federation's variables (ai.md header) |
+| universe.py models every step; model = RAM; snapshots; callcap; poke | world.md 1 ("Proven"); this file's header (callcap command) |

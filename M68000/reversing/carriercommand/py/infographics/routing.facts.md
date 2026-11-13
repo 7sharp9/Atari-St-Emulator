@@ -39,6 +39,22 @@ Each pokes a state through the REPL (owners, link bits as `$21f9e` would set the
 | the stray 500: `$1817e` writes `#$1f4` to `8(A0)` with A0 = `$69ac0` | `$18170..$1817e` read; drive: the watch on `$69ac8` fired at pc `$1817e` between the 7th and 8th calls in both fill runs |
 | "distance-vector routing (RIP's Bellman-Ford)" | interpretation: each row is relaxed from its neighbours' rows, which is the Bellman-Ford update RIP uses |
 
+### Prose added for readers new to the game (lead, captions, "How we know")
+
+| claim | source |
+|---|---|
+| player's and computer's carriers compete for a 64-island archipelago; held islands form a supply network | README.md opening paragraph; economy.md 3 |
+| goods travel as packets island to island; no route stored; a few rows of the table per main-loop pass | economy.md 3, 4 |
+| distance-vector routing, as in RIP | economy.md 3 ("Bellman-Ford, as in RIP"); "early internet routers" is general knowledge |
+| a link is usable only when both ends share an owner; capturing cuts the other side's routes | economy.md 3 |
+| VULCAN 0 is the player's base | economy.md 3 (row 0 is read by the island panel as "DISTANCE TO BASE"); README.md (`c_s30`, carrier at Vulcan) |
+| economy tick: the economy chain runs every 4th main frame | economy.md 4 (`$f254`, countdown `$982`) |
+| `$122f` described as the "busy" flag packets wait on, timer held at 1 | economy.md 3; drive (4 timer-1 retries) |
+| 3098 split as 55 x 55 + 1 + 8 x 8 + 8 | table above; "which no link reaches" for TREASURE 51 is economy.md 3 ("nothing can route to it") |
+| "one sweep is not enough, because a row can only copy distances its neighbours' rows already hold" | generic property of in-place Bellman-Ford relaxation; the call counts are the port's, checked by `fill_late` |
+| a packet stores node, timer, item, quantity, destination | economy.md 4 (pool 2 layout) |
+| proven / inferred labels | ai.md opening "Proof labels", which economy.md follows |
+
 ## Flags
 
 - **`$1817e` writes into the distance matrix (inferred bug).** In the island tick, `$1814a..$18158` set `+2 = 500` and
@@ -64,3 +80,7 @@ Each pokes a state through the REPL (owners, link bits as `$21f9e` would set the
 - **Who calls `$21e16`:** world creation (`$3c32`) and four ownership-change sites (`$184c4`, `$1adc0`, `$1c0a4`,
   `$1c280`, each beside the "is now a friendly / enemy / free island" messages). `$3b8a` calls `$21f9e` alone. The doc does
   not say a capture triggers the rebuild; read from code, not driven.
+- **Proof label of the stray write differs between docs.** `economy.md` 3 and this figure call it an "inferred bug";
+  `ai.md` 2 heads the same write "A probable game bug (proven)", on the strength of the s6a/s6b pokes that change the
+  enemy's target as the model predicts. The write itself is observed live here; "bug" and its intent are the
+  inferred part. The figure keeps "inferred".

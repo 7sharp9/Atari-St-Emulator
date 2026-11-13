@@ -44,7 +44,9 @@ def brain_rows():
                 detail = []
                 for st, pr in sorted(d.items(), key=lambda kv: -kv[1]):
                     g[group(st)] += pr
-                    detail.append(("%s" % (("state $%s" % st) if st != "wait" else "no change")) + " %d%%" % round(pr * 100))
+                    # brain_probs keys are ints (state numbers) or strings ("wait", "b*"); print the ints in hex like the legend
+                    lab = "no change" if st == "wait" else ("state $%x" % st if isinstance(st, int) else "state $%s" % st)
+                    detail.append(lab + " %d%%" % round(pr * 100))
                 cells.append(dict(b=b, g=g, gated=gated, detail=detail))
             rows[case] = cells
         out.append(dict(type=t, name=name, where=where, hp=hp, rows=rows))
@@ -115,11 +117,12 @@ def moves_svg():
 
 def lanes_svg():
     # y axis: enemy y minus player y; bands per $2438a: A (-$20, +$60], B > +$60, C <= -$20; x: |dx| in 16 buckets of 16 px up to $100
-    W, H = 760, 250; k = 1.15
-    px = 40; py = 125
+    # canvas sized so that all three bands and the distance ruler below them are inside it (the C label used to sit above the top edge)
+    W, H = 760, 372; k = 1.15
+    px = 40; py = 22 + 0x60 * k
     out = ['<line class="ground" x1="%d" y1="%d" x2="%d" y2="%d"/>' % (px, py, W - 10, py)]
     def Y(dy): return py + dy * k
-    bands = [("C", -0x80, -0x20, "enemy more than $20 above you"), ("A", -0x20, 0x60, "same lane: from $20 above to $60 below"), ("B", 0x60, 0xA0, "enemy more than $60 below you")]
+    bands = [("C", -0x60, -0x20, "enemy more than $20 above you"), ("A", -0x20, 0x60, "same lane: from $20 above to $60 below"), ("B", 0x60, 0xA0, "enemy more than $60 below you")]
     for case, a, b, txt in bands:
         out.append('<rect class="band band%s" x="%d" y="%.1f" width="%d" height="%.1f"/>' % (case, px + 22, Y(a), W - px - 32, (b - a) * k))
         out.append('<text class="lab" x="%d" y="%.1f">%s</text>' % (px + 32, Y(a) + 17, "table " + case))
@@ -170,7 +173,7 @@ def brain_svg(rows):
                     acc += v
                 out.append('</g>')
             out.append('<text class="sub" text-anchor="end" x="%d" y="%d">table %s</text>' % (lw - 8, y + 52 + 48 + 12 + j * (sh + 3) + 12, case))
-        out.append('<text class="sub" text-anchor="end" x="%d" y="%d">table A, player idle</text>' % (lw - 8, y + 52 + 28))
+        out.append('<text class="sub" text-anchor="end" x="%d" y="%d">table A, you standing</text>' % (lw - 8, y + 52 + 28))
         y += 52 + 48 + 12 + 2 * (sh + 3) + 26
     # bucket axis
     for i in range(0, 16, 3):

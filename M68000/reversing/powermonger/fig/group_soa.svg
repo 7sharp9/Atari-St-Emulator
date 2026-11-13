@@ -1,4 +1,4 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 900 858" width="900" height="858" role="img" aria-labelledby="t4 d4" xml:space="preserve">
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 900 1200" width="900" height="1200" role="img" aria-labelledby="t4 d4" xml:space="preserve">
 <title id="t4">Group record: six-word arrays in the $51538 side record</title>
 <desc id="d4">The side record $51538 + side*$13c holds a 4-byte queued-order header and then parallel arrays of six words, one word per group k = 0..5: group k's word n is at base + n + 2k. Two frames address it: the AI loop uses A1 = base + 2k (offset n), the executor and entity modes use the group offset D2 = side*$13c + $4c + 2k (offset n - 76). Sources: reversing/powermonger/strategy.md "`$51538` group-order table" (the n(A1) table), "Data structures (C)" (pm_side_groups), "The commander AI `$6522`" (pending word), "The game's own text: names for the fields" (aggression display only); ai.md "`$4562` how an order reaches a subordinate captain" (word 48 the sender; $6ac6 reads 48(A1) with A1 = $51538 + D2, checked by disassembly). Full list: group_soa.facts.md.</desc>
 <style>
@@ -17,9 +17,17 @@ text{font-family:Helvetica, Arial, sans-serif;fill:#1f2328;font-size:12px}
 .cell{fill:#ffffff;stroke:#8c959f;stroke-width:0.8}
 .k2{fill:#fff8c5;stroke:#9a6700;stroke-width:1.4}
 </style>
-<rect x="0" y="0" width="900" height="858" fill="#ffffff"/>
+<rect x="0" y="0" width="900" height="1200" fill="#ffffff"/>
 <text x="20" y="26" class="t">Group fields are six-word arrays: group k's word n is at side base + n + 2k</text>
 <text x="20" y="45" class="c">Meaning-cell border = evidence for the field's role. Yellow column: group 2, the worked example below.</text>
+<text x="20" y="68" style="font-size:12.5px">PowerMonger (Bullfrog / Electronic Arts, 1990) is a war game in which the player and the computer lords command armies through captains.</text>
+<text x="20" y="85" style="font-size:12.5px">Each side has six captains, and each captain leads a group of men; group 0 is the side&#x27;s first captain&#x27;s own group. The game keeps all</text>
+<text x="20" y="102" style="font-size:12.5px">six groups of a side in one 316-byte record, but not as six records of fields: each field is an array of six words, one word per group (a</text>
+<text x="20" y="119" style="font-size:12.5px">structure of arrays). Field n of group k is the word at side base + n + 2k.</text>
+<text x="20" y="153" style="font-size:12.5px">This matters for anyone reading the code. The commander AI walks the groups with 2k in register D7 and reads every field of the current</text>
+<text x="20" y="170" style="font-size:12.5px">group as n(A1), A1 = base + 2k. The order executor and the men&#x27;s handlers instead carry a group offset D2 and reach the same word at</text>
+<text x="20" y="187" style="font-size:12.5px">offset n-76. The figure is the map between the two: which word holds what, at which byte offset, for each of the six groups.</text>
+<g transform="translate(0,156)">
 <rect x="20" y="54" width="22" height="12" class="pv"/><text x="47" y="64" class="s">proven (gated routine or whole-image scan)</text>
 <rect x="300" y="54" width="22" height="12" class="cr"/><text x="327" y="64" class="s">code read</text>
 <rect x="395" y="54" width="22" height="12" class="na"/><text x="422" y="64" class="s">not named</text>
@@ -375,4 +383,14 @@ text{font-family:Helvetica, Arial, sans-serif;fill:#1f2328;font-size:12px}
 <text x="20" y="787" class="s">aggression &quot;display only&quot; is a whole-image scan (py/aggr/scan_group_field.py, text segment to $1c488). Offsets are from the code, strategy.md &quot;$51538&quot;.</text>
 <text x="20" y="803" class="s">+280: $c a category-4 record, 0 unset; written by $4a7a and $4bc8 (classifier $4de2); $5778 overwrites it with the attacker&#x27;s offset (bug, live 1/1).</text>
 <text x="20" y="819" class="s">The captain panel $9090 recovers side and 2k from A3 - $51538 divided by $13c; it prints Food, Troops and the aggression line from these arrays.</text>
+<text x="20" y="849" class="h">How to read the table</text>
+<text x="20" y="865">Each row is one field. n(A1) is its offset in the AI&#x27;s frame and &quot;group&quot; its offset from the group offset D2 (n-76). The six cells give the byte</text>
+<text x="20" y="881">offset of that field for groups k = 0 to 5, counted from the side base; the yellow column is group 2, followed through in the worked example above.</text>
+<text x="20" y="897">The border of the meaning cell shows the evidence for that meaning. Groups are walked by the AI from group 5 down to group 0.</text>
+<text x="20" y="929" class="h">Terms</text>
+<text x="20" y="945">A1, A3, D2 and D7 are 68000 registers; n(A1) means &quot;the word n bytes past A1&quot;. $6564 is the commander AI&#x27;s per-group loop, $6ac6 the executor&#x27;s</text>
+<text x="20" y="961">routing step, $9090 the captain panel the player sees. Proven means a gate passed: a Python rewrite of the routine was run beside the game&#x27;s own</text>
+<text x="20" y="977">68000 code from captured states and every changed byte matched; 323/323 and 44/44 are states that matched out of states compared. A whole-image scan</text>
+<text x="20" y="993">reads every instruction in the game&#x27;s code for accesses to the field. Code read means from the disassembly only.</text>
+</g>
 </svg>

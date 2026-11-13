@@ -21,7 +21,7 @@ What the emulator gives (cached in scratchpad/captive/infographics/data/lock_emu
   into lock_runs/: die_all.py (req4.snap), die_hint.py and DIE_TILE=42 die_hint.py
   (base1/outside.snap), ratt_msg.py (three snapshots), doorcodes.py compound.json, die_faces.py req4.snap.
 Facts and sources: lock.facts.md."""
-import base64, collections, io, itertools, json, os, re, struct, subprocess, sys
+import base64, collections, html, io, itertools, json, os, re, struct, subprocess, sys, textwrap
 
 
 def root():
@@ -339,25 +339,57 @@ WD, HT = 900, 1494
 s = []; a = s.append
 INK, MUTE, ACC, BAD, OK, GRIDC = '#1f2328', '#656d76', '#0969da', '#cf222e', '#1a7f37', '#d0d7de'
 CC = ['#0969da', '#8250df', '#bf8700', '#1a7f37']          # corner colours TL TR BL BR
-a(f'<svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" viewBox="0 0 {WD} {HT}" '
-  f'width="{WD}" height="{HT}" role="img" aria-labelledby="t d">')
+a('')                                                        # the <svg> header, written once the height is known
 a('<title id="t">The die that knows the code</title>')
 a('<desc id="d">Captive (1990): coded doors are four-corner combination locks with 24 possible orders and no feedback '
   'until the fourth press; the DIE item, rolled in front of one, shows the next corner instead of a number. '
   'Computed by gen_lock.py from the game\'s table at $e358 and stserver runs of $e270 and $1207c. Facts: lock.facts.md.</desc>')
 a('<style>text{font-family:Helvetica,Arial,sans-serif;fill:%s;font-size:12px}.t{font-size:20px;font-weight:bold}'
   '.h{font-size:14px;font-weight:bold}.m{fill:%s}.c{font-family:Menlo,monospace;font-size:11px}'
-  '.s{font-size:11px;fill:%s}.b{font-size:11px;font-weight:bold}.k{font-size:9px;fill:%s}</style>' % (INK, MUTE, MUTE, MUTE))
-a(f'<rect width="{WD}" height="{HT}" fill="#ffffff"/>')
+  '.s{font-size:11px;fill:%s}.b{font-size:11px;font-weight:bold}.k{font-size:9px;fill:%s}.l{font-size:12.5px}.q{font-size:11px;fill:%s}</style>'
+  % (INK, MUTE, MUTE, MUTE, INK))
+a('')                                                        # the background, sized with the header
+PANELS = {}
+
+
+def para(x, y, w, txt, cls='s', lh=15, lead=None, cpx=5.3):
+    """Wrap txt to w pixels (cpx pixels per character), with an optional bold lead-in. Returns the next baseline."""
+    full = (lead + ' ' if lead else '') + txt
+    for k, line in enumerate(textwrap.wrap(full, int(w / cpx))):
+        body = html.escape(line, quote=False)
+        if k == 0 and lead:
+            body = '<tspan style="font-weight:bold;fill:%s">%s</tspan>%s' % (INK, html.escape(lead, quote=False),
+                                                                             html.escape(line[len(lead):], quote=False))
+        a(f'<text x="{x}" y="{y}" class="{cls}">{body}</text>')
+        y += lh
+    return y
+
+
+def close(idx, bottom):
+    x, y, w = PANELS[idx]
+    s[idx] = f'<rect x="{x}" y="{y}" width="{w}" height="{bottom - y}" rx="6" fill="none" stroke="{GRIDC}"/>'
+    return bottom
+
+
 a('<text x="24" y="38" class="t">The die that knows the code</text>')
-a('<text x="24" y="60" class="m">Captive (Antony Crowther, 1990): the coded doors inside a base, the lock that never says '
-  '"warmer", and the one item that cheats it.</text>')
+LEAD = ('Captive (Antony Crowther, Mindscape, 1990) is a real-time dungeon crawler: four droids raid procedurally generated '
+        'bases on a series of planets. Some doors are combination locks. The player clicks the door\'s four corners in some '
+        'order; only one of the 24 possible orders opens it, and the lock gives no sign of progress until the fourth click, '
+        'so a wrong guess always costs four clicks (panels A and B). One item, the DIE, normally rolls a random face. Rolled '
+        'while facing a coded door of the kind found inside a base, it shows instead a four with one red pip in the corner '
+        'to press next (C). A fixed note, the MESSAGE FROM RATT, spells out one order, which is right for the first door of '
+        'mission 1 (D).')
+ly_ = para(24, 62, 852, LEAD, 'l', 17, cpx=6.0)
 
 
 def panel(x, y, w, h, title, label):
-    a(f'<rect x="{x}" y="{y}" width="{w}" height="{h}" rx="6" fill="none" stroke="{GRIDC}"/>')
+    """Draw a panel's title; close() sizes its frame once its text is laid out."""
+    idx = len(s)
+    a('')
+    PANELS[idx] = (x, y, w)
     a(f'<text x="{x+14}" y="{y+24}" class="h">{title}</text>')
     a(f'<text x="{x+w-14}" y="{y+24}" text-anchor="end" class="s" style="fill:{ACC}">{label}</text>')
+    return idx
 
 
 def door(x, y, sz, o, pressed=None, hl=None):
@@ -376,8 +408,8 @@ def door(x, y, sz, o, pressed=None, hl=None):
 
 
 # A: the state word and the table -----------------------------------------------------------------------------------
-AY = 80
-panel(24, AY, 852, 412, 'A. A door is a state word, and its code picks one of 24 corner orders',
+AY = ly_ + 8
+pA = panel(24, AY, 852, 412, 'A. A door is a state word, and its code picks one of 24 corner orders',
       'read: $e358 in req4 and outside.snap; lock $e270 disassembled')
 ex = trace(8, [0, 2, 1])[-1][1]               # $6087: code 8 after TL, BL, TR
 bx, by, bw = 40, AY + 62, 30
@@ -434,10 +466,18 @@ for k, t_ in enumerate([
         f'The generator draws each door\'s code from the base RNG: high word of RNG x 24 (mapgen.md "Coded doors"; every code '
         f'0..23 occurs in its 80-base census).']):
     a(f'<text x="40" y="{ty+12+4*chh+8+15*k}" class="s">{t_}</text>')
+y = para(40, ty + 12 + 4 * chh + 8 + 15 * 3 + 6, 820, 'Top: the 16 bits of one door\'s state word, bit 15 on the left; the '
+         'coloured brackets group the bits into fields, decoded beneath. Below: the 24 entries of the game\'s order table. '
+         'Each small square is a door seen from the front, its corners numbered 1 to 4 in the order that opens it (TL '
+         'top-left, TR top-right, BL bottom-left, BR bottom-right); the hex byte is the table entry.', lead='How to read.')
+y = para(40, y + 4, 820, 'A door remembers only its code and the corners pressed so far. The table turns a code, 0 to 23, '
+         'into one of the 24 orders of four corners, each used once. Entry 9 holds an inconsistent fourth corner, which the '
+         'lock ignores and the die does not.', lead='Takeaway.')
+close(pA, y + 6)
 
 # B: the lock over sequences ---------------------------------------------------------------------------------------
-BY = AY + 426
-panel(24, BY, 852, 330, 'B. The lock gives nothing away until the fourth press',
+BY = y + 20
+pB = panel(24, BY, 852, 330, 'B. The lock gives nothing away until the fourth press',
       f'proven: {n_seq} sequences, {n_press} presses, model = emulator')
 rows = [('right order', [0, 2, 1, 3]), ('first two right', [0, 2, 3, 1]), ('wrong order', [1, 2, 0, 3]),
         ('a corner twice', [0, 0])]
@@ -468,10 +508,17 @@ for k, t in enumerate([
         f'of four different corners clear only on press 4. An early clear is always a corner pressed twice (cleared at press 2:',
         f'{clear_at[2]}, press 3: {clear_at[3]}, press 4: {clear_at[4]}). Every in-zone press also calls $e370, right or wrong (inferred: a click sound).']):
     a(f'<text x="40" y="{ty+15*k}" class="s">{t}</text>')
+y = para(40, ty + 15 * 4 + 6, 820, 'Each row is one sequence of clicks on a code-8 door, left to right. A square shows the '
+         'corners lit after the click (filled) and the corner just clicked (red outline); beside it are that corner\'s name '
+         'and the state word in hex.', lead='How to read.')
+y = para(40, y + 4, 820, 'Nothing tells a right corner from a wrong one. Three right clicks and three wrong ones look the '
+         'same until the fourth, which either opens the door or resets it, so a player without help can only try whole '
+         'orders.', lead='Takeaway.')
+close(pB, y + 6)
 
 # C: the die -------------------------------------------------------------------------------------------------------
-CY = BY + 344
-panel(24, CY, 852, 380, 'C. The DIE ($1207c): rolled facing a coded door, it shows the next corner',
+CY = y + 20
+pC = panel(24, CY, 852, 380, 'C. The DIE ($1207c): rolled facing a coded door, it shows the next corner',
       f'proven: {da[0]}/{da[1]} and {die_ok}/{die_n} hints; controls {da[2]}/{da[3]}, {ctrl_ok}/{ctrl_n}')
 z = 3
 fx, fy = 40, CY + 58
@@ -520,10 +567,18 @@ a(f'<text x="40" y="{ty}" class="b" style="fill:{BAD}">A slip in the table: for 
 a(f'<text x="40" y="{ty+15}" class="s" style="fill:{BAD}">the corner left over, {CN[orders[9][3]]}, opens it (census: '
   f'{" ".join(CN[c] for c in orders[9][:3] + [bad_hint])} clears, {" ".join(CN[c] for c in orders[9])} opens; the die shows '
   f'${0x30 + bad_hint:02x} 3/3 after three lit).</text>')
+y = para(40, ty + 15 + 22, 820, 'Left: the 12 ordinary faces as the game draws them, pixels enlarged. Right: the four hint '
+         'faces, one per corner, and the rule that picks one; n is how many corners are already lit, and the table is the '
+         'one in panel A. "Kind 2" and "kind 4" are door types set by the low bits of the door\'s tile: the doors inside '
+         'the req4 base are kind 2, the door outside mission 1\'s base is kind 4.', lead='How to read.')
+y = para(40, y + 4, 820, 'The die reads the door\'s order straight from the table, so a door it works on takes at most 4 '
+         'rolls and 4 clicks. It counts lit corners without checking them: after a wrong click it still shows the true '
+         'order\'s next corner. On a code-9 door its fourth hint is wrong.', lead='Takeaway.')
+close(pC, y + 6)
 
 # D: cost and the RATT note ---------------------------------------------------------------------------------------
-DY = CY + 394
-panel(24, DY, 852, 206, 'D. What the die is worth', 'computed; RATT text proven, its delivery inferred')
+DY = y + 20
+pD = panel(24, DY, 852, 206, 'D. What the die is worth', 'computed; RATT text proven, its delivery inferred')
 bars = [(f'blind, worst case: 24 orders x 4 presses', blind_worst, BAD),
         (f'blind, on average (12.5 orders)', blind_mean, '#d1802d'),
         (f'with the die: 4 rolls + 4 presses', die_cost, OK)]
@@ -549,9 +604,31 @@ for k, t in enumerate(['Fixed text at $13906, the same in three bases. It is',
                        'doors are kind 4, so the die gives them no hint; this',
                        'note is the only clue, right for the first door only.']):
     a(f'<text x="{NX+12}" y="{DY+112+13*k}" class="s">{t}</text>')
+y = para(40, DY + 206, 820, 'The bars count clicks (and rolls) needed to open one door. Blind means trying orders one '
+         'after another; the average assumes every code is equally likely and no order is tried twice.', lead='How to read.')
+y = para(40, y + 4, 820, f'The die cuts a door from {blind_mean:g} actions on average to at most {die_cost}; for the '
+         'compound door it gives no hint, and the RATT note is the only clue.', lead='Takeaway.')
+close(pD, y + 6)
+y += 32
+a(f'<text x="24" y="{y}" class="h">How we know</text>')
+y = para(24, y + 20, 852, 'proven: the game\'s own routines were run in an Atari ST emulator and agreed with a Python model '
+         'every time. computed: worked out by this figure\'s script. inferred: read from the 68000 code but not run.',
+         'q', lead='Labels.')
+y = para(24, y + 3, 852, 'stserver runs the emulator as a server that a script drives, calling one game routine at a time '
+         'with inputs written into memory ("labelled pokes", each one recorded). A census runs every case: all 256 '
+         'four-click sequences for each of the 24 codes, or every code with every set of lit corners. A control repeats a '
+         'test where the effect should be absent (the door left as kind 4): the die then gives random faces, so the test can '
+         'tell. die_all.py, die_hint.py and ratt_msg.py are the earlier scripts this figure re-runs.', 'q', lead='Checks.')
+y = para(24, y + 3, 852, 'req4 is mission 1\'s base just after entry (reached by setting the level-request word to 4). '
+         'outside.snap is the compound, the surface level where the party lands, in front of mission 1\'s base door. Hex '
+         'numbers such as $e270 are addresses of the game\'s code; item $66 is an item type.', 'q', lead='States.')
+HT = y + 44
 a(f'<text x="24" y="{HT-30}" class="s">Inferred: that the die runs when the player uses it, and how the RATT note reaches the party '
   f'(item code read, not played).</text>')
 a(f'<text x="24" y="{HT-15}" class="s">Every face and state word above comes from stserver calls of the game\'s own routines, with labelled pokes.</text>')
 a('</svg>')
+s[0] = (f'<svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" viewBox="0 0 {WD} {HT}" '
+        f'width="{WD}" height="{HT}" role="img" aria-labelledby="t d">')
+s[4] = f'<rect width="{WD}" height="{HT}" fill="#ffffff"/>'
 open(os.path.join(OUT, 'lock.svg'), 'w').write('\n'.join(s))
 print('wrote', os.path.join(OUT, 'lock.svg'))

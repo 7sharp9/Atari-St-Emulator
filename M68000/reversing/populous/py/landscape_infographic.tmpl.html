@@ -58,6 +58,7 @@ th,td{border-bottom:1px solid var(--line);padding:5px 8px;text-align:left;vertic
 th{color:var(--muted);font-weight:600;font-size:.82rem}
 .kv{display:grid;grid-template-columns:auto 1fr;gap:2px 12px;font-size:.92rem}
 .kv dt{color:var(--muted)} .kv dd{margin:0;font-family:var(--mono);font-size:.88rem;overflow-wrap:anywhere}
+.kv.terms{grid-template-columns:minmax(5.5em,10em) 1fr} .kv.terms dd{font-family:inherit;font-size:.92rem;overflow-wrap:normal} .kv.terms dt{font-weight:600;color:var(--ink)}
 .ok{color:var(--good);font-weight:600} .bad{color:var(--bad);font-weight:600}
 .chip{display:inline-block;font:600 .75rem var(--mono);padding:1px 7px;border-radius:10px;border:1px solid var(--line);margin-left:4px;vertical-align:1px}
 .chip.a{color:var(--accent);border-color:var(--accent)} .chip.b{color:var(--accent2);border-color:var(--accent2)}
@@ -93,7 +94,9 @@ pre{font:.84rem/1.5 var(--mono);background:color-mix(in srgb,var(--line) 35%,tra
 <main>
 
 <h1>How Populous draws the land, and how you change it</h1>
-<p class="lede">The landscape is one grid of small numbers. Every click that reshapes it adds or subtracts 1 from a corner of that grid and lets one rule keep the neighbours honest. The screen is then rebuilt from the grid by pasting pre-drawn 32 by 24 pixel blocks, far to near. This page runs a JavaScript port of the game's routines on the game's own block art. The port is checked against Python models of those routines, which were in turn checked against the emulator.</p>
+<p class="lede">Populous (Bullfrog, 1989; this is the Atari ST version) is a god game. You play a deity who never moves a unit directly. Your followers wander the island looking for flat land, settle on it, grow, and earn you mana, the points a god spends. What you can do is reshape the land: click a point to raise or lower it, flatten a hillside so a town can grow there, or spend more mana on earthquakes, volcanoes, swamps and floods aimed at the other side. The land is the game's whole interface, so it has to be cheap to change, cheap to draw and impossible to get into a state the game cannot draw.</p>
+<p>The game solves this with one grid of small numbers. A click adds or subtracts 1 at one point of that grid, and one rule (no two neighbouring points may differ by more than one level) spreads the change outwards until the grid is legal again. Because every legal piece of ground then fits one of a small set of shapes, the screen needs no 3D maths at all: it is rebuilt every frame by pasting pre-drawn 32 by 24 pixel picture blocks, one per square of ground, farthest first. The sections below take this apart in order: the grid (1), how a square of grid becomes a picture block (2), how the blocks are put on screen (3), how a click changes the grid (4), and how a new world's grid is grown from a single number (5). Section 6 says how each part was checked.</p>
+<p>Everything you can interact with here runs a JavaScript copy of the game's own routines on the game's own block art, loaded from its LAND0 to LAND3 graphics files. Nothing is an illustration: if a picture here differs from the game, the check in section 6 would have failed.</p>
 
 <div class="panel">
 <dl class="kv">
@@ -104,6 +107,25 @@ pre{font:.84rem/1.5 var(--mono);background:color-mix(in srgb,var(--line) 35%,tra
 <dt>checked</dt><dd id="proofline">loading</dd>
 </dl>
 </div>
+<p class="note">The panel above is the whole algorithm in four lines; the rest of the page explains each line. <code>>></code> is a right shift (here, divide by 4 and drop the remainder). A <code>$</code> number is hexadecimal.</p>
+
+<h3>Terms used on this page</h3>
+<div class="panel">
+<dl class="kv terms">
+<dt>corner</dt><dd>a point of the height grid. The map has 65 by 65 of them. Each holds a height from 0 (sea level) to 8.</dd>
+<dt>cell</dt><dd>the square of ground between four corners. The map has 64 by 64 cells. One cell is drawn as one picture block.</dd>
+<dt>block</dt><dd>one of the 70 pre-drawn 32 by 24 pixel pictures in a land's graphics file: slopes, flat ground, shore, sea, rocks, trees, houses.</dd>
+<dt>altitude</dt><dd>how many 8-pixel steps a cell's block is lifted on screen. It is worked out from the cell's corners, not stored by the player.</dd>
+<dt>land 0 to 3</dt><dd>the four art sets (grass, desert, snow and ice, rock and lava). They change the pictures only; the rules are the same.</dd>
+<dt>mana</dt><dd>the god's currency. Raising and lowering costs a little, the powers cost thousands.</dd>
+<dt><code>$</code> addresses (<code>$c0ee</code>)</dt><dd>where a routine or table sits in the running game's memory. They are citations into the reverse-engineering notes; the prose always says what the routine does.</dd>
+<dt>emulator</dt><dd>an Atari ST emulator that runs the original game; every number on this page comes from it or from code checked against it.</dd>
+<dt><code>callcap</code></dt><dd>an emulator command that starts from a saved game state, runs one game routine and records every byte of memory it changed. Running a reconstruction from the same state and comparing the bytes is how a routine is "proven".</dd>
+<dt>snapshot</dt><dd>a saved emulator state. <code>game_start</code> is the first frame of play on the first conquest world, GENESIS.</dd>
+<dt>N of N, N/N</dt><dd>N test cases run, all N matched exactly. A single mismatch would show as, say, 374/375.</dd>
+<dt>paint map mode</dt><dd>the game's own map-editing mode, in which raising, lowering and the powers cost no mana.</dd>
+</dl>
+</div>
 
 <div class="bar" style="margin-top:14px">
   <label>Land <select id="selLand"><option value="0">0 grass</option><option value="1">1 desert</option><option value="2">2 snow and ice</option><option value="3">3 rock and lava</option></select></label>
@@ -112,7 +134,8 @@ pre{font:.84rem/1.5 var(--mono);background:color-mix(in srgb,var(--line) 35%,tra
 
 <!-- ============================================================ 1 -->
 <h2>1. One height per corner</h2>
-<p>The world is 64 by 64 cells, but the game stores heights on the <b>corners</b>: 65 by 65 of them. A cell has no height of its own. It looks at its four corners and works out what shape it is. The other maps are derived from the corner heights and kept in step with them by one routine, <code>$c0ee</code>.</p>
+<p>The world is 64 by 64 cells, but the game stores heights on the <b>corners</b>: 65 by 65 of them. A cell has no height of its own. It looks at its four corners and works out what shape it is. Two neighbouring cells share an edge, so they share the two corners on it, and their pictures always meet at the same height: there can be no crack or step between them. The other maps are derived from the corner heights and kept in step with them by one routine, <code>$c0ee</code>.</p>
+<p class="note"><b>How to read the table.</b> Each row is one array in the game's memory: its address, its shape (a "word" is 2 bytes, a "byte" 1), what it holds, and which routines write it. Only the first row is ever changed by the player or the generator. The next three are caches: <code>$c0ee</code> recomputes them for a rectangle of cells whenever corners in it change. The exceptions are in the last column: rocks, swamps and buildings overwrite the block number, and trees and buildings live in the feature map.</p>
 <div class="panel">
 <table>
 <tr><th>address</th><th>size</th><th>what</th><th>who writes it</th></tr>
@@ -125,7 +148,16 @@ pre{font:.84rem/1.5 var(--mono);background:color-mix(in srgb,var(--line) 35%,tra
 
 <!-- ============================================================ 2 -->
 <h2>2. Four corners become one block</h2>
-<p>Set the four corners of a cell. The widget applies the rule from <code>$c0ee</code> step by step and draws the block the game would pick, from the real block sheet. On screen, x runs right and down, y runs left and down, so corner <b>a</b> is the cell's top, <b>b</b> its right, <b>c</b> its bottom and <b>d</b> its left.</p>
+<p>This is the step that replaces 3D rendering. For each cell, <code>$c0ee</code> turns the four corner heights into two numbers: an <b>altitude</b> (how high to draw the cell) and a <b>block number</b> (which picture to draw). It works like this:</p>
+<ol class="steps">
+  <li><b>Average.</b> Add the four corner heights and divide by 4, rounding down. That is the cell's base level.</li>
+  <li><b>Mask.</b> Mark each corner that is above the base level. Four yes/no answers make a 4-bit number, 0 to 15: corner a is bit 0 (worth 1), b is bit 1 (2), c is bit 2 (4) and d is bit 3 (8). That number is the block number, because blocks 1 to 14 of every land sheet are drawn as a slab with exactly those corners raised one level.</li>
+  <li><b>Flat ground.</b> If no corner is above the rounded-down average, all four corners must be equal (four numbers that are all at most their own average are all equal to it). A flat cell above the sea gets block 15, flat land, and its altitude drops by one. Block 15's art is a full level tall, so drawing it one level lower puts its top surface at the right height.</li>
+  <li><b>Shore.</b> If the base level is 0 (sea level) and the cell is a slope, 16 is added to the block number. Blocks 17 to 30 are shoreline versions of the same 14 slopes, so a coast gets its own art without any extra test.</li>
+  <li><b>Sea.</b> Block 0 is sea. A cell that becomes sea also loses its feature: water wipes out trees and buildings.</li>
+</ol>
+<p>Why 14 slopes are enough: mask 15 (all four corners above the average) cannot happen, because then the average would be higher, and the slope rule of section 4 keeps every corner within one level of its neighbours, so a raised corner is always exactly one level up. Every legal cell is therefore sea, flat, or one of 14 one-level slopes, and the art set covers all of them. One exception to the rule: a rock (block <code>$2f</code>) stays a rock through this recalculation unless its cell becomes fully sea.</p>
+<p class="note"><b>How to use the widget.</b> Type heights 0 to 8 into the four boxes, or press a preset. The boxes are laid out as the cell appears on screen: the map's x axis runs to the screen's right and down, its y axis to the left and down, so corner <b>a</b> (x, y) is the cell's top, <b>b</b> (x+1, y) its right, <b>c</b> (x+1, y+1) its bottom and <b>d</b> (x, y+1) its left. A box with a green ring is a corner above the average. The middle panel shows each step of the rule with your numbers; the right-hand picture is the block the game would draw, cut from the real block sheet of the land chosen at the top of the page. Heights that differ by more than one between corners are allowed here so you can see what the rule does with them, but raising, lowering, the powers and the world generator never produce them.</p>
 <div class="row">
   <div class="grow" style="flex:1 1 260px">
     <div class="diamond">
@@ -148,12 +180,14 @@ pre{font:.84rem/1.5 var(--mono);background:color-mix(in srgb,var(--line) 35%,tra
 </div>
 
 <h3>The 70 blocks of this land</h3>
-<p class="note">Click a slope, shore, flat or sea block to set corners that produce it. The others are not chosen by the corner rule: buildings, rocks, trees and ruins come from the people code, the scatter and the powers.</p>
+<p class="note">Every picture in the chosen land's graphics file, numbered as the game numbers them (decimal, then hex). Click a slope, shore, flat or sea block to set corners that produce it. The others are not chosen by the corner rule: buildings, rocks, trees and ruins come from the people code, the world generator's scatter and the powers. The chequered background marks transparent pixels; a block is pasted with a mask, so whatever was drawn behind it shows through there.</p>
 <div id="atlas"></div>
 
 <!-- ============================================================ 3 -->
 <h2>3. Painting the 8 x 8 window</h2>
-<p>The game never draws more than an 8 by 8 window of cells. There is no projection maths beyond two lines, because the art is pre-drawn isometric: a cell at column <i>c</i>, row <i>r</i> goes at a screen position fixed by its grid position and its altitude, and nearer cells simply overwrite farther ones. Drag the slider to watch the painter's order, then scroll the window with the minimap, as the game does.</p>
+<p>The game never draws more than an 8 by 8 window of cells. There is no projection maths beyond two lines, because the art is pre-drawn isometric: a cell at column <i>c</i>, row <i>r</i> goes at a screen position fixed by its grid position and its altitude, and nearer cells simply overwrite farther ones. This is the painter's algorithm: no depth buffer and no sorting, because drawing the rows from the back of the diamond to the front, and each row from left to right, is already a correct back-to-front order for this grid.</p>
+<p>The two formulas are the whole projection. Moving one cell along a column moves the block 16 pixels right and 8 down; moving one cell along a row moves it 16 left and 8 down; each level of altitude lifts it 8 pixels. 176 and 64 are the screen position of the window's top cell. Because x always comes out as a multiple of 16, every block starts on a 16-pixel boundary of the ST's screen memory, so the copy never has to shift any pixels sideways.</p>
+<p class="note"><b>How to use it.</b> The large picture is the land view, 320 by 200 pixels as on the ST, rebuilt from the GENESIS world. Drag <i>Blocks drawn</i> (or press play) to stop the frame after that many cells; the pink box outlines the cell drawn last, and the panel beside it shows the formulas with that cell's numbers. Change <i>View x</i> and <i>y</i>, or click the minimap below, to move the 8 by 8 window over the 64 by 64 map, as the game's scroll arrows and minimap clicks do. Tick <i>animate the sea</i> at the top of the page to see the shimmer.</p>
 <div class="bar">
   <label>Blocks drawn <input type="range" id="rngCells" min="0" max="64" value="64" style="width:200px"> <span class="mono" id="lblCells">64</span></label>
   <button id="btnPlay">play</button>
@@ -170,7 +204,7 @@ pre{font:.84rem/1.5 var(--mono);background:color-mix(in srgb,var(--line) 35%,tra
     <div class="panel calc" id="winCalc"></div>
     <h3 style="margin-top:12px">Minimap (click to move the view)</h3>
     <canvas id="cvMini" width="128" height="64" style="width:100%;border:1px solid var(--line);background:#000;cursor:crosshair"></canvas>
-    <p class="note">Cell (x, y) is plotted at pixel (64 + x - y, (x + y) >> 1), in the colour <code>$21ea0</code> gives its block. The game's own click test is <code>u = y + (x>>1) - 32</code>, <code>v = y - (x>>1) + 32</code>, view = (u - 3, v - 3). Blocks above $2e (rocks, swamp, ruins) have no entry in that table that has been traced, so they are drawn as plain land.</p>
+    <p class="note">The minimap is the whole 64 by 64 map squeezed into a 128 by 64 pixel diamond, one pixel per cell; in the game it sits on the open book at the top left of the screen, and the white box is the 8 by 8 window. Cell (x, y) is plotted at pixel (64 + x - y, (x + y) >> 1), in the colour <code>$21ea0</code> gives its block. The game's own click test is <code>u = y + (x>>1) - 32</code>, <code>v = y - (x>>1) + 32</code>, view = (u - 3, v - 3). Blocks above $2e (rocks, swamp, ruins) have no entry in that table that has been traced, so they are drawn as plain land.</p>
   </div>
 </div>
 <ol class="steps">
@@ -180,10 +214,14 @@ pre{font:.84rem/1.5 var(--mono);background:color-mix(in srgb,var(--line) 35%,tra
   <li><b>Earth walls.</b> After the grid, the two visible faces get earth skirts: sprite 77 stacked under the right edge (column 7), sprite 76 under the front edge (row 7), once per altitude level.</li>
   <li><b>No clipping maths.</b> A block whose screen offset comes out negative is skipped whole. Everything else is a masked copy of 24 rows by two 16-pixel groups.</li>
 </ol>
+<p class="note">The list above is what the game does for each of the 64 cells, in order, every frame: the whole frame is rebuilt from scratch from a copy of the backdrop, with no record of what was on screen before. The sea moves without any palette tricks: the game alternates between two drawings of the sea block on alternate frames.</p>
 
 <!-- ============================================================ 4 -->
 <h2>4. Reshaping it</h2>
 <p>In land mode, a left click in the land view raises the corner under the pointer by one; a right click lowers it. The pointer-to-corner rule is the game's own (<code>$119e6</code>): the screen column picks a diagonal of corners, and the last corner on it whose drawn height is at or above the pointer wins. Try it on the picture below. The four powers that change the terrain share the same machinery: they call the same raise and lower routine, then re-derive the cells they touched.</p>
+<p>The raise routine is short and recursive. It adds 1 to the clicked corner (heights stop at 8), then looks at the corner's eight neighbours in a fixed order: east, south-east, south, south-west, west, north-west, north, north-east. Any neighbour now more than one level below is raised by calling the same routine on it, which in turn checks its own neighbours, and so on until nothing is out of step. Lowering is the mirror image. This one rule is what keeps the map drawable: it guarantees the "within one level" property that section 2 relies on for its 14 slope blocks. It also means the cost of a click depends on where you click. A corner on a plain changes 1 corner; the same click on top of a peak drags the whole mountain up with it. On GENESIS, one raise at the peak at corner (11, 16) changed 134 corners.</p>
+<p>The price is 4 mana per corner changed plus 10. The game only checks that you have 10 before it starts, then charges the full price afterwards, so a big cascade can drive mana below zero. In the recorded game, that 134-corner raise took the player from 542 mana to -4.</p>
+<p class="note"><b>How to use the workbench.</b> Choose a tool, then click the land view on the left. <i>raise / lower</i> and <i>lower</i> act on the corner under the pointer (outlined in white as you move); <i>swamp</i> acts where you click; earthquake, volcano and flood act as soon as you press them. <i>World</i> picks one of three generated worlds; <i>reset</i> rebuilds it and <i>undo</i> steps back. With <i>paint map mode</i> ticked nothing costs mana; untick it to pay as the game does, starting from the game's opening mana of 399. <i>show corners</i> marks each corner of the window with a dot in its height colour. After a raise or lower, the corners it changed are marked on the picture (pink raised, blue lowered) and the slider under the log replays them one at a time. The log reports what changed and what it cost.</p>
 <div class="bar">
   <label>World <select id="selPreset"></select></label>
   <button id="btnReset">reset</button><button id="btnUndo">undo</button>
@@ -210,11 +248,12 @@ pre{font:.84rem/1.5 var(--mono);background:color-mix(in srgb,var(--line) 35%,tra
     <h3 style="margin-top:0">Plan view (click to move the view)</h3>
     <canvas id="cvPlan" width="325" height="325" style="width:100%;border:1px solid var(--line);cursor:crosshair"></canvas>
     <div class="legend" id="planLegend"></div>
-    <p class="note">Corner heights, one square each. The box is the 9 x 9 corners of the window. Pink squares are the corners changed by the last action, darker the later they changed.</p>
+    <p class="note">The whole map seen from straight above: one small square per corner, all 65 by 65, coloured by height with the key below (0 is sea). x runs to the right and y down, so the land view on the left shows this map turned 45 degrees and flattened. The white box is the 9 x 9 corners of the window; click elsewhere to move it. Pink squares are the corners raised by the last action and blue ones the corners lowered, darker the later they changed; purple squares are cells a swamp took; a dashed pink box marks where an earthquake or volcano will act.</p>
   </div>
 </div>
 
 <h3>The rules, all of them</h3>
+<p class="note">One row per terrain action. <i>rand</i> is the game's own random number generator (section 5), so <code>rand % 5</code> is a number from 0 to 4. "h" is a corner height. The last column gives the mana cost and, for raise and lower, the check made before acting. All four powers are random but repeatable: the same map and the same generator state give the same result, which is what lets them be tested exactly.</p>
 <div class="tw"><table>
 <tr><th>action</th><th>routine</th><th>what it does to the map</th><th>cost and gate</th></tr>
 <tr><td>raise / lower</td><td><code>$bf60</code> / <code>$d262</code> via <code>$1186c</code> / <code>$116fa</code></td><td>h +1 (or -1) at the corner, then each of the 8 neighbours, in the order E SE S SW W NW N NE, that is more than 1 below (above) it gets the same treatment. So a peak cannot stand on a plain: raising it raises a slope around it. Heights stop at 0 and 8. <code>$c0ee</code> then re-derives the cells in the changed box.</td><td>4 n + 10 mana for n corners changed; needs mana 10 first, so mana can go negative</td></tr>
@@ -228,6 +267,9 @@ pre{font:.84rem/1.5 var(--mono);background:color-mix(in srgb,var(--line) 35%,tra
 <!-- ============================================================ 5 -->
 <h2>5. Where the landscape comes from</h2>
 <p>A new world is not stored. It is grown from a 15-bit seed: three random-walk hills, then rocks and trees scattered in 22 clusters. The same generator uses the same raise routine as the player, which is why generated hills have the same slope limit as anything you build. Drag the slider to watch a world being made.</p>
+<p>The seed drives one random number generator, a linear congruential generator: each call multiplies the seed by a constant, adds another and keeps the low 15 bits, so it repeats after 32768 calls and a given seed always produces the same sequence. In a conquest game the seed comes from the game's level file (a base number stored for each group of 25 worlds, plus the world number's last three bits); in a custom game it is a number the player can type. Before the hills, resetting the world uses up 4 numbers from the generator, and on the custom path one more is drawn to decide by coin flip whether to switch to the next landscape type. That count of numbers already used is the "pre-rolls" setting below: 4 for GENESIS and SADINDON, 5 for the typed seed <code>$1234</code>.</p>
+<p>Each hill is a random walk. It starts at a random corner and raises it; the raise cascades exactly as a player's click does. The walk then steps a random distance (up to 2 corners either way in x and 4 in y for the first hill, the reverse for the second, 3 and 3 for the third) and raises again. It stops the moment the corner it has just raised is at height 6. The corner just raised has to reach 6, so a walk keeps going until it has lifted one patch of ground six levels, by landing on it again or by its own cascades from nearby. The scatter then picks 22 random 9 by 9 boxes and makes 30 random tries in each: the first 7 boxes place rocks, the other 15 trees, and only on land.</p>
+<p class="note"><b>How to use it.</b> Pick a world, or type a hexadecimal seed. At stage 0 the map is all sea. Each stage after that is one raise call of a walk, then one scatter cluster, so the slider runs from empty to finished. The left picture follows the walk's current position in the land view. The right picture is the corner map from above, coloured by height as in section 4, with each walk's path drawn as a line in its own colour, each scatter box as a teal square, and the area shown on the left as a white box. The text under the left picture explains the current step.</p>
 <div class="bar">
   <label>World <select id="selGen"></select></label>
   <label>Seed <input type="text" id="gSeed" style="width:5em" value="6302"></label>
@@ -255,13 +297,18 @@ derive all cells                                                         ($c0ee)
 scatter: 22 clusters; each: r1=rand(), r2=rand(); 30 tries at
          x = rand()%9 + r1%59, y = rand()%9 + r2%59; on land, not rock:
          clusters 0-6 set a rock ($2f + rand()%3), 7-21 set a tree ($32 + rand()%3)   ($12e06)</pre>
+<p class="note">The generator as pseudocode, in the order the game runs it. <code>%</code> is the remainder, <code>&amp; $7fff</code> keeps the low 15 bits, and the address in brackets at the end of a line is the game routine that line describes. "On land" in the last step also excludes cells that already hold rock block <code>$2f</code>.</p>
+<p><b>The point of this section:</b> a whole island, its hills, rocks and trees, is a pure function of one 15-bit number and how many numbers were drawn before the generator started. The game stores no maps for its conquest worlds, only a short record per group of 25 worlds in its level file.</p>
 
 <!-- ============================================================ 6 -->
 <h2>6. What was checked</h2>
-<p>The page's code is a JavaScript port (<code>py/landscape_core.js</code>). The port is compared, on random states, with the Python models, which were themselves compared with the emulator: generation byte-identical to three real <code>$b316</code> runs, the six powers against <code>callcap</code> on 2670 of 2670 states, the frame renderer on 12 of 12 real frames, a raise at (11, 16) on 134 of 134 corners.</p>
+<p>The evidence comes in two links. First, each game routine was rewritten in Python and compared with the real routine running in the emulator. Second, the JavaScript on this page (<code>py/landscape_core.js</code>) was compared with those Python versions on random inputs. If both links hold, the page does what the game does.</p>
+<p>The first link, game against Python, is recorded in the reverse-engineering notes (<code>terrain.md</code>, <code>graphics.md</code>): world generation byte-identical to three real runs of the game's new-world routine <code>$b316</code> (heights, all three derived maps and the final seed); the six powers matched under <code>callcap</code> on 2670 of 2670 states; the frame renderer matched the emulator's own screen on 12 of 12 real frames, all 64000 pixels of each; and a raise at (11, 16) changed the same 134 of 134 corners.</p>
+<p>The second link, Python against this page, is run every time the page is built. The build script makes random worlds, deliberately scribbles on them (adds rocks, swamps, house fields and trees in odd places, so every branch of every rule is taken), runs each routine in both languages and compares every byte. The table below is that run: each row is one routine, and the third column is cases matched out of cases run.</p>
 <div class="panel"><table id="proofTable"><tr><th>JS routine</th><th>compared with</th><th>states</th><th>what must match</th></tr></table></div>
 <p class="note" id="proofNote"></p>
 <p>The one fact on this page that is directly from a live game: a raise at corner (11, 16) on GENESIS changed 134 corners and took mana from 542 to -4 (<code>verify_cmd.py</code>). The workbench button above replays exactly that, and gets 134 and 4 x 134 + 10 = 546.</p>
+<p><b>What is not shown or not checked.</b> The workbench has no people, so the rules that depend on them are simplified (listed under the rules table). Minimap colours for blocks above <code>$2e</code> are not traced. The renderer check covers terrain only; walkers, the panels and the pointer are drawn by other code, which the frame match above covered in the game but which this page does not reproduce.</p>
 
 <footer>
 Built by <code>py/landscape_infographic.py</code> from <code>py/landscape_infographic.tmpl.html</code> and <code>py/landscape_core.js</code>; block art from the game's LAND0 to LAND3 and SPRITES0.DAT. Sources: <code>terrain.md</code> (sections 1 to 4), <code>graphics.md</code> (terrain renderer, minimap, mouse input).
@@ -626,7 +673,7 @@ function drawGen() {
   else if (st <= ns) { const s = rec.steps[st - 1], names = ['walk(2, 4)', 'walk(4, 2)', 'walk(3, 3)'];
     txt = `${names[s.walk]}, raise call ${st} of ${ns}: raise_point(${s.x}, ${s.y})\ncorners changed so far ${s.cum}` + (st < ns && rec.steps[st].walk !== s.walk ? '\nthe hill reached height 6, so this walk is finished' : '') + '\nEach call raises one corner and every neighbour it leaves more than 1 below; the walk then steps by a random amount and repeats until a corner reaches 6.'; }
   else { const k = st - ns - 1, cl = rec.clusters[k];
-    txt = `scatter cluster ${k + 1} of 22 (${cl.rock ? 'rocks' : 'trees'}): box starts at (${cl.x0}, ${cl.y0}), 30 tries, ${cl.placed.length} placed\n` + (k === 21 ? 'The world is complete.' : 'Rocks need land that is not sea and not already rock; trees only need non-sea land.'); }
+    txt = `scatter cluster ${k + 1} of 22 (${cl.rock ? 'rocks' : 'trees'}): box starts at (${cl.x0}, ${cl.y0}), 30 tries, ${cl.placed.length} placed\n` + (k === 21 ? 'The world is complete.' : 'A try counts only on a cell that is neither sea nor block $2f (the first rock block). Rocks replace the block; trees go into the feature map.'); }
   $('genLog').textContent = txt;
 }
 $('rngGen').oninput = e => { GN.stage = +e.target.value; drawGen(); };

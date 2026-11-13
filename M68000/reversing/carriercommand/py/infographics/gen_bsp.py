@@ -108,12 +108,86 @@ print('check:', nruns, 'runs', tot, per)
 print('stream bytes @%x:' % m['bsp'], M.RAM[m['bsp']:m['bsp'] + 12].hex(' '))
 
 # ---- svg ----------------------------------------------------------------------------------------
-W, H = 900, 1126
+from igtext import para, height
+W = 900
 s = []
 a = s.append
+NOTE = '#f6f8fa'
+
+def caption(x, y, w, read, take):
+    y = para(a, '**How to read.** ' + read, x, y, w, size=11.5, color='#1f2328')
+    return para(a, '**Takeaway.** ' + take, x, y + 4, w, size=11.5, color='#1f2328')
+
+def caption_h(w, read, take):
+    return height('**How to read.** ' + read, w, 11.5) + 4 + height('**Takeaway.** ' + take, w, 11.5)
+
+n_back = sum(1 for v in fr['faces'] if v < 0)
+LEAD = ('Carrier Command (Realtime Games, 1988) is a real-time strategy and vehicle game drawn in filled-polygon '
+        '3D on an 8 MHz 68000 with no floating point and no blitter. There is no z-buffer (no per-pixel depth '
+        'store), so the game must paint polygons far to near and let near ones cover far ones, the painter\'s '
+        'method. It gets that order at three levels: whole objects are sorted by depth; inside each model a '
+        'binary space partition (BSP) tree, built in advance and stored in the model\'s data, orders its faces; '
+        'and a back-face test drops faces that point away from the eye. This page follows one model, the Manta '
+        '(the craft that takes off from the carrier\'s deck), through all three.\n\n'
+        'A BSP tree in one paragraph: it cuts the model with planes. Faces on the far side of a plane from the '
+        'eye can never cover faces on the near side, so drawing the far side first is always right; applied '
+        'plane by plane down the tree, this orders every face with one sign test per plane each frame, from any '
+        'viewpoint, with no sorting of polygons.')
+A_READ = ('A side view of the Manta, nose to the right, with heights stretched 1.6 times. Each polygon is drawn '
+          'edge-on and coloured by the leaf of the tree it belongs to (L1 to L4); the tinted areas are the four '
+          'cells the planes cut space into. The dashed lines are the three splitting planes P0, P1 and P2. All '
+          'three contain the left-right (x) direction, which is why they show up as lines here.')
+A_TAKE = ('The planes cost no extra geometry: each is named by three of the model\'s own vertices. Every leaf\'s '
+          'polygons lie on its own side of each plane above it in the tree, or on the plane (checked for all 9 '
+          'leaf and plane pairs).')
+B_READ = ('The tree behind panel A. Oval boxes are nodes, one plane each; coloured boxes are leaves; A and B '
+          'label a node\'s two subtrees. An item is a group of polygons that share one back-face test. In '
+          'memory the tree is a byte stream: a node is its plane number, a 16-bit offset to subtree B, then '
+          'subtree A and subtree B; a leaf is $ff, an item count and the items.')
+B_TAKE = ('Each frame the game computes one side flag per plane and walks the stream. A flag of $ff (eye on the '
+          'plane\'s positive side) draws A before B; otherwise B goes first. Three flags order all 22 polygons.')
+C_READ = (f'Left: one real frame, the Manta as the game drew it from the view-space vertices the game itself '
+          f'computed, in its own colours (dither patterns averaged). Numbers give the order the game filled the '
+          f'polygons; a number\'s colour is its leaf. The frame comes from m_deck, a saved state with a Manta on '
+          f'the carrier\'s deck, with its two angle words poked to turn it. Right: the walk. The top line gives '
+          f'each plane\'s flag this frame and so which subtree went first. Each row is a leaf, in walk order, and '
+          f'each cell one of its items: filled cells were drawn (with their polygon numbers), struck cells failed '
+          f'the back-face test.')
+C_TAKE = (f'The nose, on the far side of P0 from this eye, is painted first and the fin last, on top of the deck. '
+          f'The back-face test throws away {n_back} of the {len(fr["faces"])} items before any filling. Our Python '
+          f'walk (py/render/model.py), given the same vertices, produces the same items, signs and polygon order.')
+D_READ = ('A face (blue) with three of its vertices v0, v1, v2. The normal n is the cross product of two edges; '
+          'd runs from v0 to the eye, which sits at the origin of view space. The dot product d . n is negative '
+          'when the face points away.')
+D_TAKE = ('No normals are stored, only three vertex indices per item; the cross product is redone each frame, '
+          'with the vectors halved until the arithmetic fits 16 bits. The same test on a plane\'s three '
+          'vertices yields the side flags that steer the walk.')
+E_READ = ('The three layers from coarse to fine, each tagged with how far it is established. "From code": read '
+          'from the disassembly only (inferred). "Matched in the emulator": the game\'s own draws recorded '
+          'while it ran and compared with our model. "Proven": the routine called in the emulator on test '
+          'cases, every result matching.')
+E_TAKE = (f'The BSP layer is the best covered: {tot["items_ok"]}/{tot["items"]} leaf items, '
+          f'{tot["polys_ok"]}/{tot["polys"]} polygons, {tot["faces_ok"]}/{tot["faces"]} back-face signs and '
+          f'{tot["plane_flags_ok"]}/{tot["plane_flags"]} plane flags agree. As a control, walking B before A '
+          f'instead differs from the game in {tot["reversed_walk_differs"]} of the {tot["draws_with_planes"]} '
+          f'draws that have planes.')
+KNOW = ('**How we know.** **Proven** means observed in an emulator running the game\'s own code, with a count '
+        'of matches (N/N = matches out of cases). A callcap restores a saved game state and calls one routine '
+        'with chosen inputs, recording what it returns. For the walk, a script stopped the running game at '
+        'every model draw and logged each leaf item, face sign and polygon filled: 1264 draws of 6 models in 31 '
+        'runs from seven saved states (24 of the runs turn the Manta through poked angles). Not covered: '
+        'polygons that take the game\'s clipping routine (none did in these runs) and Manta views where P1 and P2 have '
+        'different flags (4 of the 8 patterns occurred). $hex numbers are addresses in the game\'s memory, '
+        'given as citations.')
+CW2 = 392
+lead_h = height(LEAD, 852, 13)
+T0 = 64 + lead_h + 2
+dy1 = T0 - 80
+cap_ab = max(caption_h(CW2, A_READ, A_TAKE), caption_h(372, B_READ, B_TAKE))
+hAB = 482 - 80 + cap_ab - 2
 INK, MUTE, ACC, BAD, GRID = '#1f2328', '#656d76', '#0969da', '#cf222e', '#d0d7de'
 LEAFC = ['#0969da', '#8250df', '#1a7f37', '#bc4c00']     # L1..L4
-a(f'<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 {W} {H}" width="{W}" height="{H}" role="img" aria-labelledby="t d">')
+a('<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 900 __H__" width="900" height="__H__" role="img" aria-labelledby="t d">')
 a('<title id="t">BSP trees in 1988</title>')
 a('<desc id="d">Carrier Command (1988) hides surfaces three ways: objects sorted by depth in a binary tree, each model '
   'a precompiled BSP tree walked far side first, and a back-face test per leaf item. Drawn for the Manta, model 5. '
@@ -122,10 +196,9 @@ a('<desc id="d">Carrier Command (1988) hides surfaces three ways: objects sorted
 a('<style>text{font-family:Helvetica,Arial,sans-serif;fill:%s;font-size:12px}.t{font-size:20px;font-weight:bold}'
   '.h{font-size:14px;font-weight:bold}.m{fill:%s}.c{font-family:Menlo,monospace;font-size:11.5px}'
   '.s{font-size:11px;fill:%s}.w{fill:#fff;font-size:11px;font-weight:bold}</style>' % (INK, MUTE, MUTE))
-a(f'<rect width="{W}" height="{H}" fill="#ffffff"/>')
+a('<rect width="900" height="__H__" fill="#ffffff"/>')
 a('<text x="24" y="38" class="t">BSP trees in 1988</text>')
-a('<text x="24" y="60" class="m">Carrier Command (Realtime Games, 1988) has no z-buffer: every model carries a binary space '
-  'partition tree, compiled into its data, that orders its faces.</text>')
+para(a, LEAD, 24, 64, 852, size=13, color=INK)
 
 def panel(x, y, w, h, title):
     a(f'<rect x="{x}" y="{y}" width="{w}" height="{h}" rx="6" fill="none" stroke="{GRID}"/>')
@@ -137,7 +210,8 @@ def tag(x, y, text, col):
     return wpx
 
 # A: the model and its planes, side view -------------------------------------------------------
-panel(24, 80, 430, 400, 'A. The Manta (model 5) and its three planes')
+a(f'<g transform="translate(0,{dy1:.1f})">')
+panel(24, 80, 430, hAB, 'A. The Manta (model 5) and its three planes')
 SX, SY, SC = 236, 282, 1.45       # side view: z to the right (nose), y up
 def sv(v): return (SX + SC * v[2], SY - SC * v[1] * 1.6)   # y stretched 1.6x for legibility
 # region tints (the four leaves' half-spaces), clipped to a box
@@ -180,7 +254,8 @@ a(f'<text x="38" y="124" class="s">{m["nv"]} vertices from a box builder, {cnt["
 a(f'<text x="38" y="138" class="s">is the set of faces in one cell of the planes.</text>')
 
 # B: the tree --------------------------------------------------------------------------------------
-panel(466, 80, 410, 400, 'B. The tree, as bytes in the model')
+caption(38, 482, CW2, A_READ, A_TAKE)
+panel(466, 80, 410, hAB, 'B. The tree, as bytes in the model')
 def nodebox(x, y, label):
     a(f'<rect x="{x-24}" y="{y-13}" width="48" height="24" rx="12" fill="#f6f8fa" stroke="{INK}"/>'
       f'<text x="{x}" y="{y+4}" text-anchor="middle" class="c" style="font-weight:bold">{label}</text>')
@@ -210,9 +285,12 @@ a(f'<text x="480" y="{by+54}" class="s">B starts at A + offset. Stream at ${m["b
 a(f'<text x="480" y="{by+76}" class="s">The side flag of a plane is $ff when the eye is on its positive</text>')
 a(f'<text x="480" y="{by+90}" class="s">side: then A is drawn before B, otherwise B before A ($8e8c).</text>')
 
+caption(480, 482, 372, B_READ, B_TAKE)
+a('</g>')
 # C: one frame -------------------------------------------------------------------------------------
-cy0 = 494
-panel(24, cy0, 852, 356, 'C. One frame: the walk the game made, matched by the model')
+cy0 = T0 + hAB + 14
+hC = 380 + caption_h(820, C_READ, C_TAKE) - 2
+panel(24, cy0, 852, hC, 'C. One frame: the walk the game made, matched by the model')
 # render: project the captured view-space vertices with the game's divide, scaled to the box
 def gp(v):
     X = v[0] + fc[0]; Y = -v[1] - fc[1]; Z = v[2] + fc[2]
@@ -271,8 +349,10 @@ a(f'<text x="{wx}" y="{yy+104}" class="s">model.py\'s walk on the same vertices 
 a(f'<text x="{wx}" y="{yy+118}" class="s">and {len(draw_seq)} polygons in the same order (panel E, row 2).</text>')
 
 # D: back-face test ---------------------------------------------------------------------------------
-dy0 = cy0 + 370
-panel(24, dy0, 420, 248, 'D. The test in each leaf item ($9426)')
+caption(38, cy0 + 380, 820, C_READ, C_TAKE)
+dy0 = cy0 + hC + 14
+hDE = 258 + max(caption_h(CW2, D_READ, D_TAKE), caption_h(CW2, E_READ, E_TAKE)) - 2
+panel(24, dy0, 420, hDE, 'D. The test in each leaf item ($9426)')
 ox, oy = 92, dy0 + 150
 v0 = (ox, oy); v1 = (ox + 120, oy + 14); v2 = (ox + 54, oy - 40)
 poly([v0, v1, v2], fill=ACC, fill_opacity='0.15', stroke=ACC)
@@ -296,7 +376,8 @@ a(f'<text x="38" y="{dy0+210}" class="s">that steer the walk: $940a stores $ff w
 a(f'<text x="38" y="{dy0+230}" class="s">Three vertex indices per item: no normals are stored.</text>')
 
 # E: three layers and the evidence ------------------------------------------------------------------
-panel(456, dy0, 420, 248, 'E. Three layers, and how far each is proven')
+caption(38, dy0 + 258, CW2, D_READ, D_TAKE)
+panel(456, dy0, 420, hDE, 'E. Three layers, and how far each is proven')
 ey0 = dy0 + 54
 rows = [
     ('1', 'Objects: depth-sorted into a binary tree of', '18-byte nodes at $5a82a (128 max), drawn far', 'to near by $5d94.', ('from code', MUTE)),
@@ -310,6 +391,12 @@ for n, l1, l2, l3, (tg, tc) in rows:
     if l3: a(f'<text x="494" y="{ey0+29}" class="s">{l3}</text>')
     tag(494, ey0 + (46 if l3 else 32), tg, tc)
     ey0 += 64 if l3 else 50
+caption(470, dy0 + 258, CW2, E_READ, E_TAKE)
+KY = dy0 + hDE + 14
+kh = height(KNOW, 820, 11.5)
+a(f'<rect x="24" y="{KY:.1f}" width="852" height="{kh+16:.1f}" rx="6" fill="{NOTE}" stroke="{GRID}"/>')
+para(a, KNOW, 38, KY + 20, 820, size=11.5, color=INK)
+H = int(KY + kh + 30)
 a('</svg>')
-(OUT / 'bsp.svg').write_text('\n'.join(s))
+(OUT / 'bsp.svg').write_text('\n'.join(s).replace('__H__', str(H)))
 print('wrote', OUT / 'bsp.svg')

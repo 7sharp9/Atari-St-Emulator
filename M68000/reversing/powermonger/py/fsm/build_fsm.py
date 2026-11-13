@@ -248,7 +248,7 @@ def node_label(kind, v):
     return ('$%02X  %s' % (v, LABEL.get(v, '?'))) if kind == 'm' else ('$%X\\n%s' % (v, HUBS[v]))
 
 
-def write_graph(name, title, lanes, edges, stubs, shared=(), roles=True, adjacent=((0, 1),)):
+def write_graph(name, title, lanes, edges, stubs, shared=(), roles=True, adjacent=((0, 1),), head=None, lead=(), notes=()):
     """lanes: [(lane name, [row, row, ...])], each row a list of nodes drawn left to right on one rank.
 
     An edge inside a lane, or from one lane to the next lane down, is drawn as an edge. Any other edge is drawn
@@ -304,7 +304,7 @@ def write_graph(name, title, lanes, edges, stubs, shared=(), roles=True, adjacen
         lines.append('%s -> %s [%s, constraint=false%s];' % (a_, b_, style[kind], (', label="%s"' % lab) if lab else ''))
 
     L = ['digraph G {', 'graph [rankdir=TB, fontname="%s", bgcolor="white", nodesep=0.2, ranksep=0.4, pad=0.2, '
-         'labelloc=t, labeljust=l, fontsize=18, label=<%s>, newrank=true];' % (FONT, title),
+         'labelloc=t, labeljust=l, fontsize=18, label=<%s>, newrank=true];' % (FONT, '' if head else title),
          'node [fontname="%s", fontsize=11, margin="0.06,0.03", height=0.3];' % FONT,
          'edge [fontname="%s", fontsize=9, arrowsize=0.6, color="#333333"];' % FONT]
     firsts = []
@@ -351,9 +351,61 @@ def write_graph(name, title, lanes, edges, stubs, shared=(), roles=True, adjacen
     dot = os.path.join(out, name + '.dot')
     open(dot, 'w').write('\n'.join(L))
     svg = os.path.join(out, name + '.svg')
-    subprocess.run(['dot', '-Tsvg', dot, '-o', svg], check=True)
+    if head:
+        graph = os.path.join(out, name + '.graph.svg')
+        subprocess.run(['dot', '-Tsvg', dot, '-o', graph], check=True)
+        compose(graph, svg, head, lead, notes)
+    else:
+        subprocess.run(['dot', '-Tsvg', dot, '-o', svg], check=True)
     subprocess.run(['rsvg-convert', '-b', 'white', '-w', '1800', svg, '-o', os.path.join(out, name + '.png')], check=True)
     print('wrote', svg)
+
+
+def compose(graph, dst, head, lead, notes):
+    """Wrap the graphviz drawing with a title, a lead paragraph above it and reading notes below it."""
+    import re
+    from xml.sax.saxutils import escape
+    sys.path.insert(0, here)
+    from svgkit import Svg
+    g = open(graph).read()
+    g = g[g.index('<svg'):]
+    m = re.search(r'viewBox="([\d.]+) ([\d.]+) ([\d.]+) ([\d.]+)"', g)
+    gw, gh = float(m.group(3)), float(m.group(4))
+    W = max(gw, 860.0)
+    g = re.sub(r'<svg width="[\d.]+pt" height="[\d.]+pt"', '<svg width="%g" height="%g"' % (gw, gh), g, count=1)
+    el, y = [], 28.0
+
+    def put(x, y, t, size, weight='normal', color='#212121'):
+        el.append('<text x="%.1f" y="%.1f" font-family=\'Helvetica, Arial, sans-serif\' font-size="%s" '
+                  'font-weight="%s" fill="%s">%s</text>' % (x, y, size, weight, color, escape(t)))
+
+    put(16, y, head[0], 19, 'bold')
+    y += 19
+    put(16, y, head[1], 12, color='#424242')
+    y += 24
+    for kind, t in lead:
+        for r in Svg.wrap(t, W - 32, 12.5):
+            put(16, y, r, 12.5)
+            y += 17
+        y += 5
+    gy = y
+    y = gy + gh + 14
+    for kind, t in notes:
+        if kind == 'h':
+            y += 6
+            put(16, y, t, 13.5, 'bold')
+            y += 19
+            continue
+        col = '#1b5e20' if kind == 'take' else '#212121'
+        for r in Svg.wrap(t, W - 32, 12):
+            put(16, y, r, 12, color=col)
+            y += 16
+        y += 5
+    H = y + 10
+    svg = ('<svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" viewBox="0 0 %g %g" '
+           'width="%g" height="%g">\n<rect x="0" y="0" width="%g" height="%g" fill="#ffffff"/>\n' % (W, H, W, H, W, H)
+           + '\n'.join(el) + '\n<g transform="translate(%g,%g)">\n%s</g>\n</svg>\n' % ((W - gw) / 2, gy, g))
+    open(dst, 'w').write(svg)
 
 
 STUBMAP = {}
@@ -369,6 +421,31 @@ def M(*vs):
 
 def H(*vs):
     return [('h', v) for v in vs]
+
+
+# lead and reading notes shared by both figures: ai.md "What the loop actually is", "The entity FSM", "Evidence
+# taxonomy"; fsm.facts.md "Lead and captions"
+LEAD_COMMON = [('lead',
+    'PowerMonger (Bullfrog / Electronic Arts, 1990) is a war game on a land of settlements. Every man and boat on the '
+    'map is a 50-byte record, and what it is doing is one byte, its mode (byte 31). Once per tick, the game\'s '
+    'simulation step, the loop $14b62 runs the handler for each record\'s mode, and the handler usually writes the '
+    'next mode. There is no other per-unit AI: these mode graphs are the behaviour.')]
+NOTES_COMMON = [
+    ('h', 'How to read it'),
+    ('how', 'A rounded box is a mode: its number and a short name. A square box is a routine several modes call, '
+     'named by its address. A dashed grey box is a copy of a node that lives in another lane or in the other figure, '
+     'drawn there so that no arrow crosses the whole figure. Lane titles name the job or the part of the cycle.'),
+    ('how', 'Arrows. Solid black: the handler sets the mode directly. Blue dashed: a walk. Most moves are made in two '
+     'steps: the handler stores the mode to arrive in as the previous mode (byte 30) and sets mode $10; the walk $10 '
+     'and its legs $12 move the man, and on arrival ($14fdc) the game copies byte 30 into byte 31. The blue arrow is '
+     'drawn straight from the mode that started the walk to the mode it arrives in. Purple dashed: only the previous '
+     'mode is set, so it takes effect at the man\'s next arrival. Grey dotted: a call to a shared routine.'),
+    ('how', 'Evidence. Every edge is code read: py/fsm/mode_edges.py lists each write of bytes 30 and 31 in the '
+     'disassembly of the game, and build_fsm.py draws them; no edge is typed by hand. The node fill is the evidence for '
+     'the handler itself: green means proven, a Python rewrite of the handler matched the game\'s own 68000 code on '
+     'every changed byte over many saved states (for example 18452/18452 bytes over 1889 states for the 45 modes of '
+     'the $15000 page, 1043/1043 for the shepherd modes); white means code read only.'),
+]
 
 
 def main():
@@ -391,7 +468,28 @@ def main():
         STUBMAP[('h', v)] = 's_army'
     write_graph('fsm_jobs', '<b>PowerMonger entity modes: the civilian job cycles</b><br/><font point-size="11">mode byte 31 of the 50-byte record, '
                 'dispatched by the iterator $14b62 through the table $14bb4; edges extracted from the code</font>',
-                lanes1, E, stubs1, shared=(4, 5), roles=False, adjacent=())
+                lanes1, E, stubs1, shared=(4, 5), roles=False, adjacent=(),
+                head=('PowerMonger entity modes: the civilian job cycles',
+                      'mode byte 31 of the 50-byte record, dispatched by the iterator $14b62 through the table $14bb4; '
+                      'edges extracted from the code'),
+                lead=LEAD_COMMON + [('lead',
+                      'This figure draws the civilian side. A man\'s job (farmer, merchant, fisher or shepherd) is a bit '
+                      'in byte 7 of his record, and each job is a short cycle of modes, one lane each. Below them are '
+                      'the lord\'s work order, which sends men of any job to fell timber, build or make pots, and the '
+                      'home and winter modes the jobs return through. Orders, camps and fighting are in the companion '
+                      'figure "groups, orders and combat".')],
+                notes=NOTES_COMMON + [
+                    ('h', 'What to take from it'),
+                    ('take', 'Each job is a small closed loop. A farmer goes to his field, walks a fixed path home and '
+                     'delivers food; a fisher goes to a fishing cell, looks for a catch and brings home food +4; a '
+                     'merchant starts a trip and comes back to his home lord; a shepherd takes the herd out through '
+                     'the gate and rounds it up again. Farmers, merchants and fishers park in $7C in winter, where '
+                     'the settlement heartbeat runs, and $3C08 send home re-enters a lane by the man\'s flag bits.'),
+                    ('take', 'Three cycles show only on the whole graph: the pot maker\'s loop closes through the '
+                     'delivery dispatch $600A ($46, the pots path, $6A, $46 again, $42); the fisher\'s loop closes '
+                     'through $3C08, whose bit-2 case sends him home to $5E; and the target picker $4F68 in the army '
+                     'figure.'),
+                ])
     # ------------------------------------------------ figure 2: groups, orders, combat
     lanes2 = [
         ('Orders: the executor walks the lead to the target', [H(0x3888, 0x3154, 0x38ce, 0x390e, 0x4a7a, 0x6128, 0x3248)]),
@@ -409,7 +507,28 @@ def main():
         STUBMAP[('h', v)] = 's_jobs'
     write_graph('fsm_army', '<b>PowerMonger entity modes: groups, orders and combat</b><br/><font point-size="11">the lead and his men; '
                 'the walk $10/$12 ends in the previous mode (byte 30); edges extracted from the code</font>',
-                lanes2, E, stubs2, shared=(2, 3, 4))
+                lanes2, E, stubs2, shared=(2, 3, 4),
+                head=('PowerMonger entity modes: groups, orders and combat',
+                      'the lead and his men; the walk $10/$12 ends in the previous mode (byte 30); edges extracted '
+                      'from the code'),
+                lead=LEAD_COMMON + [('lead',
+                      'This figure draws the army side: what a captain\'s lead and his men do once an order arrives. '
+                      'The top lane holds the order executors, routines that walk the lead to the target with the '
+                      'arrival mode stored as his previous mode. Below are the arrival modes (take food, get men, '
+                      'trade, spy and the rest), recruiting and camp, movement and keeping rank behind the lead, and '
+                      'combat. The civilian job cycles are in the companion figure.')],
+                notes=NOTES_COMMON + [
+                    ('h', 'What to take from it'),
+                    ('take', 'Most order arrows are blue: an order does not change what the lead does at once, it sets '
+                     'a walk whose arrival mode is the order\'s real work. The followers mostly keep rank: $06 marches '
+                     'with the lead and $08 walks back to a lost rank slot.'),
+                    ('take', 'Combat is a handful of modes, not a separate system. $2C picks a target through $4F68, '
+                     'whose arms share one tail ($34 shoot, or a $10 chase ending in $2E); $56A6 engages and $32 is '
+                     'the melee; at zero health $5590 rolls kill or rout, and on a rout stamps the loser\'s previous mode $3C, '
+                     'run away. The dashed "water veto" edge $36 to $66 is the one path into $66: a chase step onto '
+                     'water resets the mode to $00, keeps the previous mode, and the next walk arrives in it (seen live only with '
+                     'a one-byte poke of the previous mode).'),
+                ])
 
 
 main()

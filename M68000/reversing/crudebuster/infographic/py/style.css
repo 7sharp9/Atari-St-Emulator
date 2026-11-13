@@ -96,3 +96,16 @@ td:first-child { color: var(--ink); font-weight: 600; white-space: nowrap; }
 .pill.ok { color: var(--pill-ok); background: var(--pill-ok-bg); } .pill.part { color: var(--pill-part); background: var(--pill-part-bg); } .pill.no { color: var(--pill-no); background: var(--pill-no-bg); }
 footer { font: 400 .82rem/1.6 var(--mono); color: var(--muted); border-top: 1px solid var(--rule); padding-top: 14px; }
 @media (max-width: 560px) { .plate { padding: 12px; } }
+/* explanatory blocks added for readers who do not know the game */
+.note { background: var(--plate); border-left: 3px solid var(--accent); padding: 12px 14px; }
+.note p { max-width: none; font-size: .95rem; }
+.terms { display: grid; gap: 10px 24px; grid-template-columns: repeat(auto-fit, minmax(min(100%, 280px), 1fr)); margin: 0; }
+.terms div { border-top: 1px solid var(--rule); padding-top: 8px; min-width: 0; }
+.terms dt { font: 600 .82rem var(--mono); color: var(--ink); margin-bottom: 3px; }
+.terms dd { margin: 0; color: var(--ink2); font-size: .92rem; line-height: 1.5; }
+.steps { margin: 0; padding-left: 1.4em; display: flex; flex-direction: column; gap: 8px; max-width: 72ch; color: var(--ink2); }
+.steps li { padding-left: 4px; line-height: 1.55; }
+.steps strong { color: var(--ink); }
+.read { font-size: .9rem; line-height: 1.55; color: var(--ink2); background: color-mix(in srgb, var(--accent) 7%, var(--plate)); border: 1px solid var(--rule); padding: 10px 14px; max-width: 80ch; }
+.read strong, .take strong { color: var(--ink); }
+.take { border-left: 3px solid var(--box-atk); padding-left: 12px; }

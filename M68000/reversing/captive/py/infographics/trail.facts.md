@@ -55,3 +55,31 @@ natural base `base1/in.snap`.
   (the process ends with the script).
 - Not drawn, not checked here: the coordinator's code readings that `$88b8` latches the party cell's byte into
   `1766(A6)` and that the lift path (`$9768`/`$977c`) writes no footprint.
+
+## Explanatory text (lead, "How to read", "Takeaway", "How we know")
+
+| claim in the added text | source |
+|---|---|
+| Captive is a real-time dungeon crawler; four droids; procedurally generated bases on a series of planets | `README.md` opening paragraph |
+| creatures move in groups of up to nine sharing one map cell; a group sees only along a straight line | ai.md "Summary" |
+| "does this without searching for a path": the decision reads flags, facing, the party's position and one cell byte | ai.md "Summary" ("decides from four inputs") and "Decision rule"; a description of that rule, not a separate finding |
+| plane 2 holds one direction per cell beside the tile map; generator fills it, party overwrites it | ai.md "Map planes", "The trail" |
+| the digger moves cell by cell from the entrance and numbers each cell it carves; each arrow points to the open neighbour dug earliest (lowest number) | mapgen.md "The digger and rooms" (D4 counter, starts at the entrance), "The flow field (plane 2)"; ai.md "Map planes" bits 0-2 |
+| only rows 0-14 drawn; north is up; (column, row) | computed (`ROWS` = 15 from the tile grid; `DIRV` N = (0,-1), entrance value 0 points off the top edge, ai.md "The trail") |
+| cells that lead to a lift lead to where a chasing group gives up | ai.md "Decision rule" step 4 (4-7 = forget), "Summary" |
+| a sample is the state every 60,000 instructions, one creature update in this base; group 16 acts every 18th (period 16 + 2) at 4, 22, 40, 58, 76 | ai.md "Scheduling" (60,000 steps per frame from `req4.snap`; acts every period + 2 frames; group 16 period 16); the samples are the generator's `TRACK_STEP` and asserted move list |
+| following footprints moves forward in time and ends at the party; the party takes the entrance's catchment with it; no observed chase has yet read a footprint | ai.md "The trail" ("Where the trail leads", "A natural chase") |
+| sight compares coordinates only, reaches a neighbouring floor's block; seeing through the floor is inferred | ai.md "Decision rule" (last paragraph); mapgen.md "Floors and lifts" (floors as levels inferred), Flags below |
+| a think is one turn of a group, every period + 2 creature updates | ai.md "Scheduling" |
+| aware = has noticed the party (bit 3, cleared when it forgets); relentless groups wander instead of following the trail; ranged types may attack from a distance (`$10b2c`) | ai.md "Decision rule", "Per-type tables" |
+| four inputs; a value 4 to 7 in the cell makes the group forget; a lift is where a chase ends | ai.md "Summary", "Decision rule" step 4 |
+| proven / computed / inferred, gate, pokes, control | ai.md header ("Proof labels"), "Decision rule" **Proven** paragraph; 26 = 3000 - 2974, computed from the cache |
+| req4 = mission 1's base, request word poked to 4, party on the entrance; p14/p2 after E, E, S and four more S; base1 by play | ai.md opening paragraph, "The trail" |
+| a step is one 68000 instruction | `DEVELOPING.md`/emulator convention (`instructionsPerFrame`, CLAUDE.md "VBL every 12,000 steps") |
+
+## Notes from the explanatory pass
+
+- ai.md "A natural chase" says the last two moves are sight moves with "the party 2 and then 1 cell S". The figure's
+  table (computed from the cached track) has group 16 at (14,3) for both the turn at sample 58 and the step at
+  sample 76, so the party is 2 away at both; the step at 76 brings it to (14,4), 1 away. The figure's numbers are
+  unchanged; the doc's "1" describes the distance after the step, not the one the decision read.

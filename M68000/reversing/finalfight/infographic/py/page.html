@@ -5,6 +5,11 @@
 <header>
   <h1>Final Fight hit detection</h1>
   <p class="dek">Every fighter carries two boxes. A punch connects when its attack box meets a victim's hurt box, inside a depth slot 21 pixels deep. Everything here is read from the program ROM of the CPS1 game and checked against saved frames of MAME.</p>
+  <div class="lead">
+    <p>Final Fight is Capcom's 1989 arcade fighting game for one or two players. You pick Guy, Cody or Haggar and fight through the city's stages against a gang whose members the stage script sends in as the screen scrolls. The street has depth: Up and Down move a fighter towards the back of the street or towards the camera, Left and Right move along it, and a jump lifts him off the ground. So a hit test has to answer three questions, not two: is the victim near enough along the street, is he at the same depth, and does the blow's rectangle meet his at the right height?</p>
+    <p>The game answers them in two stages. First, once per frame, each fighter that is near enough along the street and close enough in depth to a player is put on that player's short list. Then only the pairs on those lists are tested, with one overlap test per axis that uses a single unsigned comparison instead of two signed ones. Three things stand out: the depth slot is only 21 pixels deep and not centred on the player, enemies never hit each other with their fists because only the players have lists, and a blow that stays out for many frames still lands only once.</p>
+  </div>
+  <div class="note"><b>Setup.</b> Final Fight is an arcade game on Capcom's CPS1 board, not an Atari ST game. It runs in MAME 0.289 (set <code>ffightuc</code>, the US version), which serves both as the emulator and as the reference for what really happens; the repo's own ST emulator is not involved. The board's main processor is a 68000 at 10 MHz, the CPU family of the ST, so the repo's 68000 disassembler reads its program ROM. Addresses written like <code>$7932</code> are locations in that program; they are citations, and the text says what each one does. The screen runs at about 60 frames a second.</div>
   <div class="legend" aria-label="Legend">
     <span class="key"><i class="sw hurt"></i>hurt box: where a fighter can be struck</span>
     <span class="key"><i class="sw atk"></i>attack box: what a blow can reach</span>
@@ -12,9 +17,29 @@
   </div>
 </header>
 
+<section class="terms-sec" aria-label="Terms used on this page">
+<h2>Terms used on this page</h2>
+<dl class="terms">
+  <div><dt>frame</dt><dd>One pass of the game's main loop, once per video frame. Times on this page are in frames (60 frames is about one second).</dd></div>
+  <div><dt>x, y, ground line</dt><dd>Game pixels in the stage's own coordinates. x runs along the street to the right. y runs <em>upward</em> and also stands for depth: walking towards the back of the street raises y. The <b>ground line</b> is the y of a fighter's feet on the floor. Standing, y equals the ground line; in a jump y rises and the ground line stays where he took off, so the ground line is his depth.</dd></div>
+  <div><dt>record and <code>+44</code></dt><dd>Every player, fighter and boss is a 192-byte record in work RAM. <code>+44</code> means the byte 44 bytes into the record. The fields this page uses are named where they appear.</dd></div>
+  <div><dt>hurt box, attack box</dt><dd>Two rectangles per fighter, each stored in the ROM as a centre offset (dx, dy) and a half width and half height. The hurt box is where he can be struck; the attack box is what his blow can reach. A box id of 0 means no box.</dd></div>
+  <div><dt>fighter, boss, prop</dt><dd>The program keeps separate pools of records: the two players, up to 13 fighters (the ordinary enemies), up to 8 bosses and up to 16 breakable props such as drums and phone booths. Names in capitals (BRED, DAMND) are the game's own, from the name it prints over the enemy health bar.</dd></div>
+  <div><dt>hexadecimal</dt><dd>Numbers written <code>$80</code> are hexadecimal: <code>$80</code> is 128, <code>$100</code> is 256, <code>$ffff</code> is 65,535. Stages are numbered from 0, as the program numbers them.</dd></div>
+</dl>
+<h3 class="sub">How sure we are</h3>
+<dl class="terms">
+  <div><dt>read in the ROM</dt><dd>Read from the disassembled program, not run. The page also says "ROM" for this.</dd></div>
+  <div><dt>seen live</dt><dd>Observed in MAME while the game ran, with a count: write watches on a field, breakpoint counters, or a field compared frame by frame.</dd></div>
+  <div><dt>saved frames</dt><dd>127 copies of the whole work RAM, each saved on one frame of a run (with a screenshot of the same frame). A rule is checked by re-deriving a field from the others in every copy.</dd></div>
+  <div><dt>gate, "51 of 52"</dt><dd>A gate is a script that re-runs such a check from scratch and prints matches out of cases. "51 of 52" means the rule predicted 51 of the 52 values the game had stored; the miss is explained where it is quoted. The scripts are named in the last section.</dd></div>
+</dl>
+</section>
+
 <section>
 <h2>Two boxes on every fighter</h2>
 <p>Each animation frame names a hurt box and an attack box. The game rebuilds both every frame from the animation, the facing and the position, and keeps them in the fighter's record. These two frames are from MAME with the boxes read back out of work RAM. Both were taken on the frame a blow landed: the victim's record already names the attacker and the blow. Hover a box for its numbers.</p>
+<p class="read"><b>How to read the frames.</b> Each picture is one MAME screenshot at the arcade's own resolution, 384 by 224 pixels, with every box the game held in RAM on that frame drawn on top. Blue boxes are hurt boxes, amber boxes are attack boxes, and the two red boxes are the pair that connected: the attacker's attack box and the victim's hurt box. The boxes are placed with the game's own conversion from stage to screen coordinates (x minus the camera, and y turned upside down), not fitted by eye. Under each frame, the table replays the game's four checks on those two boxes in the order the game runs them; each row is explained in the next section.</p>
 <div class="pair">
   <figure>
     {{HEROA}}
@@ -27,11 +52,19 @@
     <div class="worked">{{WORKEDB}}</div>
   </figure>
 </div>
+<p class="take"><b>Takeaway.</b> A box is a table entry chosen by the animation frame, not the outline of the sprite. In the left frame BRED's arm is drawn well past his hurt box, and his attack box covers both Cody and the fighter beside him; only Cody is hurt.</p>
 </section>
 
 <section>
 <h2>Is it a hit? Try the test</h2>
 <p>These are the four checks a blow passes, in the order the game runs them, on boxes taken from the ROM. Player 1 stands at the origin facing right. Move the victim and see which check fails first.</p>
+<ol class="steps">
+  <li><b>Reach list.</b> The victim's x must be within 128 px of yours, either side. The game adds 128 to the difference and compares the result with 256 as an unsigned number, so a negative difference wraps to a huge value and fails the same single compare.</li>
+  <li><b>Depth lane.</b> The victim's ground line minus yours must lie from 12 below to 9 above, so a victim can stand up to 9 px further back than you or 12 px closer to the camera. In the special attack the slot widens to 24 either way.</li>
+  <li><b>Overlap in x.</b> With dx the distance from the attack box's centre to the hurt box's centre and s the two half widths added, the boxes meet when dx lies from -s to +s. The game adds s and makes one unsigned compare with 2s, the same trick as step 1.</li>
+  <li><b>Overlap in y.</b> The same test on the heights. It runs only when x passed.</li>
+</ol>
+<p class="read"><b>How to use it.</b> Choose a blow and a victim, then drag the sliders: the first moves the victim along the street (pixels in front of you), the second moves him in depth. The buttons set up the cases named on them. The four boxes under the drawing show each check with its numbers; the two overlap checks show "not run" when the victim never made the list, or when x already failed, because the game stops there too.</p>
 <div class="lab">
   <div class="presets" aria-label="Presets">
     <button class="pre" type="button" data-p='{{PRE1}}'>Cody's jab on DAMND (frame above)</button>
@@ -60,6 +93,7 @@
 <section>
 <h2>One frame, in order</h2>
 <p>The whole thing runs once per frame, inside the main loop, and is built around the players. Fighters and props offer themselves to the players, and the players' lists decide who is tested against whom.</p>
+<p class="read"><b>How to read this.</b> Seven steps in the order the program runs them in one frame. Under each step, the grey line gives the routine's address in the ROM and the evidence for the step: "read in the ROM" alone means the step was read and not run; a count means it was checked against the game.</p>
 <ol class="flow">
   <li><div><h3>The animation picks the boxes</h3><p>Each animation frame carries a hurt-box id (<code>+44</code>) and an attack-box id (<code>+45</code>) in the fighter's record. Id 0 means no box. Bit 7 of the attack id marks a grab instead of a blow.</p><span class="addr">animation scripts $3b1c, $3b3c · read in the ROM, seen live</span></div></li>
   <li><div><h3>The game builds both boxes</h3><p>The record points at its character's box table. A hurt box is an 8 byte entry, an attack box a 16 byte entry: dx, dy, half width, half height, and for an attack also a damage row, a hit type and a sound. The centre is the fighter's x plus dx (minus dx when he faces left) and his y plus dy. A fighter with <code>+97</code> set has no hurt box, and a grab id in the air gives no attack box.</p><span class="addr">$32c4 from $8cc4 (players) and $3382 (the rest) → +112 to +126 · re-derived equal in 51 of 52 attack boxes and 212 of 213 hurt boxes of 127 saved frames</span></div></li>
@@ -69,17 +103,21 @@
   <li><div><h3>The victim's handler runs</h3><p>It stores the attacker (<code>+60</code>), the blow id (<code>+22</code>) and the hit type (<code>+63</code>), plays the hit sound, takes the damage, spawns a spark midway between the two boxes, freezes both fighters for 6 frames, pays the score and queues the enemy bar for the HUD. Which handler runs depends on the victim's pool and kind.</p><span class="addr">$70ae table by tag → $736e (fighters), $75d0 (a fighter hitting a player), $70e6 (props) · hit-stop 6 on both fighters, seen live</span></div></li>
   <li><div><h3>The next frame, the victim reacts</h3><p>The victim's own handler sees its health (<code>+24</code>) differ from the shadow copy (<code>+26</code>) and enters the hit reaction chosen by the hit type: a short stun for the weak blows, a knockdown for type 3 and 7. The blow that landed keeps its id in the victim's record until the attacker's box ends, which is why one jab counts once.</p><span class="addr">$a87c, $ace2 (players), $2730a and per-kind tables (fighters)</span></div></li>
 </ol>
+<p class="take"><b>Takeaway.</b> The expensive part, testing pairs, is bounded by the lists: at most 21 candidates per list and only pairs with a player on one side. A fighter's blow on another fighter is never tested at all.</p>
 </section>
 
 <section>
 <h2>How far each blow reaches</h2>
 <p>Boxes to scale around the fighter's feet, facing right, from the ROM tables. The blue box is the standing hurt box. A special draws every box of the move at once. The first number is the distance of the front edge from the fighter's centre.</p>
+<p class="read"><b>How to read this.</b> One row of cells per character, all at the same scale; the grey line is the ground and the dashed blue box the character's standing hurt box. Each amber box is one attack box, placed where it sits relative to his feet when he faces right. Under each cell: the box id (hexadecimal), the front edge in pixels from his centre, the damage the box deals (from the character's own damage table, read at rank 4), the hit type (which reaction it causes, explained in the next section) and the points it scores. The heading of each row gives the combo counter's limit, which grows by 2 per hit (so Guy's 8 allows 5 hits, Cody's 6 allows 4 and Haggar's 4 allows 3), and the ROM address of the character's box table. The special attack is a spin with several boxes in turn; all of them are drawn together.</p>
 {{REACH}}
+<p class="take"><b>Takeaway.</b> The three characters trade speed for power: Guy's chain is five quick light hits, Haggar's three slow heavy ones. Haggar's jab does 18 against Guy's 6 and its animation lasts 22 frames against Guy's 12.</p>
 </section>
 
 <section>
 <h2>What a blow does</h2>
 <p>A blow's box carries its damage row, its hit type and its sound. Damage comes from a per-character table at that row, so the same box gives different numbers to different characters and ranks. A fighter hit by a player takes the damage scaled by his defence class; a player hit by a fighter takes it unscaled.</p>
+<p class="read"><b>How to read the tables.</b> The first table lists Cody's blows: the box id, how far the front edge reaches in front of his centre, the band of heights above his feet that the box covers, the damage, the hit type and the points paid per hit. "hard" marks the box's hard-hit flag. The <b>rank</b> is the game's running difficulty level: it rises by one every 600 frames and falls on player events, and it selects the column of the damage, health and defence tables. A <b>defence class</b> is a per-enemy number that scales a player's damage; for example a 10-point blow does 8 to fighters of class 4 or 6. The second table says what a player does when hit with each hit type; times are frames until he can act again. For scale, Cody starts with 144 health and BRED with 28.</p>
 <div class="tablewrap">{{COBLOWS}}</div>
 <div class="tablewrap">
 <table class="data">
@@ -92,6 +130,7 @@
 <tr><td>any, health below 0</td><td>fatal knockdown, 92 frames, then the death state</td><td>1 event</td></tr>
 </table>
 </div>
+<p class="take"><b>Takeaway.</b> Damage and reaction travel with the box, not with the move's name: the box names a row of its owner's damage table, and the difficulty rank picks the column.</p>
 </section>
 
 <section>
@@ -108,7 +147,7 @@
 
 <section>
 <h2>When nobody can be hit</h2>
-<p>A fighter with no hurt box cannot be a victim, whatever overlaps him.</p>
+<p>A fighter with no hurt box cannot be a victim, whatever overlaps him. Most of these cases work by giving the record no hurt box, or by keeping it off the lists; only a hit from the other player starts a counter of its own.</p>
 <div class="tablewrap">
 <table class="data">
 <tr><th>State</th><th>How the game does it</th><th>Evidence</th></tr>
@@ -123,6 +162,7 @@
 
 <section>
 <h2>How this was checked</h2>
+<p class="read"><b>How to read this.</b> One row per claim on this page: what was compared with what, and the result as matches out of cases. A rule checked against saved frames was re-derived from other fields in each of the 127 saved copies of work RAM and compared with what the game had stored; a live check was made while MAME ran. The last row lists what has not been checked.</p>
 <div class="tablewrap">
 <table class="data ledger">
 <tr><th>Claim</th><th>Check</th><th>Result</th></tr>
@@ -135,7 +175,7 @@
 <tr><td>Not tested here</td><td>one blow lands once as a live count; the special's wide lane; the prop lane table decoded entry by entry</td><td>open</td></tr>
 </table>
 </div>
-<p class="foot">Source: <code>M68000/reversing/finalfight/frame.md</code> ("Hit and hurt boxes", "Hit resolution", "Damage dispatch"), <code>player.md</code>, <code>twoplayer.md</code> and the scripts in <code>infographic/py/</code>. Frames are saved states of the stage bot (<code>scratchpad/finalfight/gfx/dump</code>), which plays with a survival poke, so health in these frames is not a result of the hits shown.</p>
+<p class="foot">Source: <code>M68000/reversing/finalfight/frame.md</code> ("Hit and hurt boxes", "Hit resolution", "Damage dispatch"), <code>player.md</code>, <code>twoplayer.md</code> and the scripts in <code>infographic/py/</code>; each fact's source is listed in <code>infographic/finalfight_hit_detection.facts.md</code>. Frames are saved states of the stage bot (<code>scratchpad/finalfight/gfx/dump</code>), which plays with a survival poke, so health in these frames is not a result of the hits shown.</p>
 </section>
 </div>
 <div id="tip" role="tooltip"></div>

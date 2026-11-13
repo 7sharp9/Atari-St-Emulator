@@ -105,14 +105,49 @@ button:focus-visible, input:focus-visible { outline: 2px solid var(--body); outl
 .cells div.c2 { color: var(--cut) } .cells div.ca { color: var(--muted) } .cells div.c3 { color: var(--body) }
 svg text { font-family: var(--f-mono); font-size: 10.5px; fill: var(--muted) }
 .foot { color: var(--muted); font-size: 13.5px; max-width: 78ch; display: flex; flex-direction: column; gap: 8px }
+.guide { max-width: 78ch; font-size: 14px; color: var(--ink); border-left: 3px solid var(--line); padding: 2px 0 2px 12px; display: flex; flex-direction: column; gap: 6px }
+.guide b { font-weight: 600 }
+.take { max-width: 78ch; font-size: 14.5px; border-left: 3px solid var(--hair); padding: 2px 0 2px 12px }
+.take b { font-weight: 600 }
+.terms { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 300px), 1fr)); gap: 10px 22px; margin: 0 }
+.terms div { font-size: 13.5px; min-width: 0 }
+.terms dt { font-family: var(--f-mono); font-size: 12px; font-weight: 500; color: var(--hair) }
+.terms dd { margin: 2px 0 0 }
+.what { padding: 12px 16px 0; font-size: 14px }
+.panel .guide { font-size: 13px; color: var(--muted) }
 @media (max-width: 560px) { .idx { width: 38px; height: 38px; font-size: 32px } }
 </style>
 
+<!-- Sources for the explanatory text (terms strip, "How to read", "Why it matters", plate "what" lines).
+  Game premise (entrance, walk on their own, turn at walls, fall, skills given by panel then click, exit counts as saved):
+    mechanics.md "The lemming array" (spawn at entrance), "The per-frame update" (no bit = walk), "Collisions" (wall turns, falls,
+    splat), "Skill assignment" (panel index then click), exit row (saved counter $26c18).
+  step = one 68000 instruction, VBL every 12,000 steps: CLAUDE.md "Emulator behaviours" (instructionsPerFrame in Program.fs);
+    tick = 36,000 steps = 3 VBL: mechanics.md "Basher and miner".
+  Level 1600 wide, +0/+2 are x/y; feet: mechanics.md "The lemming array", bomber crater "under the feet at (810, 84)".
+  Snapshot sel.snap = level 1 with the digger icon selected: mechanics.md "Skill assignment"; deterministic, byte for byte:
+    infographic/README.md.
+  poke, control, driven/read (proven/read), hits: mechanics.md header and "The other skills" preamble ("pokes are inputs").
+  Record field names (hot x/y, dir, fall +19, bricks +20, bomb +21, clmb +22, flt +23, dead +24, cell +25, ahd +26, saved
+    cells +27..35): mechanics.md spawn table, "Collisions" (walker tests +22, fall tests floater; $8b6e stores 25/26),
+    "Skill assignment" table, blocker paragraph.
+  Two states at once ($8100 splat; $00010080 bomber on blocker): mechanics.md floater control and blocker paragraph.
+  Blocker turns walkers at cell edges, terrain unchanged: mechanics.md blocker paragraph (turns at x = 728 and 739).
+  Step cut-offs: mechanics.md "Collisions", step sweep.
+  Exit and traps one mechanism ($33d0 stamps trigger area with (slot << 4) | code); busy while animating (bit 1 of slot +0):
+    mechanics.md "Objects" and the code 4 row.
+  Bomber timeline 79 / 16 / 52 ticks: mechanics.md bomber bullet. $10 = 16, $3c = 60, $4f = 79: hex conversion.
+  Blocker chart: lemmings 1 and 5 from opposite sides (1 turns by $8bce at 728 heading right, 5 by $8bdc at 739 heading left),
+    0 to 50 ticks = 30 samples of 60,000 steps: mechanics.md blocker paragraph and blockerPanel() below.
+  Plate marker is drawn by drawRun() below, not the game's sprite; count offsets are in the click struct $26c04:
+    mechanics.md "Skill assignment".
+  Notes: eyebrow says Psygnosis 1991; reversing/lemmings/README.md title says 1990 (kept as is). -->
 <main>
 <section class="hero">
   <div class="eyebrow">Atari ST, Psygnosis 1991 · read from the running game</div>
   <h1>Inside <span>Lemmings</span></h1>
-  <p class="lede">Every skill in the game is a bit in one 32-bit word, and every collision is one of two lookups: a one-bit terrain bitmap or a map of 4-pixel cells. We booted the original disk in an emulator, handed lemming 0 each skill, and watched what the memory did.</p>
+  <p class="lede">In Lemmings, small creatures drop out of an entrance and walk on their own: they follow the ground, turn at walls and fall into pits. The player cannot steer them. The only control is to pick a skill from the panel and click one lemming, which turns it into a climber, a digger, a stair builder and so on, until enough of them reach the exit to count as saved.</p>
+  <p class="lede">This page shows how the game stores and runs that, read out of its memory while it played. Every skill a lemming has is a bit in one 32-bit word, and every collision is one of two lookups: a one-bit terrain bitmap or a coarse map of 4-pixel cells. We booted the original Atari ST disk in an emulator, gave the first lemming out (lemming 0) each skill in turn, and recorded what memory did.</p>
   <div class="facts">
     <div class="fact"><b>44</b><span>bytes per lemming record, up to 10 live in level 1</span></div>
     <div class="fact"><b>17</b><span>state bits; the highest-priority set bit picks the handler</span></div>
@@ -122,15 +157,33 @@ svg text { font-family: var(--f-mono); font-size: 10.5px; fill: var(--muted) }
 </section>
 
 <section>
+  <div class="sec-head"><div class="eyebrow">Before you read</div><h2>Terms used on this page</h2></div>
+  <dl class="terms">
+    <div><dt>step, tick</dt><dd>A step is one 68000 instruction run by the emulator. The game moves every lemming once per tick: 36,000 steps, or three video frames. Times on this page are in ticks.</dd></div>
+    <div><dt>x, y</dt><dd>Level pixels. Level 1 is 1600 pixels wide. y counts down from the top, so a lemming that climbs has a shrinking y; a lemming's (x, y) is the pixel its feet stand on.</dd></div>
+    <div><dt>snapshot</dt><dd>A saved emulator state. The skill runs start from one snapshot of level 1 in play with a skill icon already selected, so each run starts from the same place. The emulator is deterministic: the same snapshot and inputs give the same run, byte for byte.</dd></div>
+    <div><dt>poke</dt><dd>Writing a value straight into the game's memory: a skill count, a wall in the terrain, a lemming's position. A poke is an input we chose to set up a test, never a finding.</dd></div>
+    <div><dt>control</dt><dd>The same snapshot and run length with the one change left out (no click, or no poked steel). A difference between the run and its control is caused by that one change.</dd></div>
+    <div><dt><span class="tag p">driven</span> <span class="tag r">read</span></dt><dd>Driven: we made it happen in the emulator and saw the effect in memory. Read: worked out from the game's disassembled code, not yet made to happen.</dd></div>
+    <div><dt>hits</dt><dd>How many times the CPU executed one code address during a run. A routine that runs 0 times in the control and once in the test is the one that did the work.</dd></div>
+    <div><dt>$7802, $10</dt><dd>A <code>$</code> marks a hexadecimal number. Code and data addresses such as <code>$7802</code> are citations into the game's memory for anyone repeating the work; the text always says what each one does.</dd></div>
+  </dl>
+</section>
+
+<section>
   <div class="sec-head"><div class="eyebrow">The record</div><h2>One lemming is 44 bytes</h2>
-  <p class="lede">The array starts at <code>$23484</code>. Each tick a loop at <code>$7802</code> loads x, y and the state word, tests the bits in a fixed order, and jumps to that bit's handler. A word of zero means walk.</p></div>
+  <p class="lede">The game keeps one fixed-size record per lemming, in an array at <code>$23484</code>. Each tick a loop at <code>$7802</code> loads a lemming's x, y and its 32-bit state word, tests the word's bits in a fixed order, and jumps to the handler of the first bit it finds set. A word of zero means walk.</p></div>
   <div class="scroll-x"><div class="rec" id="rec"></div></div>
   <div class="legend"><span><i class="sw k"></i>field used by a skill or a collision we drove</span><span><i class="sw"></i>read from the code</span><span><i class="sw u"></i>role not yet established</span></div>
+  <div class="guide"><p><b>How to read it.</b> The two rows are the 44 bytes in order, 22 to a row; each box is one field, as wide as its size in bytes. The small number is the field's byte offset from the start of the record (+14 is 14 bytes in), or for dir, its values. Scroll sideways on a narrow screen.</p>
+  <p><b>Field names.</b> hot x, hot y: the offset from the lemming's position to the top-left corner of its sprite. dir: +1 walking right, -1 left. fall: a counter that grows while it falls. bricks: the builder's bricks left. bomb: the bomber's countdown. clmb, flt: set when the climber or floater skill is given; the walker tests the first at a wall and the fall code tests the second while falling. dead: non-zero once the lemming is dead or has left. cell, ahd: the object-map cell under the lemming, and the one two columns ahead and two rows up (see the next section). The nine "cells saved" bytes hold what a blocker overwrote, so the map can be restored.</p></div>
+  <p class="take"><b>Why it matters.</b> A lemming's state is a set of bits, not one number, so two states can be on together: a lemming that hits the ground too fast carries the falling and splat bits at once, and a blocker given a bomber carries the "Oh no" and blocking bits.</p>
 </section>
 
 <section>
   <div class="sec-head"><div class="eyebrow">Two ways to collide</div><h2>The ground is a bitmap, everything else is a cell</h2>
   <p class="lede">Walking, falling, digging and bashing all test or edit the terrain bitmap. Walls for turning, exits, traps and steel live in a separate map, checked after every move.</p></div>
+  <div class="guide"><p><b>How to read it.</b> Left, the terrain bitmap and what the walker does with what it finds; "rows" are pixel rows above or below its feet. Right, the object map: each cell holds a code in its low four bits, and the table lists what each code does to a lemming standing in it. The tag says whether we drove that case or read it from the code.</p></div>
   <div class="two">
     <div class="panel">
       <h3>Terrain bitmap</h3>
@@ -159,8 +212,10 @@ svg text { font-family: var(--f-mono); font-size: 10.5px; fill: var(--muted) }
         <tr><td>6</td><td>trap death, bit 2, 14 ticks</td><td><span class="tag p">driven</span></td></tr>
         <tr><td>$a</td><td>centre of a blocker, no effect</td><td><span class="tag p">driven</span></td></tr>
       </table>
+      <p class="cap">Each cell covers 4 by 4 pixels, so the cell under a lemming at (x, y) is (x/4, y/4).</p>
     </div>
   </div>
+  <p class="take"><b>Why it matters.</b> Turning round is a cell code, not terrain. A blocker stamps codes 2 and 3 into the object map around itself, and walkers turn at the edge of those cells; the terrain under them does not change.</p>
 </section>
 
 <section>
@@ -168,8 +223,11 @@ svg text { font-family: var(--f-mono); font-size: 10.5px; fill: var(--muted) }
   <p class="lede">Flat ground, a solid step of 0 to 8 rows put in front of lemming 0, one sample per tick. Then the same lemming set down on level 1's own exit, with the exit cells swapped for each other code.</p></div>
   <div class="two">
     <div class="panel"><h3>Step sweep</h3><div><svg id="steps" role="img" aria-label="Lemming 0 meeting a step of 0 to 8 rows" width="100%"></svg></div>
-      <p class="cap">The step is poked into the bitmap at x = 752 (an input). Dots are the lemming's y on each tick it moved; orange ticks have bit 13 set.</p></div>
+      <p class="cap">The step is poked into the bitmap at x = 752 (an input). Dots are the lemming's y on each tick it moved; orange ticks have bit 13 set.</p>
+      <div class="guide"><p><b>How to read it.</b> Nine runs side by side. Column H is a run against a solid step H pixel rows high (brown, to scale), with lemming 0 walking in from the left on flat ground. Each dot is its foot height on a tick where its height or state changed: blue is plain walking, orange is the ledge-hop bit (13). The last dot sits on top of the step. Under each column: step (walked straight up), hop with the number of hop ticks, or turns (the step counts as a wall and the lemming walks back).</p></div>
+      <p class="take"><b>Result.</b> Steps of 1 or 2 rows are walked up at once; 3 to 6 rows take a hop rising 2 rows a tick; 7 rows or more is a wall. These are the cut-offs read from the walker's code, confirmed one height at a time.</p></div>
     <div class="panel"><h3>The exit and the traps</h3>
+      <div class="guide"><p><b>How to read it.</b> Each row is one run. Lemming 0 is set down beside level 1's exit, and the exit's two cells are overwritten with the code in the first column (1 is the level's own exit). The second column is what happened when it walked into them at x = 888. "Bit 1, 8 ticks" means its state word showed bit 1 for 8 ticks before it was removed.</p></div>
       <table>
         <tr><th>Cells</th><th>Lemming at x = 888</th><th></th></tr>
         <tr><td>1</td><td>bit 1, 8 ticks, then gone; saved count 0 to 1</td><td><span class="tag p">driven</span></td></tr>
@@ -181,22 +239,28 @@ svg text { font-family: var(--f-mono); font-size: 10.5px; fill: var(--muted) }
       <p class="cap">Level 1's exit is two cells at column 222, rows 33 and 34 (world x 888, y 132 to 139). The lemming is placed at x = 870 on the ground beside it (a position poke); the pen it normally paces in ends at x = 853.</p>
       <p class="cap">Each object keeps a 34-byte copy of its type at <code>$23044</code>: frame, frame count, size and trigger cells. A trap is a one-shot: the first lemming starts its 15 frames, one a tick, and a lemming arriving during them walks through (driven: the second lemming crossed at frame 9 and lived; one arriving 10 ticks after the end died).</p></div>
   </div>
+  <p class="take"><b>Why it matters.</b> Exits and traps are one mechanism. At level start each object stamps its trigger area into the object map with its code, and the code, not the picture, decides what a lemming touching it does. A trap's own animation is its "busy" flag: while it plays, the trap lets lemmings through.</p>
 </section>
 
 <section>
   <div class="sec-head"><div class="eyebrow">The eight skills</div><h2>What each one does to the world</h2>
   <p class="lede">Each plate replays a real run: the pixels are the game's own terrain bitmap, sampled from the emulator. Orange marks terrain the skill removed, gold marks terrain it added. Drag the slider or press play.</p></div>
+  <div class="guide"><p><b>How to read a plate.</b> The picture is a small window of the level, each game pixel drawn as a block: pale blue is empty, brown is solid ground (lighter on its top row), orange is ground the skill removed so far and gold is ground it added. The figure with green hair marks lemming 0 at its recorded position (a marker, not the game's sprite) and the grey dots behind it are where it has been. The caption under the picture gives the window's x and y range in level pixels.</p>
+  <p>The line under the slider gives the tick, lemming 0's position and the state bits set at that moment. The header chips give the skill's state bit and where the game keeps the number of uses left (count +30 is offset 30 in the game's mouse-and-panel block). The notes say what the run shows; the grey line at the foot says what was poked to set the run up and what the control was.</p></div>
   <div class="plates" id="plates"></div>
 </section>
 
 <section>
   <div class="sec-head"><div class="eyebrow">The state word</div><h2>Seventeen bits, in priority order</h2>
   <p class="lede">When several bits are set, the one nearest the top of this list runs. A solid outline means we watched the bit set and its handler move the lemming; a dashed one is read from the code or unnamed.</p></div>
+  <div class="guide"><p><b>How to read it.</b> Each tile is one bit of the state word, in the order the update loop tests them. The first line is that order, the bit number and the bit's value as a hex mask (bit 15 is $8000, the value you would see in the word). Then the state's name and what we saw it do.</p></div>
   <div class="bits" id="bits"></div>
+  <p class="take"><b>The order.</b> The "Oh no", the cell-5 trap death, the splat and the explosion come first, then falling and the ledge hop, then the exit and the cell-6 trap death, then the skills; with no bit set the lemming walks. The builder's shrug after its last brick, bit 0, is tested last of all.</p>
 </section>
 
 <section class="foot">
   <h3>How this was checked</h3>
+  <p>Everything here was measured on the Atari ST version, level 1, in this project's own emulator; other levels and other versions of the game were not run.</p>
   <p>Every plate comes from a snapshot of the game after level 1 starts. The skill index and count were set directly, then the pointer was aimed at lemming 0 and a click sent to the game's own handler. A control from the same snapshot, with no click or without the poked feature, is the comparison. Walls, pits and steel cells in the plates for climber, floater, basher and the steel tests were written into memory to give the skill something to meet; the level itself does not contain them.</p>
   <p>The exit and trap runs place lemming 0 beside the exit by writing its x and y, and the step sweep writes the step into the bitmap. The trap runs also copy a trap's type record over the decoration above the exit. Still open: the object pictures, and the blocker's refusal test. Source notes and scripts: <code>reversing/lemmings/mechanics.md</code>.</p>
 </section>
@@ -258,28 +322,28 @@ function drawRun(cv, run, fi, T) {
 }
 
 const PLATES = [
- {i:0,name:"Climber",bit:"12, then 11",cnt:"+30",runs:[["climber","wall 19 rows high"]],
+ {i:0,name:"Climber",what:"Lets a lemming go up a wall that would otherwise turn it round.",bit:"12, then 11",cnt:"+30",runs:[["climber","wall 19 rows high"]],
   notes:["Walking into a wall the climber sets bit 12: 17 rows up in about 28 ticks, then bit 11 for the last two rows over the edge.","Then the state clears and it walks along the top at one pixel a tick.","Without the climber flag a wall that high turns the lemming round (read from the walker, not run)."],
   how:["wall poked in","x = 736 face"],ctl:"Wall of 19 rows poked into the bitmap at x 736 to 783."},
- {i:1,name:"Floater",bit:"5",cnt:"+38",runs:[["floater","with floater"],["floater_ctl","no click"]],
-  notes:["Falling is bit 15 at 3 rows a tick. A counter at +19 gains 3 each tick.","With a floater, bit 5 appears once the counter passes $10, about 6 ticks in. It lands at y = 140 and walks on.","Without one the lemming falls 64 rows, past the $3c limit, and splats: bit 8, then dead."],
+ {i:1,name:"Floater",what:"Lets a lemming survive a fall that would otherwise kill it. The plate shows two runs side by side: left with the floater, right the control with no click.",bit:"5",cnt:"+38",runs:[["floater","with floater"],["floater_ctl","no click"]],
+  notes:["Falling is bit 15 at 3 rows a tick. A counter at +19 gains 3 each tick.","With a floater, bit 5 appears once the counter passes $10 (16), about 6 ticks in. It lands at y = 140 and walks on.","Without one the lemming falls 64 rows, past the $3c (60) limit, and splats: bit 8, then dead."],
   how:["pit poked in","x 752 to 767"],ctl:"Pit 64 rows deep poked into the bitmap. Control is the same snapshot with no click."},
- {i:2,name:"Bomber",bit:"16, then 10",cnt:"+26",runs:[["bomber","crater at the explosion"]],phase:[["countdown, walking",79],["Oh no",16],["explosion",52]],
-  notes:["A countdown at +21 starts at $4f and runs one a tick while the lemming keeps walking. Here it covered 79 pixels.","At zero x freezes for 16 ticks (bit 16), then bit 10 starts. The next frame the main loop, at <code>$55b6</code>, ANDs a 16 by 22 disc mask into the terrain at (x - 8, y - 14): 113 pixels here, all of them predicted by the mask.","It refuses on steel, an exit or a trap cell under the lemming. The same step releases a blocker the lemming was holding."],
+ {i:2,name:"Bomber",what:"Makes a lemming explode after a countdown, blowing a crater in the ground. The bar under the slider is its timeline: 79 ticks walking while the countdown runs, 16 ticks of \"Oh no\", 52 ticks of explosion; the orange mark follows the slider.",bit:"16, then 10",cnt:"+26",runs:[["bomber","crater at the explosion"]],phase:[["countdown, walking",79],["Oh no",16],["explosion",52]],
+  notes:["A countdown at +21 starts at $4f (79) and runs one a tick while the lemming keeps walking. Here it covered 79 pixels.","At zero x freezes for 16 ticks (bit 16), then bit 10 starts. The next frame the main loop, at <code>$55b6</code>, ANDs a 16 by 22 disc mask into the terrain at (x - 8, y - 14): 113 pixels here, all of them predicted by the mask.","It refuses on steel, an exit or a trap cell under the lemming. The same step releases a blocker the lemming was holding."],
   how:["natural ground","(810, 84)"],ctl:"No terrain was poked. The window follows the lemming to x 768 to 863. Steel poked under it: 0 pixels cleared in 100 ticks."},
- {i:3,name:"Blocker",bit:"7",cnt:"+34",custom:"blocker",
-  notes:["It stamps a 3 by 3 patch into the object map: columns 2, a, 3 on each of three rows, so two cells wide at the sides and one in the middle.","A walker whose own cell is 2 turns round if heading right; one on a 3 turns round if heading left. The blocker never moves.","The nine cells it overwrote are saved in its record and restored when it explodes or loses its ground."],
+ {i:3,name:"Blocker",what:"Makes a lemming stand still and turn back walkers that reach it. Top, the cells it stamps into the object map. Below, two other lemmings' x over time, without and with the blocker.",bit:"7",cnt:"+34",custom:"blocker",
+  notes:["It stamps a 3 by 3 patch into the object map: codes 2, a, 3 across each of three rows (a is hex for 10), so two cells wide at the sides and one in the middle.","A walker whose own cell is 2 turns round if heading right; one on a 3 turns round if heading left. The blocker never moves.","The nine cells it overwrote are saved in its record and restored when it explodes or loses its ground."],
   how:["click on lemming 0","hits on $8bce, $8bdc"],ctl:"1,800,000 steps, 10 lemmings. Control: the turn handlers run 0 and 0 times. Blocker: once each."},
- {i:4,name:"Builder",bit:"9",cnt:"+32",runs:[["builder","12 bricks"]],
+ {i:4,name:"Builder",what:"Makes a lemming lay a rising stair of bricks.",bit:"9",cnt:"+32",runs:[["builder","12 bricks"]],
   notes:["A brick every 16 ticks, 6 pixels wide, twelve in all: 72 pixels laid.","Each brick lifts the lemming one row and two columns: from (732, 76) to (756, 64).","Anything solid at head height ahead ends it early and turns the lemming; after the 12th brick it sets bit 0, shrugs, and walks on."],
   how:["hill cleared","rows 70 to 75"],ctl:"A hill in front refused the skill at once, so rows 70 to 75 ahead were cleared in the bitmap first."},
- {i:5,name:"Basher",bit:"6",cnt:"+36",runs:[["basher","into a wall"]],
+ {i:5,name:"Basher",what:"Makes a lemming tunnel straight ahead through a wall.",bit:"6",cnt:"+36",runs:[["basher","into a wall"]],
   notes:["A 32-tick cycle in two halves. Each half erases a mask frame, then moves 5 pixels forward, one a tick.","The tunnel is body height. Against open ground it swings once and gives up.","Steel (cell 9) two cells ahead stops it and turns the lemming: x = 735 against 742 and still going in the control."],
-  how:["wall poked in","x 736 to 783"],ctl:"Solid wall poked in from x = 736. Steel test: cells 186 to 193 set to 9."},
- {i:6,name:"Miner",bit:"4",cnt:"+40",runs:[["miner","40 ticks"]],
+  how:["wall poked in","x 736 to 783"],ctl:"Solid wall poked in from x = 736. Steel test: object-map cells 186 to 193 set to 9."},
+ {i:6,name:"Miner",what:"Makes a lemming tunnel diagonally down.",bit:"4",cnt:"+40",runs:[["miner","40 ticks"]],
   notes:["A 24-tick cycle. Two mask frames erase the diagonal, and the lemming steps forward and down between them.","Each cycle moves 4 columns right and 2 rows down: a 2 to 1 slope, 17 columns for 9 rows in the dump.","Steel stops it at the first cycle (x = 736); the control runs on to x = 750."],
-  how:["natural ground","(734, 78) to (750, 86)"],ctl:"No terrain poked for the main run. Steel test: cells 186 to 193 set to 9."},
- {i:7,name:"Digger",bit:"14",cnt:"+28",runs:[["digger","straight down"]],
+  how:["natural ground","(734, 78) to (750, 86)"],ctl:"No terrain poked for the main run. Steel test: object-map cells 186 to 193 set to 9."},
+ {i:7,name:"Digger",what:"Makes a lemming dig straight down.",bit:"14",cnt:"+28",runs:[["digger","straight down"]],
   notes:["Straight down at about one row every 8 ticks: 7 rows in 59 ticks here.","The click sets bit 14; x stays at 732 for the whole run.","Nine other lemmings in the same run kept a state of zero."],
   how:["natural ground","x = 732 throughout"],ctl:"No terrain poked."}
 ];
@@ -292,8 +356,8 @@ for (const p of PLATES) {
   else stage = '<div class="stage">' + p.runs.map((r, k) => `<figure class="cv"><canvas width="${D[r[0]].W * S}" height="${D[r[0]].H * S}" data-run="${r[0]}"></canvas><figcaption>${r[1]} · x ${D[r[0]].x0}…${D[r[0]].x0 + D[r[0]].W - 1}, y ${D[r[0]].y0}…${D[r[0]].y0 + D[r[0]].H - 1}</figcaption></figure>`).join("") + "</div>";
   const phase = p.phase ? '<div class="phase">' + p.phase.map((s, k) => `<div style="flex:${s[1]};${k ? "" : ""}">${s[0]}</div>`).join("") + '<i style="left:0"></i></div>' : "";
   el.innerHTML = `<header><div class="idx">${p.i}</div><h3>${p.name}</h3><div class="chips"><span class="chip">state <b>bit ${p.bit}</b></span><span class="chip">count <b>${p.cnt}</b></span></div></header>`
-    + stage + (p.custom ? "" : `<div class="ctl"><button type="button">play</button><input type="range" min="0" value="0" aria-label="${p.name} timeline"></div><div class="read" aria-live="off"></div>`) + phase
-    + `<ul class="notes">${p.notes.map(n => "<li>" + n + "</li>").join("")}</ul><div class="how"><span class="tag p">driven</span><span>${p.ctl}</span></div>`;
+    + `<p class="what">${p.what}</p>` + stage + (p.custom ? "" : `<div class="ctl"><button type="button">play</button><input type="range" min="0" value="0" aria-label="${p.name} timeline"></div><div class="read" aria-live="off"></div>`) + phase
+    + `<ul class="notes">${p.notes.map(n => "<li>" + n + "</li>").join("")}</ul><div class="how"><span class="tag p">driven</span><span><b>Setup and control:</b> ${p.ctl}</span></div>`;
   root.appendChild(el);
   if (!p.custom) {
     const run = D[p.runs[0][0]], n = run.frames.length, sl = el.querySelector("input"), rd = el.querySelector(".read"), pb = el.querySelector("button");
@@ -317,15 +381,15 @@ function blockerPanel() {
   const el = document.getElementById("blk"), W = 520, H = 170, x0 = 690, x1 = 780, tmax = 30 * 60000 / 36000;
   const px = x => 34 + (x - x0) / (x1 - x0) * (W - 44), py = t => 14 + t / tmax * (H - 34);
   const lines = (arm, col) => ["l1", "l5"].map(k => `<polyline fill="none" stroke="${col}" stroke-width="2" points="${D.blocker[arm][k].map((x, i) => px(x) + "," + py(i * 60000 / 36000)).join(" ")}"/>`).join("");
-  const panel = (arm, title, ox) => `<g transform="translate(${ox},0)"><text x="34" y="9">${title}</text>
+  const panel = (arm, title, oy) => `<g transform="translate(0,${oy})"><text x="34" y="9">${title}</text>
     ${arm === "blocker" ? `<rect x="${px(728)}" y="14" width="${px(740) - px(728)}" height="${H - 34}" fill="var(--cut)" opacity=".16"/>` : ""}
     <line x1="34" y1="14" x2="34" y2="${H - 20}" stroke="var(--line)"/>${[700,720,740,760].map(x => `<text x="${px(x) - 9}" y="${H - 6}">${x}</text><line x1="${px(x)}" y1="${H - 20}" x2="${px(x)}" y2="${H - 24}" stroke="var(--line)"/>`).join("")}
     ${lines(arm, arm === "blocker" ? "var(--hair)" : "var(--muted)")}</g>`;
-  el.innerHTML = `<div style="display:flex;gap:18px;flex-wrap:wrap;align-items:flex-start">
-    <div><div class="cells" aria-label="object map cells after assignment"><div class="c2">2</div><div class="ca">a</div><div class="c3">3</div><div class="c2">2</div><div class="ca">a</div><div class="c3">3</div><div class="c2">2</div><div class="ca">a</div><div class="c3">3</div></div>
-    <div class="cap" style="margin-top:6px">cells 182 to 184,<br>rows 17 to 19</div></div>
-    <div class="scroll-x" style="flex:1 1 300px;min-width:0"><svg viewBox="0 0 ${W * 2 + 20} ${H}" width="100%" style="min-width:560px" role="img" aria-label="Lemming x against time, with and without a blocker">${panel("control", "no blocker: two walkers cross", 0)}${panel("blocker", "blocker at x 728 to 739: both turn", W + 20)}
-    <text x="0" y="${H - 6}"></text></svg><div class="cap">horizontal: world x · down: time, 0 to 50 ticks · lemmings 1 and 5</div></div></div>`;
+  el.innerHTML = `<div style="display:flex;flex-direction:column;gap:14px">
+    <div style="display:flex;gap:14px;align-items:flex-start"><div class="cells" aria-label="object map cells after assignment"><div class="c2">2</div><div class="ca">a</div><div class="c3">3</div><div class="c2">2</div><div class="ca">a</div><div class="c3">3</div><div class="c2">2</div><div class="ca">a</div><div class="c3">3</div></div>
+    <div class="cap" style="flex:1 1 0;min-width:0">The 3 by 3 stamp, object-map columns 182 to 184, rows 17 to 19. 2 turns right-walkers, 3 left-walkers, a is the centre.</div></div>
+    <div style="min-width:0"><svg viewBox="0 0 ${W} ${H * 2 + 16}" width="100%" role="img" aria-label="Lemming x against time, with and without a blocker">${panel("control", "no blocker: two walkers cross", 0)}${panel("blocker", "blocker at x 728 to 739: both turn", H + 16)}
+    <text x="0" y="${H - 6}"></text></svg><div class="cap">Each line is one lemming's x (across) against time (down, 0 to 50 ticks): lemmings 1 and 5, coming from opposite sides. Top, no blocker: they walk past each other. Bottom, the shaded band is the blocker's cells, x 728 to 739: each turns at its edge.</div></div></div>`;
 }
 blockerPanel();
 

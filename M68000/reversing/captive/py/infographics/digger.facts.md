@@ -54,3 +54,25 @@ and D1-D7 equal the emulator capture byte for byte.
   per cell, +8 per pillar) and blob walks revisit cells, so arrows descend the carve number, not strictly the dig
   path, and over all 915 walks in base 5, 3 steps go uphill (inferred: lift or shaft partners). The claim that every cell
   reaches the entrance holds (915/915 in base 5).
+
+## Explanatory text (lead, "How to read", "Takeaway", "How we know")
+
+| claim in the added text | source |
+|---|---|
+| Captive is a real-time dungeon crawler; four droids raid bases on a series of planets | `README.md` opening paragraph |
+| each base is computed by `fed_MapGen` from a 16-bit base number D0 and a mode D2; the same pair gives the same base; the Python port from (D0, D2) alone reproduces the output in 400 of 400 bases | mapgen.md opening ("The whole base is a function of two arguments", **Proven** 400 of 400) |
+| the turtle has a position and a heading, draws one random word per step and turns, moves, or makes a room, blob or lift | mapgen.md "The digger and rooms" ("The turtle", "Each step") |
+| blob = looped cave | mapgen.md "Blobs" ("Result: a looped cave") |
+| 3-of-4 rule: a corridor never breaks into another passage; per floor the corridors are a perfect maze (one route between two corridor cells: the definition of a perfect maze / tree) | mapgen.md "Carve rule", "Loops" (last line); "perfect maze" and "tree" are the standard definitions |
+| grid of 16 blocks of 16 x 8, each on one floor or outside (6) | mapgen.md "Floors and lifts" ("Blocks") |
+| a lift keeps its position within its block, on a neighbouring floor; the turtle digs on from the far end | mapgen.md "Lift offsets", "Each step" (stands on the far end) |
+| a shaft is a chain of entries on consecutive floors laid out before the dig; its door is opened when a corridor reaches it | mapgen.md opening bullets, "Shafts and reservations", "Opening shafts" |
+| 2392 highest carve number | generator printout (`maxn`), already in the legend |
+| chance combines bands with the turn test on the low 3 bits (2 of 8 values) | `dig.py` selector, Flags below (selector values 0/1 turn) |
+| a retry keeps its word and repeats the same check, so a room that fails once is never built | this file, "Flags" (626,856 retried room calls, 0 rooms); mapgen.md "Failure and restarts" |
+| carve number falls along the arrows at every step but 3 (inferred lift or shaft steps), down to the entrance #2 | mapgen.md "The flow field (plane 2)"; table row D above; `g0[ent]` = 2 |
+| forest, E - V + C = 0, V cells, E same-floor adjacencies, C pieces | mapgen.md "Loops"; the equivalence with "no cycle" is standard graph theory |
+| loops come from rooms and blobs and shafts; lifts and shafts add routes between floors | mapgen.md "Loops" |
+| port = register-level translation that must leave the whole 13,756-byte block equal; gate 1000/1000; control 2 of 4 gives 0/1000 | mapgen.md "The digger and rooms" ("Proof", "Controls"); 13,756 from this file's header |
+| G0 holds carve numbers, G2 the arrow | mapgen.md "Carving" (`$24f3c` writes D4 into G0), "The flow field" (value into G2 byte 0) |
+| a step / instruction count is 68000 instructions run by the emulator | emulator convention (`DEVELOPING.md`) |
