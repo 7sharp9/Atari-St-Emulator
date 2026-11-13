@@ -1,42 +1,44 @@
 # Captive: handoff
 
-Updated 2026-11-13 by the session that ended at commit `5d18447` (infographics expanded; sealed keys, the Phoopel hint).
+Updated 2026-11-13 by the session that ended at commit `9002027` (lock panel, finishing a base, footprint chase, lift ride).
 
 ## Resume point
 
-- Last commit of this workstream: `90adf0c` captive: sealed keys, the Phoopel hint (key on its own door cell)
-  (then `bfb7ecb` skill lesson, `5d18447` ANCHORS row).
+- Last commit of this workstream: `9002027` captive: promote pcrel_calls.py; ANCHORS rows (work commits `b153c3c`
+  panel, finishing a base, footprint chase; `e53c357` curios scripts promoted; `83dbb2c` lift).
 - Working data: `M68000/scratchpad/captive/` (rows in `scratchpad/ANCHORS.md`). Disk `tmb097.st` (README
-  "Provenance"). Generator captures `mapgen_full/` (`py/mapgen/full/README.md` rebuilds them byte-identical); stage
-  dumps `mapgen_stages/dumps/`, digger captures `mapgen_digger/`. Infographic caches `infographics/data/`. Sealed-key
-  work `phoopel/` (`base13.snap` with sidecar, views, `sealed_m1_100.txt`, `keyondoor_m1_100.txt`). Agent dirs and
-  saved reports: `agents/{placement,shafts,chain,ai2,curios,info_*}/report.md` or `*.facts.md`.
-- Start from: `base1/in.snap` (natural base, party at (30,0)), `agents/ai/g16_adj.snap` (group 16 beside the party),
-  `agents/curios/base30.snap` (D0 = 30 base with every feature), `phoopel/base13.snap` (D0 = 13, the sealed flame door
-  at (7,9)), `mg_ret.snap` (generator shortcut base), `mission1.snap` (no sidecar: pass
-  `--disk-a scratchpad/captive/tmb097.st`).
+  "Provenance"). Generator captures `mapgen_full/` (`py/mapgen/full/README.md` rebuilds them byte-identical).
+  Sealed-key and panel work `phoopel/` (`base13.snap`, `panel_*.snap/png`, `finish_base1_*`, `finish_m1_100.txt`,
+  `sealed_m1_100.txt`). Lift and footprint states `agents/ai/lift/`, `agents/ai/footchase/` (rebuilt by the commands
+  in `py/ai/README.md`). Saved agent reports: `agents/{footprint,lift}/report.md` and the older
+  `agents/{placement,shafts,chain,ai2,curios,info_*}/`.
+- Start from: `base1/in.snap` (natural base, party at the entrance (30,0), facing S), `phoopel/base13.snap` (D0 = 13,
+  sealed flame door (7,9), panel W (5,8)), `phoopel/finish_base1_blast_state2.snap` (natural base, generators blown),
+  `agents/ai/lift/on_lift.snap` (party on lift (8,3) of the `req4.snap` base), `agents/ai/g16_adj.snap`,
+  `agents/curios/base30.snap` (every feature), `mission1.snap` (no sidecar: pass `--disk-a scratchpad/captive/tmb097.st`).
 - Uncommitted work left behind: none.
 
 ## Proven so far
 
 Detail and commands in the topic docs; scripts under `reversing/captive/py/<area>/` with README tables.
 
-- Whole base generator in Python from (D0, D2): 400/400 against the emulator's returned output, incl. D0 300..399;
-  every stage gated 80/80 (or 1000/1000) with controls (`mapgen.md` "The pipeline", `py/mapgen/full/chain_run.py gate`).
-- Locks and keys: keys dug no later than their door 8,617/8,617, doors open in dig order (16,357 dependencies, 0
-  cycles); 31 of them sealed on their own door cell (`mapgen.md` "Locks and keys", `lockcensus.py`).
-- Sealed keys: the inclusive key test puts a key on its own door; D0 = 13 (PHOOPEL) lock 4's clipboard reads 15099,
-  as the player hint sheet says; clipboard number `$12d4e` 301/301 (control 0/50); flame door blocks both ways;
-  missions 1..100: 100 of 24,603 keys in 92 bases, 29 cut off a quarter of the base or more (`mapgen.md` "Sealed
-  keys", `py/phoopel/`).
-- Universe 51/51, 100/100, 150/150; grid lines at cells -1, 4, ..., 39 (`world.md` 1, `py/world/universe.py`).
-- AI: decision rule 3000/3000 (two bases); seen-or-hit sets hostile and regroup at `$d390`; cr_Regroup 2000/2000;
-  Trill's attack ends the base; footprints form a tree rooted at the party (`ai.md`).
-- Doors: lock census 24,576 presses = model, DIE shows the next corner 1080/1080, table slip at code 9 (`ai.md`
-  "Getting into a base").
-- Four infographics, now with lead, per-panel reading guides and a "how we know" strip; every added sentence sourced
-  in its facts file (`py/infographics/README.md`).
-- Earlier: feature tiles in play, trap #9 OS, volume block, Copylock and crack (`mapgen.md`, `system.md`).
+- Whole base generator in Python from (D0, D2): 400/400, every stage gated (`mapgen.md` "The pipeline").
+- Locks and keys: keys dug no later than their door 8,617/8,617; 31 sealed on their own door cell (`mapgen.md` "Locks
+  and keys", `lockcensus.py`).
+- The lock panel: W is a bank of switches behind a cover, compared with the code on every click; Phoopel's lock 4
+  opens on segments 5, 8, 10, 15, control with one wrong stays shut; 15099 is the panel's printed label (`mapgen.md`
+  "The panel in play", `py/phoopel/panel13.py`). Key kinds 0-2 layouts from reading.
+- Finishing a base: EXPLOSIVES on a generator tile, `13410(A6)` 0 -> 1 -> 2 -> 3, 9/9 generators to flame, the fire
+  follows the dig arrows 21/21 to the entrance; an untouched base cannot be left (`$87d6` 0 hits), in state 2 the
+  entrance click marks the target visited 0 -> 1 (`ai.md` "Finishing a base", `py/phoopel/finish13.py`, `leave.py`).
+- Sealed bases: 100 of 24,603 keys in 92 bases (missions 1..100); in 27 of the 92 every generator is behind a sealed
+  door, 18 of those with a 16-segment lock (`mapgen.md` "Sealed keys", `py/phoopel/finish.py 0 100`, model).
+- A chase that reads footprints: 8/8 trail moves follow bits 3-5, model replay 5/5 against 2/5 from bits 0-2
+  (`ai.md` "The trail", `py/ai/footchase.py`).
+- Lift: a ride writes no footprint (0/2048, writers 0 hits); a follower forgets only at a lift end holding 4 or 5
+  (4/4 at (24,3)) and loiters; at a value-0 end it never forgets (15/15) (`ai.md` "The trail", `py/ai/lift/`).
+- Universe, AI decision rule 3000/3000, regroup 2000/2000, doors and the DIE, four infographics: as before
+  (`world.md`, `ai.md`, `py/infographics/README.md`).
 
 ## Running
 
@@ -44,46 +46,57 @@ Nothing running.
 
 ## Open, in priority order
 
-1. Can a sealed base be finished? In `phoopel/base13.snap`: drive the wall panel W at (5,8) (what it takes as input;
-   does typing 15099 open the flame door), and try items `$5a`/`$1a` on the `$26` cell (`$c194` branch). Then what
-   ends a base (Trill's attack) and whether it needs the cut-off half. Settles whether the bug blocks play.
-2. A natural chase that reads a footprint: drive the party a few cells from an aware group, out of its row and column,
-   `track.py`, and show a trail step reading a cell whose bits 3-5 differ from bits 0-2 (`trailend.py`).
-3. Lift escape: confirm live that riding a lift writes no footprint and a following group forgets at the lift cell
-   (`$9768`/`$977c`; `ai.md` "The trail", inferred). `req4.snap` has two lifts.
-4. Locks in play beyond kind 2: key-kind 0/1 locks (W's `$22` wall object), door kind 1 (tile-0 door); items `$19`,
-   `$1b`. Shares the driving method of Open 1.
-5. What gives the party a `$66` MESSAGE FROM RATT with word 1 (`$26946` via `$23f64`); `14800` values 1-3 (`$137b0`).
-6. Promote the curios feature scripts (`view_tiles.py`, `step_diff.py`, `picwatch.py`, `base30.repl`, in
-   `scratchpad/captive/agents/curios/`) into `py/mapgen/`; point `gen_lock.py --emu`'s `HELPERS` at the repo.
-7. `digger.facts.md` and `trail.facts.md` quote mapgen.md "The turtle", "Each step", "Failure and restarts", "Lift
-   offsets", which are bold labels, not headings: repoint them.
-8. The six `15538(A6)` tests on an uncracked copy (`system.md` 7; needs READ TRACK `$e0`). `cold_watch.sh b514 12` not
+1. Does a mission need every target visited? Decides how much the 27 blocked bases matter. Read what tests the
+   visited count `14794(A6)` and the target bytes `14170(A6)` (start at `$87d6`-`$8810` and the map screen), then drive
+   it: `leave.py` from `phoopel/finish_base1_blast_state2.snap` reaches the compound with visited = 1.
+2. State 3 with the party inside: `14800(A6)` = 3 and what kills or ejects the party (a party poked onto the burning
+   entrance ended in mode 1 at (0,0), no exit routine hit). `watch` the mode word `13564(A6)` from
+   `finish_base1_blast_after` (re-make with `finish13.py`); also settles `14800` value 3's end message (`$137b0`).
+3. The other panels and door kinds: key kinds 0, 1, 2 (1, 3, 8 switches) and door kinds 0 and 1, in `base13.snap`
+   (`panel13.py <lock>` takes a lock number; locks 0, 1, 3, 6 cover them; the switch geometry for kinds 0-2 needs
+   adding to the script from `$12c2c`-`$12cb2`). The re-close on byte +8 bit 4. Items `$19`.
+4. A lift follower reached by play alone (both runs start from a poked party cell; the lift agent reports group 49
+   holding the corridor in `req4.snap`, not re-checked); the pair (2,4)-(18,4); tiles `$30`/`$33` (`$9768`/`$977c`).
+5. What gives the party a `$66` MESSAGE FROM RATT with word 1 (`$26946` via `$23f64`); `14800` values 1 and 2.
+6. The `$c194` item branch live: drop a FLAMBOS or BATTERY on a `$26` cell and read byte 2 (from reading: `$3c`).
+7. The six `15538(A6)` tests on an uncracked copy (`system.md` 7; needs READ TRACK `$e0`). `cold_watch.sh b514 12` not
    re-run from the promoted location.
 
 ## Known traps
 
+- Panel W took switch clicks from (5,9) facing N with its cover shut and nothing drawn (`$dd96` sends any facing
+  with (tile - facing) & 3 != 0 to the switch handler); it is drawn only from the cell it faces. Render the view
+  before calling a click drive proven.
+- The leave click needs the party on the entrance cell facing N; `base1/in.snap` faces S, so an unpoked control hits
+  nothing at all (`leave.py <snap> poke`).
+- A poked request-word base (`base13.snap`, `req4.snap`) has no compound and no target: do leave and visited tests in
+  `base1/in.snap`.
+- `federation` calls far routines by `move.l #imm,Rn` / `jsr -8(PC,Rn.l)`: a grep of the listing for the target finds
+  nothing. Use `py/system/pcrel_calls.py`.
+- stserver reports watch-event addresses and values as `'$hex'` strings.
+- A creature group can step into a cell between two key presses (the walk through the opened flame door stopped at
+  (7,9) with a group on (8,9)): read the occupancy bit 7 of the tile ahead before reading a stall as a wall.
 - `level_event.py` alone does not reach the compound entrance (22,22) after the exit: the ai2 agent's longer run did.
-- `die_all.py`'s 2400 and 6400 are repeats (`restore` resets the die LCG): cite `gen_lock.py`'s 1080/1080.
-- `field.py` reports `loop` once the party has moved; use `trailend.py`, which stops at the party.
-- Counting cells as open by tile != 0 includes decorated rock faces (tiles <= `$1a`); use tile > `$1a`.
-- Map pointer: three `mouse move -127 -127` pin it at (0,0), then 1:1. Map pixel = (66,73) + 2 x cell; zoom out
-  (202,114), in (251,114); ORBIT (202,72), LAND (251,70). Door corner zones: x 70 or 134, y 80 or 145.
-- `track.py` samples every 60,000 steps (not a main frame): use `sched.py` for timing; set `TRACK_OUT`.
-- A poked request word 4 (`enter_base.repl`, `phoopel/enter13.repl`) builds a base with no compound.
+- `die_all.py`'s 2400 and 6400 are repeats: cite `gen_lock.py`'s 1080/1080.
+- `field.py` reports `loop` once the party has moved; use `trailend.py`. Count open cells by tile > `$1a`.
+- Map pointer: three `mouse move -127 -127` pin it at (0,0), then 1:1. Lift icons (202,112) up, (251,112) down;
+  panel switches from (90,98), 5-pixel cells. Door corner zones: x 70 or 134, y 80 or 145.
+- `track.py` samples every 60,000 steps (not a main frame): use `sched.py` or per-action stops (`footchase.py`).
 - Menu key: release 30,000 steps after the make. Flight: select body and site, ORBIT, wait for `14858(A6)` = 6, LAND.
-- The hint sheet's "level N" is base D0 = N - 1 (inferred from Phoopel alone); missions run to 65535, the census
-  covers 1..100.
+- The hint sheet's "level N" is base D0 = N - 1 (inferred from Phoopel alone); the census covers missions 1..100.
 
 ## Waiting on Dave
 
-- The leftover worktree `agent-a528a4455254d699f` (uncommitted emulator edits, branch fully upstream): keep or remove.
-- Push: master is 58 commits ahead of origin.
-- Blog: `IDEAS.md` entry 9's undrawn "keys you can always reach" is now "keys sealed in their own door" (the Phoopel
-  bug, `sealed.py` output); the file is untracked in the blog repo.
+- Leftover worktrees `agent-a528a4455254d699f` (uncommitted emulator edits) and `modest-dirac-449d9c`: keep or remove.
+- Push: master is well ahead of origin (67 commits before this handoff's).
+- Skill proposal (`reverse-engineer-st-game`, section 3): for position-independent code, resolve computed long calls
+  (`move.l #imm` + `jsr d(PC,Rn.l)`) before any "no caller" claim; worked case Captive `$12b4c`, tool
+  `reversing/captive/py/system/pcrel_calls.py`. Not edited: two other sessions were live on shared files.
+- Blog: `IDEAS.md` entry 9 candidates from this session: the fire as a fuse along the dig tree, and the sealed key
+  that leaves 27 bases unfinishable without a blind panel search.
 
 ## Next session
 
-`/resume captive`. Start with Open 1 from `phoopel/base13.snap`: drive W at (5,8) and the two items at the flame door;
-that decides whether the sealed-key bug blocks a base. Run Open 2 and 3 (footprint and lift drives) as two agents
-from `req4.snap` / `p2.snap` meanwhile, and do Open 6 and 7 here.
+`/resume captive`. Start with Open 1 (does a mission need every target): it sets the weight of the sealed-key bug.
+Open 2 and 3 are independent drives from existing snapshots and suit one agent each (`finish13.py`/`leave.py` and
+`panel13.py` are the starting scripts). Do Open 6 here; it is a few REPL lines in `base13.snap`.
