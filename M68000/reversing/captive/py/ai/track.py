@@ -30,4 +30,5 @@ for f in range(frames):
             prev[i] = st
             line.append(f'{mark}g{i}:t{t:x}x{n}@({x},{y})f{f5 & 3}{"A" if f5 & 8 else "-"}{"H" if f5 & 16 else "-"}{"S" if f5 & 32 else "-"}{"6" if f5 & 64 else "-"}{"G" if f4 & 128 else "-"} w2={hp}')
     print(f'{f:3d} party({px},{py})f{w16(s, 30)} ' + ' '.join(line))
-s('save', path=os.environ.get('TRACK_OUT') or os.path.join(OUT, 'track_end.snap'))  # TRACK_OUT: another path, so a run does not replace agents/ai/track_end.snap  # g16_adj.snap is a copy of this from p2.snap, 200 frames; s.close()
+s('save', path=os.environ.get('TRACK_OUT') or os.path.join(OUT, 'track_end.snap'))
+s.close()  # TRACK_OUT: another path, so a run does not replace agents/ai/track_end.snap; g16_adj.snap is a copy of this from p2.snap, 200 frames

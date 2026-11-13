@@ -4,7 +4,7 @@ the field creatures read, which starts equal to bits 0-2 and is overwritten by t
 field.py <snap> [trail]"""
 import os, sys, collections; sys.path.insert(0, os.path.dirname(os.path.abspath(__file__))); from cap import *
 from gfxview import load_ram
-snap = sys.argv[1] if os.path.isabs(sys.argv[1]) else os.path.join(R, sys.argv[1])
+snap = snappath(sys.argv[1])
 sh = 3 if len(sys.argv) > 2 and sys.argv[2] == 'trail' else 0
 ram, base = load_ram(snap)
 g = ram[A6 + 9242 - base:][:2048]; p = ram[A6 + 11322 - base:][:2048]

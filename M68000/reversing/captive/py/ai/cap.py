@@ -20,9 +20,13 @@ A6 = 0x1b5ce
 W = os.path.join(R, 'scratchpad', 'captive')
 OUT = os.path.join(W, 'agents', 'ai')
 
+def snappath(snap):
+    """Absolute path for a snapshot argument: as given if absolute, else under scratchpad/captive/, else the repo root."""
+    return snap if os.path.isabs(snap) else os.path.join(W, snap) if os.path.exists(os.path.join(W, snap)) else os.path.join(R, snap)
+
 def srv(snap):
     s = StServer(R)
-    s('load', snapshot=snap if os.path.isabs(snap) else os.path.join(W, snap) if os.path.exists(os.path.join(W, snap)) else os.path.join(R, snap))
+    s('load', snapshot=snappath(snap))
     return s
 
 def w16(s, off):
