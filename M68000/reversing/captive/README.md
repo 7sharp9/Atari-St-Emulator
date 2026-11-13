@@ -63,8 +63,8 @@ reads the key 11,545 steps after it) is safe.
 | the loader's Restore (`$03`) then Step-in with update (`$53`) left the head on track 0, so every read of track 1 returned track 0, the loader's checksum failed five times, it tried drive B (Record Not Found), and its error path returned through a wrong stack slot into a filename string (address error, then a `Pterm0` loop through a junk `etv_term`) | `MMU.fs` Type I decode: Step-in (`%010u`) and Step-out (`%011u`) are told apart under mask `$E0`; the old `$F0` match could never see the update bit |
 
 Separately, `ATARI_TRACE_GEMDOS=1` crashed the emulator itself (a .NET `BusError` from its Pexec
-detector reading the word at a junk A7 during TOS's bomb loop): a tracing bug, not a game wall, and not
-fixed.
+detector reading the word at a junk A7 during TOS's bomb loop): a tracing bug, not a game wall. The tracer's reads
+can no longer fault (`tools/tests/repl_ergonomics/t5_gemdos_junk_a7.sh`); not yet re-run on Captive.
 
 ## Disk format
 
