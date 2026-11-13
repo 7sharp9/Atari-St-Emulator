@@ -30,19 +30,21 @@ only to step the emulator in a debugger. Run `./run.ps1` with no args
 for the full subcommand list.
 
 The raw form still works: `dotnet exec bin/Debug/net8.0/M68000.dll <argv>` where
-`<argv>` is any of the modes in `Program.fs`'s `main`. It traces every instruction to stdout
-(tens of MB a minute) unless `ATARI_NOTRACE=1` is set; the Python drivers set it. An argv that
+`<argv>` is any of the modes in `Program.fs`'s `main`. It prints the per-instruction trace to
+stdout (tens of MB a minute) only with `ATARI_TRACE=1` (see "`ATARI_TRACE` / `ATARI_NOTRACE`"); the
+Python drivers still set `ATARI_NOTRACE=1`, which keeps it off whatever else is set. An argv that
 matches no mode (a `run.ps1` alias such as `rrepl x.snap`, or a lone word that is not a step
 count) prints the usage table to stderr and exits 2; only no argv and `<n> repl` enter the
 REPL from a cold boot.
 
 The REPL (`repl`, `resume <snap> repl`) reads one command per line from stdin; `help` lists them. A
-blank line and a whole-line `#` comment (leading spaces allowed) are skipped. EOF or `q` ends it with exit
-code 0. Any other line that does not run (an unknown command, a wrong argument count, an operand that does
-not parse, a bad `callcap` preset or `mouse`/`wprot` operand) prints `REPL error: <line no>: <line>: <reason>`
-to stderr and exits 1 without running the rest of the input, so a typo stops a piped drive script instead
-of truncating it while the caller reads the snapshot taken so far. A driver must check the exit code and
-show stderr. The shared drivers raise with the exit code and the stderr tail: `tools/pm_fsm_diff.py`,
+blank line and a whole-line `#` comment (leading spaces allowed) are skipped. Any other line that does not
+run (an unknown command, a wrong argument count, an operand that does not parse, a bad `callcap` preset or
+`mouse`/`wprot`/`wb`/`ww` operand) prints `REPL error: <line no>: <line>: <reason>` to stderr, and the REPL
+goes on with the next line, so one typo does not throw away the rest of a piped drive script. EOF or `q`
+ends the run with exit code 0, or 1 (after a `REPL: <n> line(s) failed` line) when any line failed. The
+lines after a failed one ran against a state that lacks its effect, so a snapshot or count taken after it
+is suspect: a driver must check the exit code and show stderr. The shared drivers raise with the exit code and the stderr tail: `tools/pm_fsm_diff.py`,
 `tools/capture_hits.py`, and under `reversing/` cadaver's `secrets/repl.py`, impossamole's `boss/repl.py` and
 both `route_driver.py`, supersprint's `repl.py` and `ai_econ/aiutil.py`, populous's `popdrive.py`,
 `powers/pwlib.py`, `endgame/eg.py` and `ai/livelib.py`, black tiger's `btcommon.py`, `btlib.py`, `btsec.py`,
@@ -166,19 +168,33 @@ mouse down l|r           button press    -> $F8|buttons 00 00 in relative mode; 
 mouse up   l|r           button release
 ```
 
-## `ATARI_NOTRACE`
+## `ATARI_TRACE` / `ATARI_NOTRACE`
 
-`ATARI_NOTRACE=1` clears `Trace.enabled` (68k.fs), which the per-step `printfn`
+The per-instruction text trace (one `$pc: <disassembly>` line on stdout per executed
+instruction, with a `<symbol>` from `tos100uk.sym` at a routine entry) is off unless
+`ATARI_TRACE=1` is set (any value but empty or `0`). `ATARI_NOTRACE` (any value) keeps it
+off and wins when both are set, so every script that sets it runs as before. `run.ps1` sets
+`ATARI_TRACE=1` for `boot`/`trace`/`-Trace` and `ATARI_NOTRACE=1` otherwise.
+
+With the trace off, `Trace.enabled` (68k.fs) is false, which the per-step `printfn`
 trace sites and `ResolveEa`'s operand-description strings test before formatting
-anything, and redirects `Console.Out` to a null sink for the few ungated prints.
+anything, and `Console.Out` goes to a null sink for the few ungated prints.
 Building the trace text costs more than executing the instruction, so a
 new decoder's `printfn` must sit behind `if Trace.enabled then` (and an operand
-string must be `if Trace.enabled then sprintf ... else ""`). It does not silence result
-output: REPL replies, `verify` / `selftest` verdicts and snapshot/until status
+string must be `if Trace.enabled then sprintf ... else ""`). Result output is not
+silenced: REPL replies, `verify` / `selftest` verdicts and snapshot/until status
 lines go through `Diag.result` (68k.fs), which is captured before the redirect.
-So `ATARI_NOTRACE=1 ... verify` prints its PASS/FAIL, and a `NOTRACE` REPL still
-answers `r` / `m`. `watch` / `ATARI_TRACE_GEMDOS` already used stderr and are
-unaffected.
+So a plain `... verify` prints its PASS/FAIL, and the REPL answers `r` / `m`. The
+`ATARI_TRACE_*` loggers (`_GEMDOS`, `_OS`, `_FDC`, `_IKBD`, `_EVENTS`, `_EVENTS_ALL`),
+`watch` and `ATARI_GFX_SIDECAR` write to stderr or their own files, have their own switches
+and do not depend on `ATARI_TRACE`. A host that embeds the core (`stserver`,
+`tools/fsi_drive.fsx`) gets no trace text: `Trace.enabled` starts false.
+
+`ATARI_TRACE_GEMDOS`'s GEMDOS_CALL line and Pexec detector read A7, PC and the basepage
+through `MMU.TracePeekByte`/`TracePeekWord`/`TracePeekLong`, which return -1 for an odd, I/O
+or unmapped address instead of faulting, so a `trap #1` with a junk A7 (a TOS bomb loop) logs
+`func=????` and the run is the same as without the variable
+(`tools/tests/repl_ergonomics/t5_gemdos_junk_a7.sh`).
 
 ## Performance
 
@@ -388,6 +404,38 @@ sidecar is advisory: a failure to write it is a stderr warning, not a failed sav
 absolute value; the loop detector re-baselines them each epoch) - `detcheck`
 folds their per-run delta so the two replays stay comparable.
 
+## Snapshot recipes: `tools/recipe.py`
+
+A snapshot under `scratchpad/` can be a build product of a committed recipe. `reversing/<game>/recipes/<name>.json`
+names the disk image by file name and SHA-256 (found through `--disk-path` or `$ST_DISK_PATH`, default `scratchpad/`,
+one directory level deep), its parent (another recipe, or a cold boot with `boot_steps`), a REPL script with its
+SHA-256, and the expected snapshot SHA-256, end step and the DLL hash that produced it. `build <recipe> <out.snap>`
+rebuilds the whole chain from a cold boot through the stdin REPL (`<n> snapshot`, `<n> repl` or `resume <parent> repl`,
+the script plus `snap <out>` on stdin), deleting each output first and checking the exit code, the file and the
+sidecar's step. `verify <recipe> [<ref.snap>]` builds twice, compares the two builds, every node against its recorded
+hash and the leaf against the reference, prints the DLL hash it ran, and ends with one of:
+
+| outcome | exit | meaning |
+|---|---|---|
+| `MATCH` | 0 | bytes match on the recorded DLL |
+| `MATCH_OTHER_DLL` | 0 | bytes match on a different DLL |
+| `DIFFERS` | 1 | bytes differ on the recorded DLL |
+| `DLL_MISMATCH` | 3 | bytes differ and the DLL is not the recorded one: re-record on purpose after an emulator change |
+| `NONDETERMINISTIC` | 4 | the two builds differ from each other |
+| `INPUT_CHANGED` | 5 | the disk or script hash differs from the recipe |
+| `BUILD_FAILED` | 6 | non-zero exit, no output file, or the wrong end step |
+
+Worked chain: `reversing/carriercommand/recipes/` `c80` (cold boot, 80M steps) -> `c_s30` (`drive.txt`) -> `d1`
+(`bp 1ad02`), each byte-identical to its scratchpad anchor over two cold-boot builds
+(`uv run python tools/recipe.py verify reversing/carriercommand/recipes/d1.json`, about 9 minutes). A negative control
+has to shift an input by more than the game's poll period: moving the title-menu click 3,000 to 36,000 steps earlier
+with the total unchanged still gives `c_s30` byte for byte, and 48,000 or more differs (`DIFFERS`).
+
+Recipes are open-loop in emulator steps, so an emulator timing change can move a game poll across an input. Inputs
+gated on a game condition (`bp` on the poll routine, as `d1`'s end point is) and a semantic end check through
+`layout.py` fields would survive that; neither is built. Not supported: `stdrive`/`stserver` journals,
+`ATARI_KEY_INPUT`, a script that ends in `q` (the save must come last), a chain with more than one disk image.
+
 ## Program analysis: `ATARI_TRACE_EVENTS` + `tools/trace_cfg.py`
 
 For reverse-engineering a program's control flow (rather than closing ROM
@@ -440,9 +488,8 @@ too: `AES $0a appl_init(int_in=0, int_out=1, ...)`, `VDI $06 v_pline(handle=1,
 nintin=0, nptsin=2)` - opcode name plus the `control[]` counts. `Atari.OsCalls`
 holds the function tables - extend them as needed. Stderr, like the other `ATARI_TRACE_*` switches, and
 it does not touch CPU/MMU state. Independently, `tos100uk.sym` is loaded by the
-emulator itself now: the per-instruction trace prefix shows `<flop_rw>` etc. when
-the PC is a known routine entry (silenced with the rest of the trace under
-`ATARI_NOTRACE`).
+emulator itself: the per-instruction trace prefix (`ATARI_TRACE=1`) shows `<flop_rw>` etc. when
+the PC is a known routine entry.
 
 ```
 ATARI_TRACE_OS=1 ./run.ps1 -NoBuild -DiskA inttest_disk.st snap 12000000 t.snap 2>&1 | grep '^OS '
@@ -682,7 +729,7 @@ A typed poke of the VBL second sub-counter to 1 made the game's own interrupt ca
 - **Set `DOTNET_gcServer=0`.** `fsi.runtimeconfig.json` of both installed SDKs (8.0.402 and 10.0.303) sets `System.GC.Server: true`; the core allocates per step, and fsi measured 344 to 352 ms per million steps
   against about 240 for `dotnet exec`, and 207 to 257 with workstation GC. Tiered-JIT switches did not help. Noise on a loaded machine is about +-20%: use interleaved runs.
 - Startup is about 1.7 s for a no-op script (fsi itself, not the core: construct plus `LoadState` is 15 ms). Use fsi for scripts with logic, not for one `s <n>` the REPL does in a second.
-- The core prints a line per instruction unless `Trace.enabled <- false` (`ATARI_NOTRACE`'s switch) and `Console.SetOut(IO.TextWriter.Null)`; its `--- state loaded/saved ---` lines go to stderr and cannot be silenced.
+- The core prints a line per instruction only when `Trace.enabled` is true (it starts false; `main` sets it for `ATARI_TRACE=1`); the script still sets it false and nulls `Console.Out`, which is harmless. Its `--- state loaded/saved ---` lines go to stderr and cannot be silenced.
 - **Memory callbacks:** `mmu.AddHook` (section "Memory hooks" below) calls an F# function on every read or write overlapping a range, with the PC, step, width, value and source, so a script can
   read arbitrary typed state at the hit (registers, the stack, other memory, through `PeekXxx`). `fsi_drive.fsx --watch` still uses `MMU.SetWatch` (hook id 0, the REPL's `watch`) and captures its `WATCH` lines from stderr:
   one line per CPU write whose bytes overlap the range and one `DMA read sector` line per FDC sector that lands in it. Polling reads after each `Step()` instead costs about 1.1 s per million steps for four bytes and sees value changes only.
@@ -693,9 +740,10 @@ A typed poke of the VBL second sub-counter to 1 made the game's own interrupt ca
 
 ## Memory hooks and the `stserver` process
 
-The stdin REPL is a fragile interface for an agent: a forgotten `ATARI_NOTRACE` writes gigabytes,
-a `resume` without `--disk-a` of a snapshot with no provenance sidecar runs with no disk, zsh does not word-split a variable of REPL tokens, and a rejected line stops the whole
-script with exit 1 (`ReplError` in `Program.fs`). Its `watch` is one write-only range. Two pieces replace that
+The stdin REPL is a fragile interface for an agent: a `resume` without `--disk-a` of a snapshot with
+no provenance sidecar runs with no disk, zsh does not word-split a variable of REPL tokens, and a
+rejected line is reported but the rest of the script runs on without its effect, with exit 1 at the end
+(`ReplError` in `Program.fs`). Its `watch` is one write-only range. Two pieces replace that
 for scripted work: memory hooks in the core (`MMU.fs`), and `stserver`, a long-lived JSON-RPC and MCP
 process around one `AtartSt` (`server/`). The REPL and `fsi_drive.fsx` keep working unchanged.
 
@@ -1099,6 +1147,42 @@ names `objects[0:hero].x_lead 29 -> 41`, the same-budget control names no field)
 `boss/repl.py`'s decoder on a REPL `m` dump and on its live `Repl`; a slot-swapped control mismatches). Both take
 `DATA=<main checkout's M68000>` when run from a worktree whose scratchpad is empty.
 
+### Overlay: slots drawn over the screen (`tools/overlay.py`)
+
+A schema may add `[overlay.<layer>]` tables. `tools/overlay.py <layout.toml> <snap> <out.png>` draws each live slot
+of an array over the snapshot's live screen (`snap_render.py`) as a box labelled with its slot index and chosen fields:
+
+```toml
+[overlay.sprites]
+array = "objects"                 # default: the layer's key; several layers may share one array
+x = "x"                           # a struct field, a number, or { field = "type", map = { 1 = 16, 2 = 32 } }
+y = "y"
+div_x = 1                         # field units per pixel (16 for 12.4 fixed point); div_y likewise
+camera_x = "w[0x227b6]"           # address expression subtracted before dividing (default 0); camera_y likewise
+origin_x = 0                      # pixels added after dividing; origin_y likewise
+w = { field = "type", map = { 1 = 16, 2 = 32 } }
+h = "rows"
+live = ["type in 1,2", "slot in 7,8"]   # all must hold: a field or `slot`, then == != < <= > >= in &, then a number
+label = ["type", "hp"]
+cite = "graphics.md \"Sprites\" (...)"
+```
+
+`screen_x = (x - camera_x) // div_x + origin_x`. `overlay.py --check` validates the tables (fields exist, conditions
+parse, the `cite` file exists); `layout.py --check` ignores them. The projection holds for the frame the slot fields
+were drawn from: on a double-buffered game take the snapshot right after the buffer flip (Impossamole `$b27e`), or a
+moving object can be one frame of motion off. A box that does not sit on its sprite means a field is misread.
+
+Worked check: `reversing/impossamole/py/overlay_proof.py`. For each live slot it marks that slot dead on a fork, runs
+to the flip and diffs the two screens: the pixels that change are exactly the slot's frame drawn at the predicted
+position, 17 of 17 visible slots over three snapshots, and a `camera_x = $227b6` control and an `origin_x + 4` control
+both fail. The box-containment test alone is weak (transparent sprite margins hid the +4 control in 7 of 17); the
+frame fit is the test. Impossamole's layout needs three layers because the boss halves are type 3 in slots 7 and 8,
+drawn by a separate pass (`$bafc`), not by `$bada`. The shots layer is untested (no shot was live in the snapshots).
+
+The format cannot express isometric or 3D projections (Cadaver, PowerMonger, Populous, Midwinter, Carrier Command),
+OR-ed liveness except as separate layers, per-frame hot spots, objects outside a fixed-stride array, or playfield
+clipping, and it inherits `snap_render`'s low-resolution-only limit.
+
 ## Other tools
 
 Check this list before writing a one-off helper; each of these has been rewritten ad hoc at
@@ -1112,11 +1196,14 @@ least once by a session that did not know it existed.
 | `tools/stclient.py` | Python client for `stserver` (`StServer(root)`: any method as a call, `read`, `reg`, and `call(entry, ret, stops=[...])` to run one routine from a planted return address with interrupts masked, `stops` ending it early at a PC such as a call that waits on an interrupt; `call_resume` does the same and then restores every register, so a command handler run in mid-play leaves the game running, `reversing/carriercommand/py/units/takeoff_proof.py`): for a gate that runs a routine thousands of times and prints only counts (`reversing/midwinter/py/army/gate_army.py`; `stops`: `gate_encounter.py`'s kill leg, which stops at the radio message) |
 | `tools/stdrive.py` | game driver library over `stclient.py` (`Drive(root, journal=, fields={name: (addr, width)}, period=)`): `hold(input, polls=k)` and `tap()` from a VBL boundary (step a multiple of 12,000), refusing a hold shorter than the game's poll period; `wait_until(addr, value, mask, width, budget)` on a stop watch, exact to the writing instruction; `ab(fn, budget)`, the same-snapshot, same-budget input/control pair on a fork with a diff of named ranges; `Joy`/`Key`/`Raw` inputs; a read cache cleared by every input or step; an always-on JSONL journal of every load, input, step, fork, restore and save that `replay()` (or `uv run python tools/stdrive.py <journal> <dir>`) re-runs and `cmp`s. `Drive(..., record=<dir>)` records each linear stretch (from a `load` or `restore` to the next, or to `close`) as an on-disk stserver recording segment listed in `<dir>/segments.json`, so `provenance.py --recording <segment>` and `last_writer` slice the drive after it ends. `tools/stdrive_check.py <snap> <st> <dir>` is its check (5 of 5 on Impossamole's boss room), `tools/stdrive_record_check.py <dir>` the recordings' (5 of 5: `boss_stdrive.py --delay 700000 --record` still ends byte-identical to `kill_d700000_end.snap`, and the slice of the boss hit points `$1a645` from the reloaded segment gives 12 links that are the REPL `watch 1a645 1`'s last 12 writes by step, PC and value); `reversing/impossamole/py/boss/boss_stdrive.py` the worked port of a REPL driver (byte-identical to the REPL script's kill). Not built: a closed-loop replay (the journal is open-loop: replayed inputs do not react) |
 | `tools/fsi_drive.fsx`, `tools/fsi_prep.sh` | F# Interactive driver: load a snapshot, run N steps, optionally `--watch` a range (the REPL's WATCH lines) or `--poke` a byte, save an end snapshot; a template for typed per-step scripts (section "F# Interactive" above; needs `DOTNET_gcServer=0`) |
+| `tools/tests/repl_ergonomics/run_all.sh [dll] [base.dll]` | checks of the trace default (`ATARI_TRACE` opt-in, `ATARI_NOTRACE` wins), `watch` hex `len`, REPL errors that do not end the run, `wb`/`ww`, and `ATARI_TRACE_GEMDOS` with a junk A7; with a base build, also the `ATARI_NOTRACE` byte-identity of a 2M boot and a REPL script. Each `t*.sh` prints its raw output and PASS/FAIL lines; output under `scratchpad/repl_ergonomics/` |
 | `tools/regress_net.sh <base.dll> <new.dll> <outdir>` | the skill's section 6 regression net as an A/B of two builds (verify, 30M snapshot cmp, selftest; with `CADAVER_SNAP`/`CADAVER_ST`, a game snapshot, REPL `watch` and DMA-`watch` compare); for the Mac and for when another session holds `bin/` (header) |
 | `tools/mame_st/` | MAME `st_uk` as a second oracle for the F# core: diskless boot dump and state compare, executed-PC trace and loop-reduced comparison (section "MAME as a second oracle" above) |
 | `reversing/finalfight/py/gdbstub/` | MAME's gdbstub for gdb, a Python RSP client and Ghidra's Debugger (headless), with a 600-stop gate against the Lua harness (its README) |
 | `tools/layout.py <layout.toml> <snap>` | decode a snapshot through a game's memory schema `reversing/<game>/layout.toml` (globals, struct arrays, regions, each entry with a doc citation; `--check` validates one); `load`/`decode_snap` for scripts (section "Memory layouts and the semantic snapshot diff") |
 | `tools/snapdiff.py <layout.toml> <a.snap> <b.snap>` | the snapshot differ: named field changes (`objects[0:hero].x_lead 29 -> 41`), changed bytes per named region, then the changed RAM no field covers as ranges with byte counts (same section) |
+| `tools/overlay.py <layout.toml> <snap> <out.png> [--scale N] [--fields a,b] [--check]` | a game's object slots drawn as labelled boxes over the snapshot's live screen, the projection from slot fields to pixels read from the schema's `[overlay.<layer>]` tables (section "Overlay"); `overlay.boxes(L, layers, ram)` for scripts. Checked on Impossamole by `reversing/impossamole/py/overlay_proof.py`; 2D scrolling games only |
+| `tools/recipe.py build\|verify <recipe.json> [<snap>] [--dll D] [--disk-path P] [--work W]`, `list <dir>` | rebuild an anchor snapshot from a cold boot through a chain of committed recipes (`reversing/<game>/recipes/*.json`: disk name and hash, parent, REPL script and its hash, expected snapshot hash, end step and DLL hash); `verify` builds twice and compares the builds, the recorded hashes and the scratchpad reference, and ends with a named `OUTCOME` (section "Snapshot recipes") |
 | `tools/snap_render.py snap png` | the live screen of a snapshot as a PNG (base, rez and palette from the shifter registers, so double-buffered games come out right) |
 | `tools/sprite_array_export.py` | game-agnostic struct-driven sprite/object-array batch export (`--base`/`--array-ptr-field` + `--stride --count --w-off --h-off --ptr-off`) or fixed-stride sheet export (`--sequence BASE STRIDE COUNT W H`) or a one-off region (`--region ADDR W H`); st-interleaved 4bpp decode, `--palette` for a live 16-word `$0RGB` table (cadaver `graphics.md` §3/§5) |
 | `tools/disassemble.py` | 68000 disassembler; `--snap` for a loaded program, `--rom img --base <hex>` for a relocated image, `--jumptable` |
@@ -1147,7 +1234,8 @@ least once by a session that did not know it existed.
 | `tools/emutos_mouse.c`, `tools/emutos_vdi_mouse.c` | EmuTOS GPL sources of the XBIOS mouse vector and the VDI mouse handler, kept as reference text for reading TOS's mouse code; not built |
 | `tools/merge_sym.py <game.sym> <sym.txt>... [addr=name] [--write]` | merge subagent `sym.txt` files into a game's `.sym`, reporting addresses named differently (settle each in the code; `addr=name` overrides); `--write` keeps the target's existing lines and comments and appends the new names |
 | `tools/doc_addrs.py --addr <hex> \| --field "44(A5)" \| --check <game>` | every mention of one address (or `N(An)` field) across all games' `reversing/**/*.md`, with file:line and the sentence: run it after a correction lands so every copy is fixed in the same edit. `--check` lists, against the game's `.sym` files, entry-like mentions a few bytes off a symbol, address/name pairings that disagree with the `.sym`, `pm_`-style names no `.sym` holds, and the most-cited unnamed addresses: a review list, settle each in the code |
-| `tools/gates.py list\|run <game\|all> [-k substr] [-j N] [--root dir] [--dry-run]` | re-runs the promoted callcap gates of `reversing/<game>/gates.toml` (command, cwd, the match counts the docs record) and reports every count that moved; logs and `last_run.json` under `<root>/scratchpad/gates/<game>/`, each result with the SHA-256 prefixes of the `bin/` and `server/bin/` DLLs it ran and `dll_changed` if either was rebuilt during the run. Run it after any emulator change, beside the selftest and the snapshot compare. `--root` runs in another checkout's M68000 dir (the main one, from a worktree whose scratchpad is empty). A new promoted gate adds its manifest entry with the count its doc records |
+| `tools/gates.py list\|run <game\|all> [-k substr] [-j N] [--root dir] [--dry-run]` | re-runs the promoted callcap gates of `reversing/<game>/gates.toml` (command, cwd, the match counts the docs record) and reports every count that moved; logs and `last_run.json` under `<root>/scratchpad/gates/<game>/`, each result with the SHA-256 prefixes of the `bin/` and `server/bin/` DLLs it ran and `dll_changed` if either was rebuilt during the run. Gate commands run in `M68000/.venv` whichever python launched `gates.py` (it exits with the `uv sync` hint when the venv is missing). Run it after any emulator change, beside the selftest and the snapshot compare. `--root` runs in another checkout's M68000 dir (the main one, from a worktree whose scratchpad is empty). A new promoted gate adds its manifest entry with the count its doc records |
+| `tools/doc_gates.py [<game>\|all] [--list [GATED\|SCRIPTED-UNGATED\|ORPHAN]] [--manifest-dir DIR]` | every match count (`a/b`, `a of b`) in `reversing/<game>/**/*.md`, tied to the script its sentence, table row or paragraph names, and classed against `gates.toml`: GATED (a gate runs that script and expects the count), SCRIPTED-UNGATED (the script exists, no gate expects this count from it), ORPHAN (no script named, or it is missing); `--list` gives file:line for each. The burn-down list for new gates, a review list and not a verdict: 36 of 40 right on a hand-checked sample, and pixel sizes and live tallies slip in. `--manifest-dir` reads `DIR/<game>/gates.toml` (test hook). Not PowerMonger's `py/gate_coverage.py`, which counts routines no gate names |
 | `reversing/populous/py/popdrive.py` | Populous: plan exact mouse clicks (icons, land corners, minimap) from a snapshot; a worked example of driving a game through its own hit-test code |
 | `reversing/powermonger/py/` | PowerMonger working scripts: build any of the 144 lands, capture frame runs, score the port pixel for pixel, `hits` census runs (its README lists them) |
 
@@ -1158,6 +1246,14 @@ count it twice, and a STOPped or halted CPU idling at an address does not count 
 compare 24-bit addresses, so a PC with junk upper bits (TOS 1.00's handlers run at `$04fc0a1a`: its vectors
 carry the vector number in the top byte) matches `bp fc0a1a`. `m` reads the I/O page ($ff8000 up) without
 side effects (the ACIA data register is not popped, an FDC status read does not clear INTRQ).
+
+`until`/`u <addr>` tests the PC before it steps, so from a state already stopped at `<addr>` (a
+`$f898`-frame snapshot and `u f898`) it returns at once with "reached after 0 step(s)": it aligns to
+`<addr>` and stays put if already there (`reversing/powermonger/py/track.sh` relies on that). `bp <addr>`
+steps at least once first, so it is the command for the next arrival. `w <addr> <hex>`
+writes a longword; `wb <addr> <hexbyte>` and `ww <addr> <hexword>` write one byte or one even-addressed
+word, rejecting a value that does not fit. `watch <addr> [len]` takes `len` in decimal (`41984`) or as hex
+with a prefix (`$a400`, `0xa400`); a bare `a400` is a bad operand, reported and skipped like any other.
 
 Snapshots (`*.snap`) are session-local working data, keyed to a ROM + opcode-coverage
 point - not committed, retake per session.

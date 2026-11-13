@@ -512,10 +512,10 @@ type AtartSt(romPath: string, ?diskAPath: string, ?monitor: string) =
             let mutable a = uint32 addr
             let mutable go = sb.Length < 128
             while go do
-                let b = mmu.ReadByte a
-                if b = 0uy || sb.Length >= 128 then go <- false
+                let b = mmu.TracePeekByte a //-1 off RAM/ROM ends the string
+                if b <= 0 || sb.Length >= 128 then go <- false
                 else
-                    sb.Append(if b >= 0x20uy && b < 0x7fuy then char b else '?') |> ignore
+                    sb.Append(if b >= 0x20 && b < 0x7f then char b else '?') |> ignore
                     a <- a + 1u
             sb.ToString()
 
@@ -523,9 +523,9 @@ type AtartSt(romPath: string, ?diskAPath: string, ?monitor: string) =
     ///consistent (lowtpa < hitpa, text base inside the TPA) - so a stale/garbage D0 on a
     ///non-load Pexec mode doesn't produce a bogus record.
     let readBasepage (bp: int) =
-        if bp < 0x700 || (bp &&& 1) <> 0 then None
+        if bp < 0x700 || (bp &&& 1) <> 0 || mmu.TracePeekLong (uint32 (bp + 0x1C)) < 0L then None
         else
-            let rl off = mmu.ReadLong (uint32 (bp + off))
+            let rl off = int (mmu.TracePeekLong (uint32 (bp + off)))
             let lowtpa, hitpa = rl 0x00, rl 0x04
             let tbase, tlen = rl 0x08, rl 0x0C
             let dbase, dlen = rl 0x10, rl 0x14
@@ -732,10 +732,13 @@ type AtartSt(romPath: string, ?diskAPath: string, ?monitor: string) =
         let preEventsAcks = mmu.InterruptAcks
         //Pexec detection: a `trap #1` ($4E41) whose GEMDOS function word on the caller stack is
         //$4B. Record where it will return to and the args; the basepage is read back on return.
-        if traceGemdos && int (mmu.ReadWord (uint32 cpu.PC)) = 0x4E41
-           && (int (mmu.ReadWord (uint32 cpu.A7)) &&& 0xFFFF) = 0x004B then
-            let mode = int (mmu.ReadWord (uint32 (cpu.A7 + 2)))
-            let fname = readCString (mmu.ReadLong (uint32 (cpu.A7 + 4)))
+        //Every read goes through TracePeek*: PC and A7 can be junk (Captive's TOS bomb loop runs
+        //`trap #1` with A7 in unmapped space), and a bus read there would fault outside the step's
+        //own exception handling and end the process.
+        if traceGemdos && mmu.TracePeekWord (uint32 cpu.PC) = 0x4E41
+           && mmu.TracePeekWord (uint32 cpu.A7) = 0x004B then
+            let mode = mmu.TracePeekWord (uint32 (cpu.A7 + 2))
+            let fname = match mmu.TracePeekLong (uint32 (cpu.A7 + 4)) with -1L -> "?" | p -> readCString (int p)
             pexecStack <- (cpu.PC + 2, mode, fname, mmu.ReadLong 0x602Cu) :: pexecStack
             eprintfn "GEMDOS Pexec mode=%d file=\"%s\" pc=$%08x" mode fname cpu.PC
         //Graphics sidecar (ATARI_GFX_SIDECAR): capture XBIOS Setpalette / Setscreen arguments. An
@@ -1903,7 +1906,8 @@ module SelfTest =
 module Main =
 
     ///A REPL line the loop cannot run: unknown command, wrong argument count, or a bad `mouse`/
-    ///`callcap` operand. Carries the reason; runRepl reports it with the line number and exits 1.
+    ///`callcap` operand. Carries the reason; runRepl reports it with the line number, goes on with
+    ///the next line and exits 1 at the end.
     exception ReplError of string
 
     ///One usage line per command, for the wrong-argument-count error. A name missing here is
@@ -1914,18 +1918,26 @@ module Main =
                "until", "until <hexaddr> [maxSteps]"; "u", "u <hexaddr> [maxSteps]"
                "bp", "bp <hexaddr> [maxSteps]"; "bpc", "bpc <hexaddr> <n> [maxSteps]"
                "hits", "hits <steps> <hexaddr>..."; "bt", "bt [depth]"; "registers", "registers"; "r", "r"
-               "m", "m <hexaddr> <len>"; "w", "w <hexaddr> <hexvalue>"; "snap", "snap <path>"; "disk", "disk <path>"
-               "wprot", "wprot on|off"; "watch", "watch <hexaddr> [len]"; "unwatch", "unwatch"
+               "m", "m <hexaddr> <len>"; "w", "w <hexaddr> <hexvalue>"
+               "wb", "wb <hexaddr> <hexbyte>"; "ww", "ww <hexaddr> <hexword>"; "snap", "snap <path>"; "disk", "disk <path>"
+               "wprot", "wprot on|off"; "watch", "watch <hexaddr> [len, decimal or $hex/0xhex]"; "unwatch", "unwatch"
                "kbd", "kbd <hexbyte>..."; "key", "key <hexbyte>..."
                "mouse", "mouse move <dx> <dy> | mouse down|up l|r"; "quit", "quit"; "q", "q" ]
+
+    ///A count operand: decimal, or hex with a `$` or `0x` prefix (`int` itself takes `0x`).
+    let private parseCount (s: string) =
+        if s = "$" then raise (FormatException "'$' with no digits")
+        elif s.StartsWith "$" then Convert.ToInt32(s.Substring 1, 16)
+        else int s
 
     ///Interactive REPL command loop - factored out so both the plain entry (`repl`, Reset()+N
     ///steps) and the snapshot-resuming entry (`resume <path> repl`, LoadState() instead) can share
     ///it instead of duplicating the command dispatch. A blank line or a `#` comment line is
-    ///skipped; EOF or `q` returns 0. Any other line that does not run (unknown command, wrong
-    ///argument count, an operand that does not parse) prints `REPL error: <line no>: <line>:
-    ///<reason>` to stderr and returns 1, so a typo stops a piped drive script instead of
-    ///truncating it silently.
+    ///skipped. Any other line that does not run (unknown command, wrong argument count, an
+    ///operand that does not parse) prints `REPL error: <line no>: <line>: <reason>` to stderr and
+    ///the loop goes on with the next line, so one typo does not throw away the rest of a piped
+    ///drive script. EOF or `q` ends the run: exit status 0, or 1 when any line failed, so a
+    ///script driver still sees the error.
     let runRepl (st: AtartSt) : int =
         let lineNo = ref 0
         let lastLine = ref ""
@@ -1941,7 +1953,7 @@ module Main =
             | _ when isNull input -> ()
             | _ when String.IsNullOrWhiteSpace input || input.TrimStart().StartsWith "#" -> loop()
             | [| "help" |] | [| "h" |] ->
-                Diag.result "s [n] = step (n times, default 1), p <n> = preview n steps then roll back (state unchanged), detcheck <n> = run n steps twice from here and assert the traces match (snapshot-fidelity self-check), callcap <hexaddr> [maxSteps] [outfile.json] = call the subroutine at addr from the current state (sentinel-return single-step), print/dump its register+memory delta, then snapshot-restore, u <hexaddr> [maxSteps] = run until PC reaches address (default cap 200000), bp <hexaddr> [maxSteps] = like u, but auto-prints registers on stop (hit or cap), bpc <hexaddr> <n> [maxSteps] = like bp, but stops on the Nth time PC reaches addr, bt [depth] = backtrace from the current breakpoint (default depth 8), hits <steps> <hexaddr>... = run steps and count PC hits (first/last step) per address - return address at (A7), then the link-A6 chain if the routine uses one, r = print registers, m <hexaddr> <len> = dump memory bytes, w <hexaddr> <hexvalue> = write a longword, snap <path> = save current state to a snapshot file, disk <path> = hot-swap drive A's mounted .ST image, wprot on|off = drive A's write-protect tab (not in a snapshot), watch <hexaddr> [len] = print every write into [addr,addr+len) to stderr (default len 1), unwatch = clear it, q = quit, help = this"
+                Diag.result "s [n] = step (n times, default 1), p <n> = preview n steps then roll back (state unchanged), detcheck <n> = run n steps twice from here and assert the traces match (snapshot-fidelity self-check), callcap <hexaddr> [maxSteps] [outfile.json] = call the subroutine at addr from the current state (sentinel-return single-step), print/dump its register+memory delta, then snapshot-restore, u <hexaddr> [maxSteps] = run at least one step, then until PC reaches address (default cap 200000), bp <hexaddr> [maxSteps] = like u, but auto-prints registers on stop (hit or cap), bpc <hexaddr> <n> [maxSteps] = like bp, but stops on the Nth time PC reaches addr, bt [depth] = backtrace from the current breakpoint (default depth 8), hits <steps> <hexaddr>... = run steps and count PC hits (first/last step) per address - return address at (A7), then the link-A6 chain if the routine uses one, r = print registers, m <hexaddr> <len> = dump memory bytes, w <hexaddr> <hexvalue> = write a longword, wb <hexaddr> <hexbyte> = write a byte, ww <hexaddr> <hexword> = write a word, snap <path> = save current state to a snapshot file, disk <path> = hot-swap drive A's mounted .ST image, wprot on|off = drive A's write-protect tab (not in a snapshot), watch <hexaddr> [len] = print every write into [addr,addr+len) to stderr (len decimal, or hex as $a400 / 0xa400; default 1), unwatch = clear it, q = quit, help = this"
                 loop()
             | [| "step" |] | [| "s" |] ->
                 st.Step()
@@ -2015,6 +2027,15 @@ module Main =
                 //Writes a longword via the same MMU path real 68k code would use.
                 st.Input (HostWrite (Convert.ToUInt32(addr, 16), 4, Convert.ToUInt32(value, 16)))
                 loop()
+            | [| ("wb" | "ww") as cmd; addr; value |] ->
+                //`w` at byte or word width, for poking one field without clobbering its neighbours.
+                let a = Convert.ToUInt32(addr, 16)
+                let v = Convert.ToUInt32(value, 16)
+                let width, limit = if cmd = "wb" then 1, 0xFFu else 2, 0xFFFFu
+                if v > limit then raise (ReplError (sprintf "value $%x does not fit in %d byte(s)" v width))
+                if width = 2 && a % 2u <> 0u then raise (ReplError (sprintf "odd address $%x for a word write" a))
+                st.Input (HostWrite (a, width, v))
+                loop()
             | [| "snap"; path |] ->
                 st.SaveState path
                 Diag.result "Snapshot written to %s at PC=$%08x" path st.Cpu.PC
@@ -2037,8 +2058,9 @@ module Main =
                 loop()
             | [| "watch"; addr; len |] ->
                 let a = Convert.ToUInt32(addr, 16)
-                st.Cpu.MMU.SetWatch a (a + uint32 (int len - 1))
-                Diag.result "Watching [$%08x,$%08x] (stderr, survives ATARI_NOTRACE)" a (a + uint32 (int len - 1))
+                let n = parseCount len
+                st.Cpu.MMU.SetWatch a (a + uint32 (n - 1))
+                Diag.result "Watching [$%08x,$%08x] (stderr, survives ATARI_NOTRACE)" a (a + uint32 (n - 1))
                 loop()
             | [| "unwatch" |] ->
                 st.Cpu.MMU.ClearWatch()
@@ -2077,18 +2099,25 @@ module Main =
                 match replUsage.TryGetValue parts.[0] with
                 | true, usage -> raise (ReplError ("wrong arguments, usage: " + usage))
                 | _ -> raise (ReplError (sprintf "unknown command '%s'" parts.[0]))
-        //The handler sits outside the recursion so `loop` keeps its tail calls. Format/Overflow
-        //exceptions here can only come from the arms' operand parsing (`int`, Convert.ToUInt32
+        //The handler sits outside the recursion so `loop` keeps its tail calls; after an error the
+        //outer loop re-enters `loop`, which reads the next line. Format/Overflow exceptions here can only come from the arms' operand parsing (`int`, Convert.ToUInt32
         //etc.): the emulator core parses no text, so they are reported as REPL errors too.
-        try
-            loop()
-            0
-        with
-        | ReplError reason ->
-            eprintfn "REPL error: %d: %s: %s" lineNo.Value lastLine.Value reason
-            1
-        | :? FormatException | :? OverflowException as e ->
-            eprintfn "REPL error: %d: %s: bad operand (%s)" lineNo.Value lastLine.Value e.Message
+        let mutable errors = 0
+        let mutable running = true
+        while running do
+            try
+                loop()
+                running <- false
+            with
+            | ReplError reason ->
+                eprintfn "REPL error: %d: %s: %s" lineNo.Value lastLine.Value reason
+                errors <- errors + 1
+            | :? FormatException | :? OverflowException as e ->
+                eprintfn "REPL error: %d: %s: bad operand (%s)" lineNo.Value lastLine.Value e.Message
+                errors <- errors + 1
+        if errors = 0 then 0
+        else
+            eprintfn "REPL: %d line(s) failed, exit status 1" errors
             1
 
     ///Pulls `--disk-a <path>` / `--disk-a=<path>` out of the raw argv, returning the value (last
@@ -2136,13 +2165,19 @@ module Main =
         //Flush/close the structured flow-event log (ATARI_TRACE_EVENTS) on any process exit,
         //including the reraise path when an unimplemented instruction aborts the run.
         AppDomain.CurrentDomain.ProcessExit.Add(fun _ -> TraceEvents.close())
-        //Every executed instruction prints a PC-tagged disassembly line (printfn in 68k.fs) that
-        //this project's debugging workflow depends on.
-        //That's the right default, but building the text costs more than executing the
-        //instruction, so ATARI_NOTRACE=1 clears Trace.enabled (call sites skip the formatting) and
-        //redirects Console.Out to a null sink for the few prints that are not gated.
-        if not (isNull (Environment.GetEnvironmentVariable "ATARI_NOTRACE")) then
-            Trace.enabled <- false
+        //The per-instruction trace (a PC-tagged disassembly line per executed instruction, printfn
+        //in 68k.fs) is opt-in: ATARI_TRACE=1 turns it on, and ATARI_NOTRACE (any value) keeps it
+        //off and wins over ATARI_TRACE. Off, Trace.enabled stays false (call sites skip the
+        //formatting) and Console.Out goes to a null sink for the few trace prints that are not
+        //gated; result output still reaches stdout through Diag.result. Opt-in so that a run with
+        //no variable set cannot write a multi-GB log.
+        let traceOn =
+            isNull (Environment.GetEnvironmentVariable "ATARI_NOTRACE")
+            && (match Environment.GetEnvironmentVariable "ATARI_TRACE" with
+                | null | "" | "0" -> false
+                | _ -> true)
+        Trace.enabled <- traceOn
+        if not traceOn then
             Console.SetOut(IO.TextWriter.Null)
         //ATARI_ROM_PATH lets a caller point this at a different ROM dump (e.g. for an A/B
         //comparison against a different TOS revision) without touching the default TOS100UK.IMG.

@@ -1073,6 +1073,25 @@ type MMU(rom: byte array, ?flatTestBus: bool) =
                 | None -> 0uy //open bus, no device backs this address
             else raise (BusError (address, false))
 
+    ///Reads for host-side tracers (`ATARI_TRACE_GEMDOS`'s GEMDOS_CALL line and Pexec detector),
+    ///which peek at whatever A7, PC or D0 holds, including junk during a TOS bomb loop. A byte, or
+    ///an even-addressed word or long, from plain RAM or the ROM; -1 anywhere else (odd, I/O,
+    ///unmapped). Never faults, fires no read hook and touches no device register, so a tracer can
+    ///neither stop the run nor change what it does.
+    member x.TracePeekByte (address: uint32) : int =
+        let a = address &&& maxMemory
+        if flatBus || ramDirect a || a <= 7u || (a >= romStart && a <= romEnd) then int (x.PeekByte a) else -1
+    member x.TracePeekWord (address: uint32) : int =
+        let a = address &&& maxMemory
+        if address % 2u <> 0u then -1
+        elif flatBus || (ramDirect a && ramDirect (a + 1u)) || a < 7u || (a >= romStart && a < romEnd) then
+            x.PeekWord address &&& 0xFFFF
+        else -1
+    member x.TracePeekLong (address: uint32) : int64 =
+        let hi = x.TracePeekWord address
+        let lo = x.TracePeekWord (address + 2u)
+        if hi < 0 || lo < 0 then -1L else (int64 hi <<< 16) ||| int64 lo
+
     ///A bus read: `PeekWord` plus the read hooks (see ReadByte).
     member x.ReadWord (address: uint32) =
         if address % 2u <> 0u then raise (AddressError (address, false))

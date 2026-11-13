@@ -11,7 +11,7 @@
 # Usage:
 #   ./run.ps1 <subcommand> [args]        build (unless -NoBuild), then run
 #   ./run.ps1 -NoBuild <subcommand> ...  skip the build
-#   ./run.ps1 -Trace <subcommand> ...    keep the per-instruction trace (default: ATARI_NOTRACE=1)
+#   ./run.ps1 -Trace <subcommand> ...    turn on the per-instruction trace (ATARI_TRACE=1; default off)
 #   ./run.ps1 <subcmd> ... -DiskA <path>  mount a real .ST floppy image in drive A
 #                                         (-DiskA goes after the subcommand, or anywhere in its args)
 #
@@ -60,10 +60,17 @@ if (-not $NoBuild -and $Command -ne 'dll') {
     if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 }
 
-# Trace defaults: ON for boot/trace (you run those to read the trace), OFF elsewhere.
+# Trace defaults: ON for boot/trace (you run those to read the trace), OFF elsewhere. The binary
+# traces only with ATARI_TRACE=1 and no ATARI_NOTRACE, so both are set explicitly either way.
 $traceByDefault = $Command -in @('boot', 'trace')
-if ($Trace -or $traceByDefault) { Remove-Item Env:ATARI_NOTRACE -ErrorAction SilentlyContinue }
-else { $env:ATARI_NOTRACE = '1' }
+if ($Trace -or $traceByDefault) {
+    Remove-Item Env:ATARI_NOTRACE -ErrorAction SilentlyContinue
+    $env:ATARI_TRACE = '1'
+}
+else {
+    $env:ATARI_NOTRACE = '1'
+    Remove-Item Env:ATARI_TRACE -ErrorAction SilentlyContinue
+}
 
 $argv =
     switch ($Command) {

@@ -23,9 +23,9 @@ module Diag =
     let traceGemdos = not (isNull (Environment.GetEnvironmentVariable "ATARI_TRACE_GEMDOS"))
 
     ///Result output (REPL replies, `verify`/`selftest` verdicts, snapshot/until status lines) goes
-    ///through `result` so it survives `ATARI_NOTRACE`. That env var redirects `Console.Out` to a
-    ///null sink to skip the per-instruction trace's formatting cost - which also silenced the
-    ///output you actually asked for, a recurring foot-gun.
+    ///through `result` so it survives the trace being off. With the trace off (no `ATARI_TRACE=1`,
+    ///or `ATARI_NOTRACE` set) `main` redirects `Console.Out` to a null sink, which would otherwise
+    ///also silence the output you actually asked for.
     ///`captureResultOut` is called once at the very top of `main`, before the redirect, so the
     ///captured writer is the real stdout regardless of when this module's initializer ran.
     let mutable private resultOut : IO.TextWriter = Console.Out
@@ -34,11 +34,11 @@ module Diag =
 
 ///Gate for the per-instruction disassembly text (`printfn` in every decoder, and the operand
 ///description strings `ResolveEa` returns). Building that text costs far more than executing the
-///instruction, and with `ATARI_NOTRACE` it was built only to be discarded by the null `Console.Out`.
-///Call sites test `Trace.enabled` so the formatting is skipped outright; with the variable unset the
-///trace is byte-identical to before. `Program.main` clears it alongside the `Console.Out` redirect.
+///instruction. Call sites test `Trace.enabled` so the formatting is skipped outright. Off unless
+///`Program.main` turns it on for `ATARI_TRACE=1` (and no `ATARI_NOTRACE`); a host that embeds the
+///core (stserver, fsi_drive.fsx) gets no trace text without asking for it.
 module Trace =
-    let mutable enabled = true
+    let mutable enabled = false
 
 ///An opcode word, or opcode + EA combination, that this core does not decode: a genuinely
 ///illegal 68000 encoding (MOVE.B to An, LEA Dn, an EXG opmode Motorola never assigned) or a legal
@@ -2259,8 +2259,11 @@ type Cpu =
             //EnterVector's comment for why the privilege swap has to happen before the push
             //(GEMDOS's trap#1 handler's `move usp,An` depends on it).
             if Diag.traceGemdos && vector = 1uy then
-                let func = x.MMU.ReadWord(uint32 x.A7)
-                eprintfn "GEMDOS_CALL pc=$%08x func=$%04x" x.PC (uint16 func)
+                //A junk A7 (TOS's bomb loop) reads as ????: a faulting bus read here would turn
+                //into a bus error that the untraced run does not take.
+                let func = x.MMU.TracePeekWord(uint32 x.A7)
+                if func >= 0 then eprintfn "GEMDOS_CALL pc=$%08x func=$%04x" x.PC (uint16 func)
+                else eprintfn "GEMDOS_CALL pc=$%08x func=????" x.PC
             let newCpu = x.EnterVector (32 + int vector) (x.PC+2)
             if Trace.enabled then
                 printfn "trap #%u" vector
