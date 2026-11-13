@@ -125,7 +125,8 @@ called once with D1 = `$ffff` and builds a uniform surface, every cell `$1e`, in
 ## Not yet exercised
 
 - Where the game tells the player a door's corner code (`ai.md`, "Getting into a base").
-- The roughly 25 generator stages after the digger (`$24f4c`-`$268f8`): objects, doors, generators.
+- The generator's door stage `$2419a` and its creature and object placement stages (`mapgen.md`, "After the flow
+  field", "Not ported"); the other 17 post-dig stage calls are ported and gated.
 - What the six `15538(A6)` tests in `federation` gate on an uncracked copy (`system.md` section 5).
 - The intro's top band and smeared figures (`intro.png`): intended animation or a rendering fault, unchecked.
 

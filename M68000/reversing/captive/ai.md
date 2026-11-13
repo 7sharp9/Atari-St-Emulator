@@ -240,8 +240,9 @@ When all four are set, `$e31a` compares that byte & `$fc` with a 24-byte table a
 four corners. The door opens through `$c420` (tile `$44` to `$54`) only when the matching index equals the door's
 code, (state >> 4) & `$1f`; any other order clears the sequence (`$e348`). The door at (22,21) has code 8, table byte
 `$63`: top left, bottom left, top right, bottom right. **Proven** (stserver, `base1_site.snap` lineage): the order
-TL, TR, BR, BL left state `$0080` (cleared), and TL, BL, TR, BR set `$6087` and reached `$c420`. Where the game
-gives the player the code is not found; 24 orders can be tried by hand.
+TL, TR, BR, BL left state `$0080` (cleared), and TL, BL, TR, BR set `$6087` and reached `$c420`. The generator fills
+the list and draws each door's code at random from the base's RNG (`mapgen.md`, "After the flow field", "Coded
+doors"). Where the game gives the player the code is not found; 24 orders can be tried by hand.
 
 **Proven, no poke**: `py/ai/natural_base.repl` from `scratchpad/captive/mission1.snap` (with `--disk-a`: that
 snapshot has no sidecar) selects target 1's site, orbits, lands, walks to (22,20), enters the door code and steps
@@ -253,7 +254,9 @@ call has D0 = 0, D1 = 0, D2 = 0, mode 3, and returns D0 = 3 after 3,590,553 step
 longword write keeps `14786(A6)` at `$ff00`; D2 = 0, D0 = 1, returns D0 = 3 after 3,254,901 steps, party at
 (12,0)). Natural play never writes request 4 with `14782(A6)` nonzero, so that level has no compound and its mode
 history is not one the game produces; the generator's base output depends on D0 alone (`mapgen.md`), so the
-layout is the natural base for seed 1. The AI results above were measured there.
+layout is the natural base for seed 1. The AI results above were first measured there. The decision rule and the
+scheduler were then re-measured in the natural base (`base1/in.snap`, D0 = 0): `gate_decide.py` 3000/3000, control
+2975/3000; `sched.py` 2400/2400 (`py/ai/README.md`).
 
 Moving in the base (**proven**, `keys.py`, `click.py`):
 - Keypad `$68` steps forward, `$67`/`$69` turn, `$6a`/`$6c` strafe.

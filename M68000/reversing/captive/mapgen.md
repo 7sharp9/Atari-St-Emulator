@@ -10,6 +10,8 @@
   lifts as it goes.
 - Every carved cell keeps the number of the dig step that made it. The generator turns those numbers into a flow
   field: from any cell, following the arrows walks the dig backwards to the entrance.
+- Later stages prune dead ends (most of them in low-numbered bases, none from base 32 up), scatter features and decorated walls, and place
+  doors, including coded doors whose corner code is drawn at random.
 
 The whole base is a function of one 16-bit argument: the same argument gives the same base. Addresses are runtime
 addresses with the module loaded at `$1f7b0`, as on landing in `scratchpad/captive/mg_entry.snap`. The module's
@@ -201,6 +203,118 @@ the entrance, riding a lift where the dig did.
 **Use in play (inferred).** Federation exports this field as plane 2 (below), and creatures follow it
 (`reversing/captive/ai.md`).
 
+## After the flow field: dead ends, features and doors
+
+After `$24f4c` the base path `$23bb0` makes 28 more calls of 26 routines (`$25198` and `$24d64` run twice), plus
+`$2676c` at D2 = 1 only. Seventeen of these calls are ported to Python in `py/mapgen/stages/models.py`. Each model
+starts from the emulator's own state just before its stage. It must reproduce the state after the stage byte for
+byte: the whole module variable block (G0, G1, G2, lists, counters, RNG seed) and federation's table block
+`$1bd3e`-`$1d9e8`.
+
+**Proven**: every ported stage matches 80/80 cases, D0 = 0..39 at both D2 = 1 and D2 = 0 (`stages/gate.py 0 40`).
+Each one has a broken-model control that loses cases. For example, `--stage 2533a --break 'prune_keep=(3,)'` gives
+16/80 and `--stage 2630c --break pic_mod=5` gives 0/80; the README there lists all the controls. Unless a line below
+says otherwise, the rules are what the gated models compute. Every random draw goes through the RNG `$23b96`. A
+"random cell" is `$244a2`: x = r & `$3f`, y = (r ror 6) & `$1f`.
+
+**Dead ends.**
+- `$25198` lists the dead ends: open cells with exactly 3 blocked neighbours, scanned y = 31..0, x = 63..0.
+  - It skips the entrance and the lift and special features `$06 $37 $1c $1d $1a $1b $05 $04 $36 $35 $0f $21 $18`.
+  - It keeps at most 254, as (x, y) byte pairs at `12440(A6)` (count at `12438`), and gives each listed cell
+    feature `$7f`.
+- `$2533a` prunes them against a threshold T = D0 × 2048 for D0 ≤ 31, else `$ffff`. Bases 32 and up are therefore
+  never pruned.
+  - For each listed cell it draws r. When r > T it takes one step along the cell's plane-2 arrow.
+  - If the cell it reaches does not have 2 or 3 blocked neighbours (it is a junction), the dead end is filled back
+    to rock (G0 = G1 = 0).
+  - So low-numbered bases lose most of their one-cell stubs. That later bases are meant to be harder mazes is
+    inferred from this rule, not measured.
+- `$25198` then runs again to rebuild the list.
+- `$25162` shuffles the 256 slots with 513 random swaps, then restores the RNG seed.
+
+**Feature scatter.** The feature numbers are G1 features; their tiles follow "Output encoding" below. Which game
+object each feature is has not been matched.
+- `$25240` places a 3x3 patch of feature 9 (tile `$28`).
+  - Site: the first room-list entry (`12952(A6)`) whose kind byte has both bit fields 0-2 and 3-5 non-zero.
+    Failing that, a random dead end (`$2567e`).
+  - It grows in +x and +y only, into room or lift cells (`$25300`), and leaves lift features alone.
+- `$256f0` makes room doorways, 61 tries.
+  - It picks a random room (`$256be`), walks w + h + 2 arrows from it, then goes back 2 cells against the last
+    arrow.
+  - Where that cell is blocked or room floor it steps back once more.
+  - When a side cell is blocked and both this cell and its arrow successor are room floor (`$1f`/`$33`), the cell
+    gets feature `$21` with G0 `$ffec`, and the successor gets `$0e`.
+- `$24d64` replaces every G0 word equal to D5 with D6. It runs twice: `$ffc3` to 0, then `$ffc4` to `$fff6`.
+- `$24128` places feature `$16` at corridor cells.
+  - It makes min(D0, 10) + 1 walks (21 when D0 > 10), each from a random cell, down the arrow field two steps at a
+    time, to the first feature-7 cell.
+  - The marker is skipped next to a door (`$15`).
+- `$240c2` gives feature `$1e` (tile `$18`) to rock walls one cell thick (open on both N and S, or both E and W). It
+  makes (4·D0, at most 80) + 1 tries of 5 cells rightwards.
+- `$26438`, `$265cc` and `$26606` place features on cells:
+  - `$26438`: feature `$24` (`$2a` on a `$28` cell), at most 11;
+  - `$265cc`: feature `$25` (`$2b`), no cap;
+  - `$26606`: feature `$26` on `$1f $33 $14 $11` cells, at most 8.
+  - The try counts come from `$2640a`, a log-like compression of D0.
+- `$26532` turns up to min(D0 - 5, 60)/2 + 1 plain corridor cells into `$0032`. It places nothing for D0 ≤ 5.
+- `$26570` puts `$30`/`$31` on room cells, or `$30` on corridor cells open on all four sides.
+- `$2630c` decorates wall faces: up to 100 faces, each taking up to 101 draws.
+  - A candidate is a featureless rock cell with an open neighbour, and no open neighbour of feature `$15 $1e $12
+    $13`.
+  - It gets feature `$2c` with parameter = the mask of its open sides (N 1, E 2, S 4, W 8), and that parameter is
+    the exported tile.
+  - The picture number is (r >> 8) mod 6, with 1 mapped to 2, so it is one of 0, 2, 3, 4, 5.
+  - Each face is recorded as (x, y, picture, 0) in the list at `fed 1930(A6)` = `$1bd58` (pointer `13704(A6)`).
+- `$26854` marks lift pairs. It makes min(D0, 40) + 1 row scans for an up end (4/`$35`) or a down end (5/`$36`). Where
+  the partner on the next floor is the matching end, the up end becomes `$2e` and the down end `$2f`.
+
+**Code quirks the models keep.**
+- `$24128` and `$2533a` follow arrows from rock (G2 = 0, read as north) and from `$fe` cells. That indexes the
+  direction table `$25404` past its end, and some walks leave the grid. `$24128` reads outside the module block in
+  14 of 80 cases; the model reads `mg_ret.snap`'s RAM there, which is static code. Neither routine writes outside
+  the block.
+- In `$26854` the `addq.w #1,D5` at `$2688c` is dead, because the loop re-enters at `$26866` and recomputes D5.
+
+**Coded doors.** The combination lock's door list (`ai.md`, "Getting into a base") is written by the generator.
+- **Proven** (`stages/doorwatch.py natural scratchpad/captive/base1/land_mg.snap 3000000`, no pokes): in the natural
+  compound call for mission 1, the 8-entry list at `fed 2330(A6)` = `$1bee8` (pointer `13708(A6)`) is first cleared
+  by `$23b8e`. It then gets exactly three writes: x = `$16` at `$242f0`, y = `$15` at `$242f2`, and state `$0080` at
+  `$24300`. The list ends as `1615 0080`, the entry `base1/outside.snap` holds, and federation does not write it
+  afterwards. The shortcut call `doorwatch.py shortcut 0,0,2,0` gives the same writes. The stack at `$242f0` returns
+  to `$23dae`, inside the compound builder `$23e80`.
+- **Inferred from the code**, and consistent with those writes:
+  - `$23e80` walls the compound with turtle moves (`$23fde`/`$23fa2`; walls are G0 `$ffff`, feature `$80`).
+  - It sites the compound at (22,20) for D0 = 0 when bits 2 and 3 of `13277(A6)` are clear. Otherwise the site is a
+    random open cell in [3..60] × [3..28].
+  - It ends in `bra $24298`, the door placer every stage shares, which dispatches on the door kind's low 3 bits:
+    - 2: a coded door, only while the counter `13628(A6)` is non-zero;
+    - 4: a coded door with no counter check (the compound door, and `$2676c`'s door at D2 = 1);
+    - 3: a large structure at `$24306`, which ends by calling the group writer `$25e08`;
+    - anything else: a plain door, counted in `13618(A6)`.
+  - A coded door takes slot 7 - `13628`. The counter starts at 7 (`$23c66`) and counts down, so the slots fill from 0.
+  - The door's code is the high word of (RNG word `12404(A6)` × 24), stored as state = code << 4. The code indexes
+    the 24 corner orders at `$e358`. For the mission 1 compound, `$59c6` × 24 = `$86d10` gives code 8, the code
+    `ai.md` found by play.
+- **Proven, structurally**, over the 80 bases (`stages/doorlist.py 0 40`):
+  - all 357 list entries name a door cell (feature `$15`) with state low nibble 0 and code < 24;
+  - all 317 kind-2 door cells in the grids are listed;
+  - the other 40 entries are kind 4, one per D2 = 1 base;
+  - every code 0..23 occurs, 7 to 25 times.
+- A door's code is therefore random per door, drawn from the base's RNG stream, and nothing in the generator
+  writes it anywhere else.
+
+**Not ported.**
+- `$263fa`, a second dig pass: `$2640a`(D0) + 1 calls of the room builder `$249da` in mode `13584` = 2. It needs a
+  digger model.
+- `$2419a`, the doors (read, not ported):
+  - first a plain door on each of the 25 cells of `13712(A6)`;
+  - then 300 tries on corridor cells walled on both sides, with the kind from the byte table `$24228`;
+  - D0 = 0 makes every door plain.
+  - Its kind-3 doors reach the group writer `$25e08`, so it waits on the creature placement.
+- The creature and object placement stages `$25c1e`, `$25722`, `$25414`, `$2543a` and `$25d88`: they write the group
+  list (`fed 4532(A6)`, read by `ai.md`) and the object list `13724(A6)` = `$1bf3a`.
+- `$26478`, `$264ac`, `$264c8` (append to `13724`), `$268f8` (D0 = 0 only), `$2676c` (D2 = 1 only).
+
 ## Output encoding
 
 `$23936` writes federation's two 64x32 byte layers, index y × 64 + x. Federation reads them the same way (`$88e4`,
@@ -235,8 +349,14 @@ G2 byte 0 | (G2 byte 0 << 3). For rock and block walls it holds G2 byte 0. Bits 
 | G2 | `8280(A6)` | byte pairs; only byte 0 is set in the cases run |
 
 **Other output regions.** The other A1-table pointers address federation regions that the generator clears and fills
-(`$23bcc`-`$23c5a`): `13696` through `13740(A6)`, including the 25-word list copied from `13460(A6)` by `$245e2`. Their
-contents are not read.
+(`$23bcc`-`$23c5a`): `13696` through `13740(A6)`, including the 25-word list copied from `13460(A6)` by `$245e2`.
+Identified (read from the stage dumps; roles from their writers in "After the flow field"):
+- `13704` = `$1bd58`: the decorated-wall list, 100 × (x, y, picture, n).
+- `13708` = `$1bee8` (`fed 2330`): the coded-door list, 8 × (x, y, state word).
+- `13712` = `$1bf08`: the 25-word door-cell list.
+- `13716` = `$1c77e`: a header (`$1000`, `$ff8`, `$88828881`), then the creature group list at `$1c782` (`fed 4532`).
+- `13724` = `$1bf3a`: the object list.
+- `13740` = `$1d942`: the kind-3 structure list, 4 bytes per entry, at most 7 (count `13638`).
 
 ## The returned sheet mask
 
@@ -253,11 +373,10 @@ surface.
 
 ## Not read
 
-- The 25 stages after `$24f4c`: `$25198` through `$268f8` (features, objects, doors, generators). `stagedump.py`
-  gives the bytes each one changes.
+- The unported post-dig stages listed at the end of "After the flow field". `stagedump.py` gives the bytes each one
+  changes.
 - `$24c5c`: features `$11` and `$14`, with a marker `$fffe`.
-- `$2676c`: D2 = 1 only.
-- The tile list's game meaning: no tile has been matched to a picture.
+- The tile list's game meaning: no tile or feature has been matched to a picture or object.
 - The surface generator past `$23d94`.
 - What the Copylock prologue checks.
 - Whether the digger's corridor network is a strict tree: implied by the carve rule, not counted.
