@@ -29,3 +29,8 @@ The decoded Copylock instruction stream is a bounded text trace. Make `pre_trace
 (PC `$1f892`). Then run `printf 's 490420\nq\n' | dotnet exec bin/Debug/net8.0/M68000.dll resume <pre_trace.snap> repl`
 **without** `ATARI_NOTRACE`, piped through `grep -v '^\$0f8'`. It prints every instruction as decrypted at the moment it ran,
 about 450,000 lines in all.
+
+`pcrel_calls.py <federation.asm> [target_hex ...]` resolves `federation`'s long PC-relative calls (`move.l #imm,Rn` then
+`jsr`/`jmp -8(PC,Rn.l)`), which a grep of the listing for a target address does not find. Expected:
+`pcrel_calls.py scratchpad/captive/federation.asm 12b4c 12a20` prints `$00ab22 jsr -> $012a20` and
+`$00ddce jmp -> $012b4c`.
