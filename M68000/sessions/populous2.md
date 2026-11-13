@@ -10,7 +10,7 @@ Updated 2026-11-13 by the session that ended at commit `98206d4`.
   `reversing/populous2/README.md` "Provenance" and "Drive recipe".
 - Start from: `scratchpad/populous2/anchors/p2_game_start.snap` (first play frames, conquest battle 0 vs
   Epimetheus; sidecar remounts `wild29.st`), or `p2_game_60m.snap` 60M steps on with no input.
-- Uncommitted work left behind: none.
+- Uncommitted work left behind: none. `uv run python tools/gates.py run populous2`: 8/8 PASS at `98206d4`.
 
 ## Proven so far
 
@@ -32,7 +32,6 @@ Updated 2026-11-13 by the session that ended at commit `98206d4`.
   → `raise_point` `$1ec8c` / `lower_point` `$1eed4` (Populous's rule, order N..NW, write after recursion);
   76/76 grid, mana and re-derive on both anchors (`py/raise_gate.py`), click A/B 16 and 1 corners equal to the
   model (`py/click_ab.py`). Lower on your own settlement sets entity +13 bit 2 and charges 20 x stale `$3962c`.
-  All six gates in `gates.toml` pass (`tools/gates.py run populous2`).
 - `gen_land` `$1ebee` byte for byte: 30/30 seeds, cell map plus seed and counters (`py/gen_gate.py` on
   `anchors/p2_gen_entry.snap`, rebuilt by `py/gen_entry.sh`); walk stops at a rejected corner or height 8;
   controls 16/30 (stop at 6) and 0/30 (write before recursion). README "World generator".
@@ -67,7 +66,7 @@ Nothing running.
 - The disk is MSA: `tools/msa2st.py` first; the game reads through its own FDC code, so `ATARI_TRACE_GEMDOS` goes
   silent after `pop2.tos` starts. Use `ATARI_TRACE_FDC=1` plus `py/fdc_files.py`.
 - `mouse down`/`up` need the button (`mouse down l`); a bare `mouse down` is a REPL error and the run goes on.
-- REPL `bt` crashes the emulator (unhandled AddressError in `Backtrace`, `Program.fs:1649`) when A6 is odd, as it is
+- REPL `bt` crashes the emulator (fix `a85441e` on branch `claude/modest-dirac-449d9c`, not merged) (unhandled AddressError in `Backtrace`, `Program.fs:1649`) when A6 is odd, as it is
   inside `$2436e` (A6 = `$2558b`): read the stack with `m <A7> 40` instead.
 - `pop2_all.asm` is a linear sweep and loses sync after jump tables (`$2311c`): use
   `tools/disassemble.py --rom scratchpad/populous2/pop2_1770.bin --base 1770 <lo> <hi>` for handler bodies.
@@ -76,7 +75,8 @@ Nothing running.
 
 ## Waiting on Dave
 
-None.
+- Whether to merge the `bt` fix branch `refs/heads/claude/modest-dirac-449d9c` (session "Fix REPL bt crash on odd A6",
+  cut from `8222db3`; it reports the net and gates passing and was re-running them against master). Not needed here.
 
 ## Next session
 
