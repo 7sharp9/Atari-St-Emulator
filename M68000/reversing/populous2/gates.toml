@@ -1,0 +1,37 @@
+# Populous II's promoted gates, for tools/gates.py (`uv run python tools/gates.py run populous2`).
+# Commands run from M68000/; counts are the ones README.md and py/README.md record for exactly these command lines.
+
+[[gate]]
+name = "corners_start"
+cmd = "{python} reversing/populous2/py/corners.py scratchpad/populous2/anchors/p2_game_start.snap --callcap"
+expect = ["4225/4225", "4071/4071", "915/915"]
+cite = "README.md \"The landscape\"; py/README.md"
+minutes = 2
+
+[[gate]]
+name = "rand"
+cmd = "{python} reversing/populous2/py/rand_gate.py scratchpad/populous2/anchors/p2_game_start.snap"
+expect = ["50/50"]
+cite = "README.md \"Random numbers\"; py/README.md"
+minutes = 1
+
+[[gate]]
+name = "walkers_60m"
+cmd = "{python} reversing/populous2/py/walkers.py scratchpad/populous2/anchors/p2_game_60m.snap"
+expect = ["31/31"]
+cite = "README.md \"Objects and entities\"; py/README.md"
+minutes = 1
+
+[[gate]]
+name = "raise_start"
+cmd = "{python} reversing/populous2/py/raise_gate.py scratchpad/populous2/anchors/p2_game_start.snap 40"
+expect = ["re:model 76/76", "re:redirected\\): 76/76", "re:in 76/76 cases"]
+cite = "README.md \"Raise and lower\"; py/README.md"
+minutes = 1
+
+[[gate]]
+name = "raise_60m"
+cmd = "{python} reversing/populous2/py/raise_gate.py scratchpad/populous2/anchors/p2_game_60m.snap 40"
+expect = ["re:model 76/76", "re:redirected\\): 76/76", "re:in 76/76 cases"]
+cite = "README.md \"Raise and lower\"; py/README.md"
+minutes = 1

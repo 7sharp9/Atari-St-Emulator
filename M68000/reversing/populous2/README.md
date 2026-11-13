@@ -134,7 +134,8 @@ cells, which suggests Populous's 8x8 close-up view), then `$1334a`, `$2309a`, `$
 one game tick per about 7 VBLs: every routine named here is called exactly 29 times, among 23 call
 targets at that count (`tools/call_census.py ev60.bin`; the census is
 `scratchpad/populous2/calls60.txt`). Named so far: `$2309a` `update_entities` and `$1fcce`
-`update_scenery` ("Objects and entities"); `$26644` walks the `$4505a` array.
+`update_scenery` ("Objects and entities"), `$29226` `run_commands` ("Raise and lower");
+`$26644` walks the `$4505a` array.
 
 ### The landscape (verified)
 
@@ -241,11 +242,75 @@ holds four, one per quadrant (ranges 6..34 and 35..57), ended by `$ff9d`). For e
 `$1ec38` seeds two LCG states from those two `rand` results and steps them as
 `s = (s*$24a1 + $24df) & $7fff`, the constants of Populous's PRNG `$16702` (`terrain.md`
 section 3), moving x and y by `s mod 7 - 3` and calling `raise_point` `$1ec8c` until it returns
-negative or a D4 it leaves is 8 or more (not yet pinned down). `raise_point` counts calls in
-`$39788`, reads the corner through `$1f176`, stops at height 8, and recurses into a neighbour
-that would end more than one below the raised corner: Populous's neighbour-difference raise, not
-yet compared with it. Populous 1 had three walks stopping at height 6. Not yet driven or
-callcapped.
+negative or a D4 it leaves is 8 or more (not yet pinned down). `raise_point` is the routine the
+player's raise uses, verified under "Raise and lower" below. Populous 1 had three walks stopping
+at height 6. The generator itself is not yet driven or callcapped.
+
+### Raise and lower (verified, from a click to the cell map)
+
+**The click.** With the raise/lower power selected (`$47372` = 2, as it is in play), the main
+loop turns a left click on the land into command 2 and a right click into command 4. It writes
+the command and the cursor corner (`$3e7a6`,`$3e7a8`) into the local player's command record
+(`$473c4` points at `$473b0`, side 1) at `$13208` (left) or `$1332e` (right), one tick after the
+button goes down. `py/click_ab.py` moves the pointer from `p2_game_60m` to screen (200,110),
+cursor corner (11,30), then runs the same 660,000 steps with no click, a left click and a right
+click:
+
+| run | command written | corners changed vs the no-click run | model at the cursor corner | models at the 3 neighbouring corners | mana below control |
+|---|---|---|---|---|---|
+| left | 2 at (11,30) | 16 | equal | 0/3 equal | 322 (16 x 20 = 320) |
+| right | 4 at (11,30) | 1 | equal | 0/3 equal | 20 |
+
+The extra 2 mana on the left run accrued over the ticks after the raise and was not traced
+further.
+
+**The command records.** `$29226` (once per tick) walks the two 10-byte records `$473b0` and
+`$473ba` (+0 side, +1 command, +2 x, +3 y, +8 a mode: 2 and 4 run the command directly, 6 and 8 first call `$1f16`/`$1eaa`, presumably the
+serial link, read only), runs the command through the word table at `$29300` (`$292dc`), then
+clears +1..+3. Command 2 (`$2937e`) calls
+`cmd_raise` `$1f6ce(D0=x, D1=y)`. Command 4 (`$293f6`) calls `$24de0`, which first walks the
+occupant list of cell (x,y): if it holds a settled entity (type 4) of the commanding side, it
+sets bit 2 of that entity's byte +13 and lowers nothing; otherwise it calls `cmd_lower`
+`$1f6a0`. Both command routines clear the corner count `$3962c`, seed the dirty box
+(D6 = `$01000100`, D7 = 0), call the point routine and, when the box grew, redraw it (`$1f6fa`, read). Back in the handler the
+side pays `power_cost(0, side) * $3962c * 4` from its mana (long +0 of the side record
+`$46fc4 + side*$13a`), floored at 0.
+
+**The point routines.** `raise_point` `$1ec8c(D0=x, D1=y)` counts the call in `$39788`, rejects
+a corner outside 0..64, stops at height 8, otherwise visits the eight neighbours in the order N,
+NE, E, SE, S, SW, W, NW and recurses into each one lower than the corner, then writes the corner
+at height + 1 into the four cells that share it. `lower_point` `$1eed4` is the mirror: it stops at
+0 and recurses into each neighbour higher than the corner. This is Populous's rule (a difference of
+at most 1 between neighbours, heights 0..8, `reversing/populous/terrain.md` section 2), with a
+different neighbour order and the corner written after the recursion rather than before.
+
+`py/raise_gate.py` checks the whole command path under `callcap`: for 35 corners (20 land, 10
+sea, 4 on the map's edges and corners, the highest corner) it pokes a raise and a lower into side
+1's record, plus raises for side 2 at 6 of them, and callcaps `$292dc`:
+
+| check | `p2_game_start` | `p2_game_60m` |
+|---|---|---|
+| corner grid after the call equals the model (own-settlement redirect included) | **76/76** | **76/76** |
+| control: only the clicked corner moves | 40/76 | 42/76 |
+| mana charged = 20 x corners changed (20 x the old `$3962c` when redirected) | **76/76** | **76/76** |
+| every non-rock cell re-derives from the new corner grid by the rule of "The landscape" | 76/76 | 76/76 |
+
+Without the redirect rule the grid check is 75/76 on each anchor: lowering corner (12,33) under
+side 1's settlement `$01d4` changes no corner and sets its flag (`$400fb`, 0 to 4). The charge
+in that case is 20 times whatever `$3962c` the previous terrain command left (1 at `p2_game_60m`,
+3 at `p2_game_start`). Poking `$3962c` to 7 before the same command charges 140, so the charge
+comes from the stale count, not from this command. What the flag does to the settlement is
+unread. 228 and 231 corners changed over the corpus; the largest single raise, at the highest
+corner of `p2_game_60m` (height 4), moved 40.
+
+**The cost.** `power_cost` `$2657e(D0=power, D1=side)` (read) takes the base cost from the
+36-word table `$310d0` (raise and lower are power 0 at 5; `$ffff` marks a power that cannot be
+bought). The powers fall in six groups of six (`$265d2` maps a power to its group). The cost is
+reduced by `base / d`, where `d` comes from `$30ef6` (0, 0, 10, 9, 8, 7, 6, 5) indexed by the
+side's experience byte for that group (side record +82+group) shifted right by 5. Experience was
+0 in both anchors, so the discount has not run. Mana is kept at four times the shown value
+(`$136ba` reads it shifted right by 2; that this is the display is inferred), so a raised corner costs 5 shown mana. Populous 1
+charged `4n + 10`.
 
 ### Random numbers (verified)
 
@@ -279,11 +344,11 @@ files go to `$a000` (the second screen) instead.
 
 ## Not yet exercised
 
-Only the conquest start against Epimetheus has run. Not driven: any click in play (raise/lower,
-powers, the panel), the custom game and deity creation, save/load, the two-player link, the end of
-a battle. Unread: the main-loop routines other than `$2309a` and `$1fcce`, the entity states other
+Only the conquest start against Epimetheus has run. Driven: raise and lower by a click. Not driven:
+the other powers and the panel, the custom game and deity creation, save/load, the two-player link, the end of
+a battle. Unread: the main-loop routines other than `$2309a`, `$1fcce` and `$29226`, the entity states other
 than 2, 4 and 6 (and `$24f3a`, `$24a92`), the `$4505a` array, the reader of the cell footfall
-count, Timer A, the sprite and block formats, `LANDn.DAT`, the computer god.
+count, the settlement flag bit 2 of entity +13, the experience discount of `power_cost`, Timer A, the sprite and block formats, `LANDn.DAT`, the computer god.
 
 ## Files
 
@@ -295,6 +360,9 @@ count, Timer A, the sprite and block formats, `LANDn.DAT`, the computer god.
 | `py/find_corner_grid.py` | the RAM search for a separate corner grid, with a planted control |
 | `py/walkers.py` | the object heap and the per-cell occupant lists, with a low-byte control |
 | `py/entity_states.sh` | per-state call counts of `update_entities` over 29 ticks, and the list check after them |
+| `py/raise_gate.py` | raise and lower through the command handler under callcap against the point-routine model, mana and re-derivation |
+| `py/click_ab.py` | a left and a right click on the land against a no-click control |
+| `gates.toml` | the promoted gates for `tools/gates.py run populous2` |
 | `py/rand_gate.py` | `rand` `$215dc` against its model, 50 callcaps |
 | `py/fdc_files.py` | names the file behind each sector of an `ATARI_TRACE_FDC` log |
 | `compilation_menu.png`, `title.png`, `briefing.png`, `zeus.png`, `game_start.png`, `game_60m.png` | the milestones (`tools/snap_render.py` of the boot and the five anchors) |
