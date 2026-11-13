@@ -1,0 +1,8 @@
+[{"tick": 0, "side": 1, "take": true},
+ {"tick": 2, "side": 1, "type": 22, "x": 0, "y": 2, "group": 0},
+ {"tick": 4, "side": 1, "type": 6, "x": 52, "y": 24, "group": 0},
+ {"tick": 116, "side": 1, "type": 22, "x": 0, "y": 4, "group": 0},
+ {"tick": 118, "side": 1, "type": 12, "x": 48, "y": 40, "group": 0},
+ {"tick": 232, "side": 1, "type": 22, "x": 0, "y": 2, "group": 0},
+ {"tick": 234, "side": 1, "type": 8, "x": 48, "y": 40, "group": 0},
+ {"tick": 348, "side": 1, "type": 12, "x": 41, "y": 66, "group": 0}]

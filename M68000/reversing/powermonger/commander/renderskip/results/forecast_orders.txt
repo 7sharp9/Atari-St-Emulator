@@ -1,0 +1,11 @@
+l2o0 k=1 base_a score=0.16129 hash=6da7a705b6218f60 base_b=same divider=same drawall=same f898=same
+l2o0 k=10 base_a score=0.16129 hash=2e3d2079e545afd0 base_b=same divider=same drawall=same f898=same
+l2o0 k=100 base_a score=0.16129 hash=583fb1ff153017e1 base_b=same divider=same drawall=same f898=same
+l2o0 k=300 base_a score=0.236842 hash=be6c8beacaa81e26 base_b=same divider=same drawall=same f898=same
+l2o0 k=1000 base_a score=0.163043 hash=e9d90ebd348460c4 base_b=same divider=same drawall=same f898=same
+rand1 k=1 base_a score=0.2 hash=536321e110bb0bbe base_b=same divider=same drawall=same f898=same
+rand1 k=10 base_a score=0.2 hash=2c308d4e3aac15bd base_b=same divider=same drawall=same f898=same
+rand1 k=100 base_a score=0.2 hash=512b5cbfa63acc47 base_b=same divider=same drawall=same f898=same
+rand1 k=300 base_a score=0.165414 hash=cbce322a8328d996 base_b=same divider=same drawall=same f898=same
+rand1 k=1000 base_a score=0.19469 hash=30fe4e46434e490b base_b=same divider=same drawall=same f898=same
+non-control arms differing from base_a: 0

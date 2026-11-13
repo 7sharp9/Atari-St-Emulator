@@ -1,0 +1,138 @@
+== l2o0
+  base_a     k=1000 steps=173614970 steps/tick=173,615
+  base_b     k=1000 steps=173614970 steps/tick=173,615
+      k=    1 sim EQUAL rng[lcg,season,seed]==== outside=0 total=0
+      k=   10 sim EQUAL rng[lcg,season,seed]==== outside=0 total=0
+      k=  100 sim EQUAL rng[lcg,season,seed]==== outside=0 total=0
+      k=  300 sim EQUAL rng[lcg,season,seed]==== outside=0 total=0
+      k= 1000 sim EQUAL rng[lcg,season,seed]==== outside=0 total=0
+  divider    k=1000 steps=32779788 steps/tick=32,780
+      k=    1 sim EQUAL rng[lcg,season,seed]==== outside=858 total=858
+      k=   10 sim EQUAL rng[lcg,season,seed]==== outside=1792 total=1792
+      k=  100 sim EQUAL rng[lcg,season,seed]==== outside=194 total=194
+      k=  300 sim EQUAL rng[lcg,season,seed]==== outside=218 total=218
+      k= 1000 sim EQUAL rng[lcg,season,seed]==== outside=24171 total=24171
+  draw       k=1000 steps=27425723 steps/tick=27,426
+      k=    1 sim EQUAL rng[lcg,season,seed]==== outside=7443 total=7443
+      k=   10 sim EQUAL rng[lcg,season,seed]==== outside=7538 total=7538
+      k=  100 sim EQUAL rng[lcg,season,seed]==== outside=6667 total=6667
+      k=  300 sim EQUAL rng[lcg,season,seed]==== outside=6708 total=6708
+      k= 1000 sim EQUAL rng[lcg,season,seed]==== outside=32179 total=32179
+  drawall    k=1000 steps=26671184 steps/tick=26,671
+      k=    1 sim EQUAL rng[lcg,season,seed]==== outside=7452 total=7452
+      k=   10 sim EQUAL rng[lcg,season,seed]==== outside=7560 total=7560
+      k=  100 sim EQUAL rng[lcg,season,seed]==== outside=6668 total=6668
+      k=  300 sim EQUAL rng[lcg,season,seed]==== outside=6678 total=6678
+      k= 1000 sim EQUAL rng[lcg,season,seed]==== outside=32186 total=32186
+  f898       k=1000 steps=38820184 steps/tick=38,820
+      k=    1 sim EQUAL rng[lcg,season,seed]==== outside=12930 total=12930
+      k=   10 sim EQUAL rng[lcg,season,seed]==== outside=12936 total=12936
+      k=  100 sim EQUAL rng[lcg,season,seed]==== outside=12976 total=12976
+      k=  300 sim EQUAL rng[lcg,season,seed]==== outside=13005 total=13005
+      k= 1000 sim EQUAL rng[lcg,season,seed]==== outside=13003 total=13003
+  gated      k=1000 steps=33173981 steps/tick=33,174
+      k=    1 sim EQUAL rng[lcg,season,seed]==== outside=7320 total=7320
+      k=   10 sim EQUAL rng[lcg,season,seed]==== outside=7420 total=7420
+      k=  100 sim EQUAL rng[lcg,season,seed]==== outside=6543 total=6543
+      k=  300 sim EQUAL rng[lcg,season,seed]==== outside=6525 total=6525
+      k= 1000 sim EQUAL rng[lcg,season,seed]==== outside=32041 total=32041
+  neg_1abaa  k=100 steps=17581071 steps/tick=175,811
+      k=    1 sim DIFFER {"globals": 3} rng[lcg,season,seed]=xx= outside=51 total=54
+      k=   10 sim DIFFER {"globals": 2} rng[lcg,season,seed]=xx= outside=48 total=50
+      k=  100 sim DIFFER {"globals": 4} rng[lcg,season,seed]=xx= outside=74 total=78
+  neg_3e06   k=100 steps=17039503 steps/tick=170,395
+      k=    1 sim DIFFER {"groups": 3, "globals": 3, "cell_heads": 9} rng[lcg,season,seed]==== outside=75 total=90
+      k=   10 sim DIFFER {"settlements": 4, "groups": 4, "objects": 23, "globals": 3, "cell_heads": 28} rng[lcg,season,seed]==== outside=189 total=251
+      k=  100 sim DIFFER {"lords": 2, "settlements": 18, "groups": 15, "objects": 706, "globals": 6, "rng_seed": 4, "cell_heads": 103} rng[lcg,season,seed]===x outside=408 total=1262
+== m1s0
+  base_a     k=1000 steps=230300535 steps/tick=230,301
+  base_b     k=1000 steps=230300535 steps/tick=230,301
+      k=    1 sim EQUAL rng[lcg,season,seed]==== outside=0 total=0
+      k=   10 sim EQUAL rng[lcg,season,seed]==== outside=0 total=0
+      k=  100 sim EQUAL rng[lcg,season,seed]==== outside=0 total=0
+      k=  300 sim EQUAL rng[lcg,season,seed]==== outside=0 total=0
+      k= 1000 sim EQUAL rng[lcg,season,seed]==== outside=0 total=0
+  divider    k=1000 steps=16854326 steps/tick=16,854
+      k=    1 sim EQUAL rng[lcg,season,seed]==== outside=139 total=139
+      k=   10 sim EQUAL rng[lcg,season,seed]==== outside=312 total=312
+      k=  100 sim EQUAL rng[lcg,season,seed]==== outside=187 total=187
+      k=  300 sim EQUAL rng[lcg,season,seed]==== outside=195 total=195
+      k= 1000 sim EQUAL rng[lcg,season,seed]==== outside=27876 total=27876
+  draw       k=1000 steps=13580248 steps/tick=13,580
+      k=    1 sim EQUAL rng[lcg,season,seed]==== outside=8107 total=8107
+      k=   10 sim EQUAL rng[lcg,season,seed]==== outside=8210 total=8210
+      k=  100 sim EQUAL rng[lcg,season,seed]==== outside=8065 total=8065
+      k=  300 sim EQUAL rng[lcg,season,seed]==== outside=8065 total=8065
+      k= 1000 sim EQUAL rng[lcg,season,seed]==== outside=34082 total=34082
+  drawall    k=1000 steps=11779105 steps/tick=11,779
+      k=    1 sim EQUAL rng[lcg,season,seed]==== outside=8113 total=8113
+      k=   10 sim EQUAL rng[lcg,season,seed]==== outside=8303 total=8303
+      k=  100 sim EQUAL rng[lcg,season,seed]==== outside=8086 total=8086
+      k=  300 sim EQUAL rng[lcg,season,seed]==== outside=8102 total=8102
+      k= 1000 sim EQUAL rng[lcg,season,seed]==== outside=34130 total=34130
+  f898       k=1000 steps=25565836 steps/tick=25,566
+      k=    1 sim EQUAL rng[lcg,season,seed]==== outside=15822 total=15822
+      k=   10 sim EQUAL rng[lcg,season,seed]==== outside=15851 total=15851
+      k=  100 sim EQUAL rng[lcg,season,seed]==== outside=15848 total=15848
+      k=  300 sim EQUAL rng[lcg,season,seed]==== outside=15830 total=15830
+      k= 1000 sim EQUAL rng[lcg,season,seed]==== outside=15348 total=15348
+  gated      k=1000 steps=19512281 steps/tick=19,512
+      k=    1 sim EQUAL rng[lcg,season,seed]==== outside=8014 total=8014
+      k=   10 sim EQUAL rng[lcg,season,seed]==== outside=8086 total=8086
+      k=  100 sim EQUAL rng[lcg,season,seed]==== outside=7977 total=7977
+      k=  300 sim EQUAL rng[lcg,season,seed]==== outside=7983 total=7983
+      k= 1000 sim EQUAL rng[lcg,season,seed]==== outside=34009 total=34009
+  neg_1abaa  k=100 steps=23276120 steps/tick=232,761
+      k=    1 sim DIFFER {"globals": 3} rng[lcg,season,seed]=xx= outside=15 total=18
+      k=   10 sim DIFFER {"globals": 2} rng[lcg,season,seed]=xx= outside=46 total=48
+      k=  100 sim DIFFER {"globals": 3} rng[lcg,season,seed]=xx= outside=25 total=28
+  neg_3e06   k=100 steps=23252467 steps/tick=232,525
+      k=    1 sim DIFFER {"groups": 1, "globals": 3, "cell_heads": 6} rng[lcg,season,seed]==== outside=291 total=301
+      k=   10 sim DIFFER {"groups": 2, "globals": 3, "cell_heads": 25} rng[lcg,season,seed]==== outside=738 total=768
+      k=  100 sim DIFFER {"groups": 2, "objects": 1, "globals": 3, "cell_heads": 28} rng[lcg,season,seed]==== outside=847 total=881
+== rand1
+  base_a     k=1000 steps=170179123 steps/tick=170,179
+  base_b     k=1000 steps=170179123 steps/tick=170,179
+      k=    1 sim EQUAL rng[lcg,season,seed]==== outside=0 total=0
+      k=   10 sim EQUAL rng[lcg,season,seed]==== outside=0 total=0
+      k=  100 sim EQUAL rng[lcg,season,seed]==== outside=0 total=0
+      k=  300 sim EQUAL rng[lcg,season,seed]==== outside=0 total=0
+      k= 1000 sim EQUAL rng[lcg,season,seed]==== outside=0 total=0
+  divider    k=1000 steps=32929622 steps/tick=32,930
+      k=    1 sim EQUAL rng[lcg,season,seed]==== outside=3309 total=3309
+      k=   10 sim EQUAL rng[lcg,season,seed]==== outside=6711 total=6711
+      k=  100 sim EQUAL rng[lcg,season,seed]==== outside=335 total=335
+      k=  300 sim EQUAL rng[lcg,season,seed]==== outside=386 total=386
+      k= 1000 sim EQUAL rng[lcg,season,seed]==== outside=21682 total=21682
+  draw       k=1000 steps=27110661 steps/tick=27,111
+      k=    1 sim EQUAL rng[lcg,season,seed]==== outside=10690 total=10690
+      k=   10 sim EQUAL rng[lcg,season,seed]==== outside=10719 total=10719
+      k=  100 sim EQUAL rng[lcg,season,seed]==== outside=7281 total=7281
+      k=  300 sim EQUAL rng[lcg,season,seed]==== outside=7300 total=7300
+      k= 1000 sim EQUAL rng[lcg,season,seed]==== outside=31164 total=31164
+  drawall    k=1000 steps=26291124 steps/tick=26,291
+      k=    1 sim EQUAL rng[lcg,season,seed]==== outside=10689 total=10689
+      k=   10 sim EQUAL rng[lcg,season,seed]==== outside=10699 total=10699
+      k=  100 sim EQUAL rng[lcg,season,seed]==== outside=7314 total=7314
+      k=  300 sim EQUAL rng[lcg,season,seed]==== outside=7320 total=7320
+      k= 1000 sim EQUAL rng[lcg,season,seed]==== outside=31179 total=31179
+  f898       k=1000 steps=39145208 steps/tick=39,145
+      k=    1 sim EQUAL rng[lcg,season,seed]==== outside=14439 total=14439
+      k=   10 sim EQUAL rng[lcg,season,seed]==== outside=14485 total=14485
+      k=  100 sim EQUAL rng[lcg,season,seed]==== outside=14436 total=14436
+      k=  300 sim EQUAL rng[lcg,season,seed]==== outside=14490 total=14490
+      k= 1000 sim EQUAL rng[lcg,season,seed]==== outside=14383 total=14383
+  gated      k=1000 steps=33299859 steps/tick=33,300
+      k=    1 sim EQUAL rng[lcg,season,seed]==== outside=10609 total=10609
+      k=   10 sim EQUAL rng[lcg,season,seed]==== outside=10586 total=10586
+      k=  100 sim EQUAL rng[lcg,season,seed]==== outside=7205 total=7205
+      k=  300 sim EQUAL rng[lcg,season,seed]==== outside=7190 total=7190
+      k= 1000 sim EQUAL rng[lcg,season,seed]==== outside=31089 total=31089
+  neg_1abaa  k=100 steps=17960059 steps/tick=179,601
+      k=    1 sim DIFFER {"globals": 3} rng[lcg,season,seed]=xx= outside=83 total=86
+      k=   10 sim DIFFER {"globals": 3} rng[lcg,season,seed]=xx= outside=59 total=62
+      k=  100 sim DIFFER {"globals": 3} rng[lcg,season,seed]=xx= outside=119 total=122
+  neg_3e06   k=100 steps=17312464 steps/tick=173,125
+      k=    1 sim DIFFER {"settlements": 2, "groups": 10, "objects": 35, "globals": 5, "cell_heads": 15} rng[lcg,season,seed]==== outside=171 total=238
+      k=   10 sim DIFFER {"lords": 1, "settlements": 11, "groups": 21, "objects": 311, "globals": 8, "cell_heads": 52} rng[lcg,season,seed]==== outside=198 total=602
+      k=  100 sim DIFFER {"lords": 5, "settlements": 39, "groups": 40, "objects": 1329, "globals": 13, "rng_seed": 4, "cell_heads": 228} rng[lcg,season,seed]===x outside=467 total=2125

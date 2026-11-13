@@ -1,0 +1,15 @@
+== l2o0
+  base     k=1000 steps=173,614,970 steps/tick=173,615 wall median 43.80 min 41.23 (n=3) Msteps/s 3.96 base/arm per round [1.0, 1.0, 1.0] load1 ['29.82', '14.64', '12.18']
+  f898     k=1000 steps=38,820,184 steps/tick=38,820 wall median 9.61 min 9.44 (n=3) Msteps/s 4.04 base/arm per round [6.07, 4.56, 4.37] load1 ['16.81', '13.09', '11.53']
+  gated    k=1000 steps=33,173,981 steps/tick=33,174 wall median 7.93 min 7.72 (n=3) Msteps/s 4.18 base/arm per round [7.24, 5.52, 5.34] load1 ['16.52', '26.55', '11.09']
+  drawall  k=1000 steps=26,671,184 steps/tick=26,671 wall median 6.93 min 6.19 (n=3) Msteps/s 3.85 base/arm per round [8.3, 6.32, 6.66] load1 ['16.37', '24.82', '19.98']
+== m1s0
+  base     k=1000 steps=230,300,535 steps/tick=230,301 wall median 60.14 min 58.78 (n=3) Msteps/s 3.83 base/arm per round [1.0, 1.0, 1.0] load1 ['30.21', '11.78', '8.65']
+  f898     k=1000 steps=25,565,836 steps/tick=25,566 wall median 7.19 min 6.70 (n=3) Msteps/s 3.56 base/arm per round [6.52, 8.37, 8.78] load1 ['37.90', '11.67', '9.48']
+  gated    k=1000 steps=19,512,281 steps/tick=19,512 wall median 5.12 min 4.45 (n=3) Msteps/s 3.81 base/arm per round [7.7, 13.5, 11.48] load1 ['48.67', '12.44', '9.12']
+  drawall  k=1000 steps=11,779,105 steps/tick=11,779 wall median 3.20 min 3.07 (n=3) Msteps/s 3.68 base/arm per round [8.86, 19.61, 18.35] load1 ['45.40', '12.44', '11.00']
+== rand1
+  base     k=1000 steps=170,179,123 steps/tick=170,179 wall median 64.58 min 61.37 (n=3) Msteps/s 2.64 base/arm per round [1.0, 1.0, 1.0] load1 ['17.15', '35.00', '26.89']
+  f898     k=1000 steps=39,145,208 steps/tick=39,145 wall median 11.18 min 9.41 (n=3) Msteps/s 3.50 base/arm per round [3.23, 6.52, 6.6] load1 ['23.13', '30.46', '23.06']
+  gated    k=1000 steps=33,299,859 steps/tick=33,300 wall median 14.38 min 7.68 (n=3) Msteps/s 2.31 base/arm per round [4.49, 1.62, 9.61] load1 ['23.76', '65.62', '21.46']
+  drawall  k=1000 steps=26,291,124 steps/tick=26,291 wall median 10.08 min 7.77 (n=3) Msteps/s 2.61 base/arm per round [6.4, 5.24, 9.51] load1 ['22.33', '68.67', '12.17']

@@ -1,0 +1,16 @@
+l2o0 k=1 base_a score=0.16129 hash=6da7a705b6218f60 base_b=same divider=same draw=same drawall=same f898=same gated=same neg_1abaa=same neg_3e06=DIFF(score 0.16129 hash 4febb0d8757a0817)
+l2o0 k=10 base_a score=0.16129 hash=ab57d5429a0cdb21 base_b=same divider=same draw=same drawall=same f898=same gated=same neg_1abaa=same neg_3e06=DIFF(score 0.16129 hash f69aea25272dc20b)
+l2o0 k=100 base_a score=0.16129 hash=f24b8fe4854299e0 base_b=same divider=same draw=same drawall=same f898=same gated=same neg_1abaa=same neg_3e06=DIFF(score 0.16129 hash a152f5ff76443864)
+l2o0 k=300 base_a score=0.16129 hash=d347f057ec2c0c7d base_b=same divider=same draw=same drawall=same f898=same gated=same
+l2o0 k=1000 base_a score=0.16129 hash=fcf18bdf0d03472b base_b=same divider=same draw=same drawall=same f898=same gated=same
+m1s0 k=1 base_a score=1.238095 hash=149d9e85d416769f base_b=same divider=same draw=same drawall=same f898=same gated=same neg_1abaa=same neg_3e06=DIFF(score 1.238095 hash ee2ef7c7dc77dbf0)
+m1s0 k=10 base_a score=1.238095 hash=7b25c1dde6d5e925 base_b=same divider=same draw=same drawall=same f898=same gated=same neg_1abaa=same neg_3e06=DIFF(score 1.238095 hash ff43566b4a1641ff)
+m1s0 k=100 base_a score=1.238095 hash=a28b31413c3de532 base_b=same divider=same draw=same drawall=same f898=same gated=same neg_1abaa=same neg_3e06=DIFF(score 1.238095 hash 3ed847ee07106cce)
+m1s0 k=300 base_a score=1.238095 hash=42840f22982a6751 base_b=same divider=same draw=same drawall=same f898=same gated=same
+m1s0 k=1000 base_a score=1.238095 hash=d9267425b84f3bfb base_b=same divider=same draw=same drawall=same f898=same gated=same
+rand1 k=1 base_a score=0.2 hash=401c825c08a4ca4f base_b=same divider=same draw=same drawall=same f898=same gated=same neg_1abaa=same neg_3e06=DIFF(score 0.2 hash e1c6e4d1a9163585)
+rand1 k=10 base_a score=0.2 hash=298d37ce6ca55f62 base_b=same divider=same draw=same drawall=same f898=same gated=same neg_1abaa=same neg_3e06=DIFF(score 0.2 hash 95dcec57073af765)
+rand1 k=100 base_a score=0.2 hash=ca53379468d7df45 base_b=same divider=same draw=same drawall=same f898=same gated=same neg_1abaa=same neg_3e06=DIFF(score 0.2 hash 450a13dbf6c5951a)
+rand1 k=300 base_a score=0.234375 hash=10b235fd3ecc3cbb base_b=same divider=same draw=same drawall=same f898=same gated=same
+rand1 k=1000 base_a score=0.30303 hash=7792f428e2c3ce5c base_b=same divider=same draw=same drawall=same f898=same gated=same
+non-control arms differing from base_a: 0

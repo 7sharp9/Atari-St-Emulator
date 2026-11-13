@@ -1,0 +1,52 @@
+== l2o0
+  base_a     k=1000 steps=160381016 steps/tick=160,381
+  base_b     k=1000 steps=160381016 steps/tick=160,381
+      k=    1 sim EQUAL rng[lcg,season,seed]==== outside=0 total=0
+      k=   10 sim EQUAL rng[lcg,season,seed]==== outside=0 total=0
+      k=  100 sim EQUAL rng[lcg,season,seed]==== outside=0 total=0
+      k=  300 sim EQUAL rng[lcg,season,seed]==== outside=0 total=0
+      k= 1000 sim EQUAL rng[lcg,season,seed]==== outside=0 total=0
+  divider    k=1000 steps=32240469 steps/tick=32,240
+      k=    1 sim EQUAL rng[lcg,season,seed]==== outside=858 total=858
+      k=   10 sim EQUAL rng[lcg,season,seed]==== outside=2549 total=2549
+      k=  100 sim EQUAL rng[lcg,season,seed]==== outside=886 total=886
+      k=  300 sim EQUAL rng[lcg,season,seed]==== outside=1741 total=1741
+      k= 1000 sim EQUAL rng[lcg,season,seed]==== outside=25255 total=25255
+  drawall    k=1000 steps=26049401 steps/tick=26,049
+      k=    1 sim EQUAL rng[lcg,season,seed]==== outside=7452 total=7452
+      k=   10 sim EQUAL rng[lcg,season,seed]==== outside=8168 total=8168
+      k=  100 sim EQUAL rng[lcg,season,seed]==== outside=7314 total=7314
+      k=  300 sim EQUAL rng[lcg,season,seed]==== outside=7680 total=7680
+      k= 1000 sim EQUAL rng[lcg,season,seed]==== outside=32726 total=32726
+  f898       k=1000 steps=38325841 steps/tick=38,326
+      k=    1 sim EQUAL rng[lcg,season,seed]==== outside=12930 total=12930
+      k=   10 sim EQUAL rng[lcg,season,seed]==== outside=12973 total=12973
+      k=  100 sim EQUAL rng[lcg,season,seed]==== outside=12955 total=12955
+      k=  300 sim EQUAL rng[lcg,season,seed]==== outside=12906 total=12906
+      k= 1000 sim EQUAL rng[lcg,season,seed]==== outside=12939 total=12939
+== rand1
+  base_a     k=1000 steps=165420767 steps/tick=165,421
+  base_b     k=1000 steps=165420767 steps/tick=165,421
+      k=    1 sim EQUAL rng[lcg,season,seed]==== outside=0 total=0
+      k=   10 sim EQUAL rng[lcg,season,seed]==== outside=0 total=0
+      k=  100 sim EQUAL rng[lcg,season,seed]==== outside=0 total=0
+      k=  300 sim EQUAL rng[lcg,season,seed]==== outside=0 total=0
+      k= 1000 sim EQUAL rng[lcg,season,seed]==== outside=0 total=0
+  divider    k=1000 steps=30820928 steps/tick=30,821
+      k=    1 sim EQUAL rng[lcg,season,seed]==== outside=3326 total=3326
+      k=   10 sim EQUAL rng[lcg,season,seed]==== outside=6697 total=6697
+      k=  100 sim EQUAL rng[lcg,season,seed]==== outside=347 total=347
+      k=  300 sim EQUAL rng[lcg,season,seed]==== outside=435 total=435
+      k= 1000 sim EQUAL rng[lcg,season,seed]==== outside=21356 total=21356
+  drawall    k=1000 steps=24472336 steps/tick=24,472
+      k=    1 sim EQUAL rng[lcg,season,seed]==== outside=10702 total=10702
+      k=   10 sim EQUAL rng[lcg,season,seed]==== outside=10733 total=10733
+      k=  100 sim EQUAL rng[lcg,season,seed]==== outside=7265 total=7265
+      k=  300 sim EQUAL rng[lcg,season,seed]==== outside=7360 total=7360
+      k= 1000 sim EQUAL rng[lcg,season,seed]==== outside=30996 total=30996
+  f898       k=1000 steps=37048256 steps/tick=37,048
+      k=    1 sim EQUAL rng[lcg,season,seed]==== outside=14438 total=14438
+      k=   10 sim EQUAL rng[lcg,season,seed]==== outside=14475 total=14475
+      k=  100 sim EQUAL rng[lcg,season,seed]==== outside=14480 total=14480
+      k=  300 sim EQUAL rng[lcg,season,seed]==== outside=14470 total=14470
+      k= 1000 sim EQUAL rng[lcg,season,seed]==== outside=14443 total=14443

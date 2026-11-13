@@ -86,10 +86,14 @@ Outside the game:
   reads every side's state. A belief state over enemy positions (a particle filter updated from spy
   reports) makes a commander that can be surprised and bluffed. Reuses the commander harness; the
   strongest candidate here for changing how the game plays.
-- **Tree search over a learned model.** Exact rollouts cost about 84 s per 1000-tick candidate
-  (`commander/README.md`, "Forecaster"), too slow for search. If the state-space model forecasts
-  the rollouts well enough, MCTS or beam search over orders becomes affordable. The model's error
-  against the rollouts decides it, not the search algorithm.
+- **Tree search over exact rollouts, or over a learned model.** An exact rollout costs about 40 s per
+  1000 ticks on an idle machine (84 s on a loaded one, `commander/README.md`, "Forecaster"), too slow
+  for search. With the renderer stubbed the simulation state is byte-identical and the same 1000
+  ticks take about 9 s (`$f898` alone) or 6 s (all draw and frame-sync calls) on land 2
+  (`powermonger/commander/renderskip/README.md`; `rollout.py` does not use it yet: it schedules by
+  steps and must count ticks). That makes a shallow beam search over orders affordable on exact
+  rollouts. A learned state-space model is still the route to deep search; its error against the
+  rollouts decides it, not the search algorithm.
 - **Negotiated alliances.** PowerMonger's alliance `$1e` and spy `$20` orders are fixed actions; an
   LLM commander can bargain terms (food for non-aggression) around them without changing the rules.
 - **Orders in plain language.** "Hold the bridge until winter, then take the northern towns",
