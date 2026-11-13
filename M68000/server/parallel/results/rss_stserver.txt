@@ -1,0 +1,19 @@
+--- state loaded from /Users/davethomas/GitHub/Atari-St-Emulator/M68000/scratchpad/pm123/win/m1_s0.snap: PC=$0000f898 ---
+        1.72 real         1.49 user         0.08 sys
+            63594496  maximum resident set size
+                   0  average shared memory size
+                   0  average unshared data size
+                   0  average unshared stack size
+               17346  page reclaims
+                  69  page faults
+                   0  swaps
+                   0  block input operations
+                   0  block output operations
+                   0  messages sent
+                   0  messages received
+                   0  signals received
+                   5  voluntary context switches
+                1176  involuntary context switches
+          5527802980  instructions retired
+          5977207329  cycles elapsed
+            47149056  peak memory footprint

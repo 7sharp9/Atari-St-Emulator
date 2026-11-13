@@ -1,0 +1,27 @@
+positive control (sequential reference twice):
+  pm   a=b6202c86620e7c5a b=b6202c86620e7c5a identical=True
+  pop  a=342bd696621a21ec b=342bd696621a21ec identical=True
+
+equality per run (end snapshot sha256 == ref_<game>_a):
+  eq_threads_ws      eq_t1                     1/ 1 match
+  eq_threads_ws      eq_t2                     2/ 2 match
+  eq_threads_ws      eq_t4                     4/ 4 match
+  eq_threads_ws      eq_t8                     8/ 8 match
+  eq_threads_ws      eq_t16                   16/16 match
+  eq_threads_ws      eq_t16_pm                16/16 match
+  eq_threads_ws      eq_t16_pop               16/16 match
+  eq_threads_ws_rep  eq_t8_r0                  8/ 8 match
+  eq_threads_ws_rep  eq_t8_r1                  8/ 8 match
+  eq_threads_ws_rep  eq_t8_r2                  8/ 8 match
+  eq_threads_ws_rep  eq_t8_r3                  8/ 8 match
+  eq_threads_ws_rep  eq_t8_r4                  8/ 8 match
+  eq_seq_ws          eq_seq4                   4/ 4 match
+  eq_threads_srv     eq_srv_t8                 8/ 8 match
+  eq_threads_srv     eq_srv_t16               16/16 match
+  neg_extra          neg_extra_t4              3/ 4 match  MISMATCH: neg_extra_t4_02_pm.snap
+  neg_poke           neg_poke_t4               3/ 4 match  MISMATCH: neg_poke_t4_01_pop.snap
+
+scaling (N=? steps per machine; agg = K*N / wall of the stepping loops; e2e = K*N / whole-run wall):
+  arm            K srvGC  agg Msteps/s med (best) e2e Msteps/s med (best) per-machine med        gen0    gen1  pause ms  RSS MB/K  load avg per round
+
+memory (construct + LoadState only, n=0):

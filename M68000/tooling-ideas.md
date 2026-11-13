@@ -228,6 +228,24 @@ under that gate. Unconventional.
 - **A gdb stub with reverse execution.** The users are headless agents and `replay_to`/`last_writer`
   already give time travel.
 - **Lockstep co-simulation of the PowerMonger port.** The port has no entity simulation yet.
+- **Many machines on threads in one process.** Safe with tracing off (every end state byte-identical to
+  the single-thread reference), but under the default workstation GC 8 threads give 13.0M steps/s where
+  8 processes give 23.9M, because each gen-0 collection stops every thread; server GC matches processes
+  at about 2.5 GB resident against about 1 GB for 16 processes (`server/parallel/README.md`, measured
+  through `fsi` on .NET 10). A process costs about 60 MB and under 2 s to start, so there is little to
+  save. Two defects to fix first if it is ever built: `AtartSt.Restore` assigns the checkpoint's `Cpu`
+  record with the MMU of the machine that captured it, and `IllegalEncodings` shares an unsynchronised
+  `HashSet`.
+
+## Measured elsewhere
+
+- **Rollouts without drawing.** PowerMonger's simulation is byte-identical with the renderer stubbed and
+  a tick costs 4.2x to 19.6x fewer steps (`reversing/powermonger/commander/renderskip/README.md`).
+- **Snapshots as build products.** `tools/recipe.py` rebuilds a Carrier Command chain from a cold boot
+  byte for byte (DEVELOPING.md "Snapshot recipes"). Open: inputs gated on game conditions, so a recipe
+  survives an emulator timing change, which is also what idea 8 needs.
+- **Documented counts without a gate.** `tools/doc_gates.py all`: 283 gated, 1,075 scripted and ungated,
+  834 with no script, over 12 games; seven games have no manifest.
 
 ## Unmeasured
 
