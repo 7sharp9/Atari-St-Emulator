@@ -77,8 +77,9 @@ know they existed.
   checkout's untracked `TOS100UK.IMG`, `tests/680x0` and disk images). Its `gates.py run all` runs against its
   own `bin/` only after it links `TOS100UK.IMG`, `tests` and `checkpoint.txt` from the main `M68000/` and clones
   the scratchpad's contents with `cp -cR` (APFS, no space; the worktree already has a tracked
-  `scratchpad/ANCHORS.md`, so copy the contents, not the folder); `--root` would run the main checkout's DLL
-  (`M68000/sessions/emulator.md`, "Known traps"). Merge with `git diff --binary`
+  `scratchpad/ANCHORS.md`, so copy the contents, not the folder, then `git checkout` it) and builds
+  `server/StServer.fsproj` (else Midwinter's `stserver` gates ERROR, rc 129); `--root` would run the main checkout's
+  DLL (`M68000/sessions/emulator.md`, "Known traps"). Merge with `git diff --binary`
   per worktree; a second patch touching the same files applies with `git apply --3way` only after the
   first is staged ("does not match index" otherwise); then build into `bin/` and re-run the net.
   A worktree is not always cut from master's tip: check `git merge-base master <branch>` first. Its
