@@ -103,13 +103,25 @@ mission 1) is planet slot 1, PLANET-BUTRE. Target 9 of mission 1 is object 107, 
   byte 2 bit 1 is set (mode 2).
 - **Revealed targets.** A target number k is shown on the map only if bit k−1 of the mask `14796(A6)` is set. The
   mask starts at 1 (`$30280`). Landing does not test the mask.
-- **Visited targets.** `$87d6`, which ends a base (`ai.md`), sets bit 1 of the target object's byte 2 and increments
-  `14794(A6)`. The increment is proven by `py/ai/level_event.py` on `base1/in.snap` (labelled pokes `14798(A6)` = 1,
-  `15608(A6)` = `$ffff`): `$87d6` runs once, `14794(A6)` goes from 0 to 1 and the mode from 3 to 1. The byte-2 bit is
-  inferred.
+- **Visited targets.** `$87d6`, which ends a base (`ai.md`), takes the slot landed on, `14782(A6)`; when its object
+  holds a target number (byte 3) it sets bit 1 of byte 2 and adds 1 to `14794(A6)` (`$87de`-`$87f4`). The add does
+  not test the bit, so `14794` counts exits from target bases, not distinct targets. The map prints it as a digit
+  while it is 1..9 (`$304f2`); it is cleared at a new mission (`$302c6`) and when the final base is won (`$8810`).
+  **Proven**: `py/ai/level_event.py` on `base1/in.snap` (labelled pokes `14798(A6)` = 1, `15608(A6)` = `$ffff`):
+  `$87d6` once, `14794(A6)` 0 to 1, mode 3 to 1; `py/phoopel/revisit.py exit` (a generator-blown base left by the
+  entrance click): `$87ee` and `$87f4` once each, target 1's entry `0a040001` to `0a040201`, `14794` 0 to 1.
+- **A target is finished once.** A base is entered only from mode 1 (`ai.md`, "Getting into a base"), and mode 1
+  comes only from request 1, a landing on a target whose bit 1 is clear. Landing on a visited target gives request 2,
+  mode 2, a surface built with D2 = 6 from the same body seed, where standing on the entrance does nothing. After an
+  exit `13410(A6)` = 4 bars re-entry from the compound (`$bd72`) until the next landing clears it (`$885a`), read. **Proven**
+  (`revisit.py land`, from `base1/site.snap`, ORBIT and LAND clicked as in `natural_base.repl`, then the party poked
+  onto the entrance `13556(A6)`): control, D2 = 2, mode 1, `$bd84` 1 and the base generated (`$b5c2` 1), mode 3; with
+  only target 1's bit 1 poked, D2 = 6, mode 2, `$bd6a` 31 tests and `$bd84` 0, mode stays 2.
 - **Final target.** The station (slot 0) has no site. Landing there with `14794(A6)` above 9 writes request 4
-  (`$2f676`) with base seed `mission × 11 + 10`; since `14782(A6)` = 0, `$b5a0` builds it with D2 = 1. Inferred:
-  ten targets per mission plus a final one at the station.
+  (`$2f676`) with base seed `mission × 11 + 10`; since `14782(A6)` = 0, `$b5a0` builds it with D2 = 1. With 9 or less
+  it branches to `$2f4f0` and writes no request (`$2f66e`-`$2f674`, read). The generator gives each mission ten targets
+  on ten distinct objects (`$302fa`, the table above), and each can be finished once, so reaching the final base
+  needs every target finished. The station test itself is read, not driven.
 - **Seeds passed to `fed_MapGen`.** A target landing stores a base seed `32(A6) = mission × 11 + (k − 1)` and a body
   seed `14790(A6) = (mission & $1ff) × 150 + (slot − 1)`. These become MapGen's D0 and D1 (README, "The base
   generator").

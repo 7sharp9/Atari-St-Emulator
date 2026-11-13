@@ -777,12 +777,16 @@ open a flame cell: the `$c194` branch on a `$26` cell only sets byte 2 of a drop
 (`$1a`) to `$3c`, and bit 0 of the tile (from reading).
 
 **Can such a base be finished?** A base is finished by using EXPLOSIVES on one of its generator tiles and leaving
-before the fire reaches the entrance (`ai.md`, "Finishing a base"). Each base has one 3 × 3 block of generator tiles
+by the entrance (`ai.md`, "Finishing a base"). Each base has one 3 × 3 block of generator tiles
 (`$28`; 8 or 9 cells in the 92 bases). With every sealed door of the base closed, no generator cell can be stood
 beside in 27 of the 92 bases with a sealed key in missions 1..100, Phoopel among them, and all of them can in the
 other 65 (`py/phoopel/finish.py 0 100`, model, other locks' doors taken as openable). Of the 27, 9 have only
 kind-2 sealed doors (256 settings) and 18 have a kind-3 one. So in 27 of 1,100 bases the target can be marked
-visited only by finding a panel setting blind. Whether a mission needs every target visited is not checked.
+visited only by finding a panel setting blind. Three of the 27 are final bases (missions 41, 43 and 56, target 11),
+which end the mission through Trill rather than the generators (`ai.md`, "Trill and leaving a base"). The other 24
+are ordinary targets in 23 missions (mission 28 has two: targets 5 and 9). A mission needs all ten of its targets
+finished (`world.md`, "Final target"), so those 23 of 100 missions cannot be completed without the blind panel
+search.
 
 ## Output encoding
 

@@ -368,7 +368,7 @@ A normal base is finished by blowing up its generators and getting out. The stat
 | 1 | fuse: `13408(A6)` counts down from 100 main frames | `$beaa` |
 | 2 | burning: the fire advances one cell every 14 frames | `$bf88` |
 | 3 | the fire has reached the end of its path; `14800(A6)` = 3 | `$bfa4` |
-| 4 | outside after leaving | `$8840` |
+| 4 | outside after leaving: the entrance explodes, every 8 frames after 90 | `$8840`, `$bf38` |
 
 - **Arming.** A click on the view with a generator tile (`$28`/`$29`) ahead, in mode 3, with EXPLOSIVES (item `$1b`)
   in the hand slot `404(A6)`, stores the cell in `13406(A6)`, sets `13408`/`13410` = 100, 1 and empties the hand
@@ -380,7 +380,16 @@ A normal base is finished by blowing up its generators and getting out. The stat
   cells as it goes; when there is no next cell the state becomes 3.
 - **Leaving.** A click on the view from the entrance cell facing N raises the leave flag (`$dd7e`-`$dd90`). The
   frame test `$87c0` acts on it only when `13410` > 1; then `$87d6` marks the target visited (`14794(A6)` + 1), and
-  `$8836` sets mode 1 and rebuilds the compound. An untouched base cannot be left this way.
+  `$8836` sets mode 1 and rebuilds the compound. An untouched base cannot be left this way. The rebuild `$90be`
+  takes several million steps; while it runs the party word reads (0,0) and `13410` reads 0 (the level init clears
+  `13408` as a longword at `$c4d4`), and only when it returns do `$8840` set `13410` = 4 and `$884a` put the party on
+  the compound's entrance cell `13556(A6)`, inside its walled box behind the shut coded door.
+- **The base blows up behind the party.** `$bd5e` runs the state handler `$be94` every frame while `13410` is nonzero,
+  in the compound too. State 4 (`$bf38`) counts `13408` up and, past 90 frames, every 8th frame calls the explosion
+  `$107cc` on the entrance cell with a power of 1 rising to 17 in `34(A6)` (`$bf4e`-`$bf7e`); it hits the party through
+  hit_Resolve `$f884` and the droid-damage entry `$9a9a`, whose deaths (`$e676`-`$e6e8`) clear a droid's energy pair
+  +38/+42. When the live-droid count `410(A6)` (`$8714`-`$873c`) reaches 0, `$876a` sets `14800(A6)` = 1: "DROID'S
+  HAVE FAILED!". So the party must reopen the compound door by its code and walk away.
 
 **Proven** in the natural base `base1/in.snap` (labelled pokes: the party's cell and facing, and the hand slot =
 `$801b0000`; `py/phoopel/finish13.py` with `SNAP=base1/in.snap`, `py/phoopel/leave.py`):
@@ -389,11 +398,18 @@ A normal base is finished by blowing up its generators and getting out. The stat
   of 21 moves equal to bits 0-2 of the cell it leaves, reaching the entrance 26.5M steps later; state 3 and
   `14800` = 3 at 36.4M steps;
 - leaving from the entrance with the same view click: untouched base, `$dd90` 1 and `$87c0` 1 hit but `$87d6` 0,
-  mode stays 3; in state 2, `$87d6`, `$87f4` and `$8836` 1 hit each, visited 0 to 1, mode 3 to 1.
+  mode stays 3; in state 2, `$87d6`, `$87f4` and `$8836` 1 hit each, visited 0 to 1, mode 3 to 1;
+- after that exit (`py/phoopel/revisit.py exit`, then `blast`): 3M steps on, mode 1, party (0,0), `13410` 0, its only
+  write `$c4d4`; 30M steps on, `13410` 4 and the party on the entrance (22,22). Over 20M steps from the settled
+  state, the party left on the entrance: `$107cc` 8, `$9a9a` 18, `$e6dc` 4, `410(A6)` 0, `14800` 1; turned to face the
+  door without opening it: `$107cc` 5, `$e6dc` 4, `410(A6)` 0; door code 8 clicked from inside and four steps north to
+  (22,18): `$107cc` 42, `$9a9a` 0, `$e6dc` 0, four droids alive.
 The same arming in the D0 = 13 base gives states 1 and 2, 9 of 9 generators to `$26`, and a fire that follows the
 arrows for 28 of 29 moves in 60M steps, the other being the lift move from (54,11) to (22,27) (`finish13.py`). What state 3
 does to a party still inside is not traced (a party poked onto the burning entrance in state 3 ended in mode 1 at
-(0,0) with the target cleared and none of the routines above hit).
+(0,0) with the target cleared and none of the routines above hit; (0,0) is also what the party word reads during the
+rebuild after an ordinary exit, so that sample does not say where the party ended up). `$87c0` passes state 3 as well
+as 2 (`13410` > 1), so leaving after the fire has reached the entrance is not barred by that test (read).
 
 ## Cell action (`$10732`)
 
@@ -552,6 +568,11 @@ Moving in the base (**proven**, `keys.py`, `click.py`):
 | `$fac4` | cr_MemberDies | Trill test, experience, item drop, remove member or group |
 | `$8772` | lvl_ExitRequest | per-frame count of `14798(A6)`, re-arm `15608(A6)` |
 | `$87d6` | lvl_ExitBase | mark the target visited; back to the compound, or the end screen |
+| `$be94` | lvl_BaseState | dispatch on `13410(A6)`: fuse, fire step, or the state-4 entrance explosion |
+| `$bf38` | lvl_EntranceBlast | state 4: count `13408`, and past 90 frames every 8th frame `$107cc` on the entrance cell |
+| `$107cc` | fx_Explode | a blast hit object on cell `68(A6)` resolved through `$f884` |
+| `$8710` | party_CountLive | count live droids into `410(A6)`; at 0 set `14800(A6)` = 1 |
+| `$e676` | droid_Dies | clear the droid's energy +42 and +38, +50 = 2 |
 | `$134b8` | msg_BaseEnd | end screen, message chosen by `14800(A6)` |
 | `$88b8` | party_LeaveCell | clear the party cell's occupancy bit, latch its tile, plane-2 byte and pointer `1766(A6)` |
 | `$88d6` | party_EnterCell | set the party cell's occupancy bit, then `$8694` |

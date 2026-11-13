@@ -2,7 +2,7 @@
 
 Scripts behind `mapgen.md` "Sealed keys: the Phoopel case": a lock whose CLIPBOARD key the generator drops on its own
 door cell. Run from `M68000/` with `uv run python -I reversing/captive/py/phoopel/<script>`; outputs go to
-`scratchpad/captive/phoopel/`. All but `shown_emu.py`, `emu_base13.py`, `live13.py`, `itemview.py`, `panel13.py`, `finish13.py`, `leave.py` and
+`scratchpad/captive/phoopel/`. All but `shown_emu.py`, `emu_base13.py`, `live13.py`, `itemview.py`, `panel13.py`, `finish13.py`, `leave.py`, `revisit.py` and
 `enter13.repl` are model-only (the chained generator, gated 400/400 in `../mapgen/full/`).
 
 | Script | What it does | Expected output |
@@ -22,3 +22,4 @@ door cell. Run from `M68000/` with `uv run python -I reversing/captive/py/phoope
 | `finish.py <lo> <hi>` | model: in each base with a sealed key, whether a generator tile (`$28`) can be stood beside with the sealed doors closed | `0 100` (about 4 min): 92 bases, 0 without a generator, 27 with every generator behind a sealed door (first: mission 2 target 3) |
 | `finish13.py` | EXPLOSIVES on a generator (labelled pokes: party cell, facing, hand slot `404(A6)`), the state word `13410(A6)`, the fire cell against the dig arrows; control with an empty hand. `SNAP=base1/in.snap TAG=finish_base1` for the natural base | base 13: `13410` 0 -> 1 -> 2, `$28` tiles 9 -> 0, fire 28/29 moves on bits 0-2 in 60M steps (the other is the lift move (54,11) to (22,27)); `base1/in.snap`: 21/21, entrance (30,0) reached, state 3; control `13410` stays 0; writes `<TAG>_blast_state2.snap` |
 | `leave.py <snap> [poke]` | census of the leave code for a view click at the entrance facing N (`poke`: labelled pokes of the party onto it) | `base1/in.snap poke`: `$dd90` 1, `$87c0` 1, `$87d6` 0, mode 3; `phoopel/finish_base1_blast_state2.snap poke`: `$87d6`, `$87f4`, `$8836` 1 each, visited 0 -> 1, mode 1 |
+| `revisit.py exit\|land\|blast` | a finished target: the exit's mark and count; a second landing on it (control vs bit 1 poked); the state-4 entrance explosion with the party left on the entrance vs walked out through the coded door (outputs `scratchpad/captive/phoopel/revisit/`; run `exit` first) | `exit`: entry `0a040001` -> `0a040201`, `14794` 0 -> 1; `land`: control D2 2, mode 1, `$bd84` 1, mode 3; bit poked D2 6, mode 2, `$bd84` 0; `blast`: stand `$107cc` 8, `$e6dc` 4, `410` 0, `14800` 1; walk out `$107cc` 42, `$e6dc` 0, `410` 4 |
