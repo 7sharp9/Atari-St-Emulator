@@ -1,10 +1,10 @@
 # Populous II: handoff
 
-Updated 2026-11-13 by the session that ended at commit `de11556`.
+Updated 2026-11-13 by the session that ended at commit `8588de5`.
 
 ## Resume point
 
-- Last commit of this workstream: `de11556` populous2: object heap and per-cell occupant lists, update_entities state counts.
+- Last commit of this workstream: `8588de5` populous2: raise and lower from a click to the cell map, gates.toml.
 - Working data: `M68000/scratchpad/populous2/` (`src/WILD29.MSA` from the Dropbox `WILD! #29.zip`, `wild29.st`,
   `files/`, `anchors/`, `pop2_1770.bin` the depacked image, `pop2_all.asm` the whole-image listing). Rebuild:
   `reversing/populous2/README.md` "Provenance" and "Drive recipe".
@@ -28,6 +28,11 @@ Updated 2026-11-13 by the session that ended at commit `de11556`.
   README "Objects and entities").
 - `update_entities` `$2309a`: state dispatch on +22 via `$2311c`; over 29 ticks 522 = 18 x 29 first dispatches,
   states 6/2/4 counted to the call (`py/entity_states.sh`). `update_scenery` `$1fcce` read.
+- Raise/lower: left/right click → command 2/4 in the record `$473b0` → `cmd_raise` `$1f6ce` / `cmd_lower` `$1f6a0`
+  → `raise_point` `$1ec8c` / `lower_point` `$1eed4` (Populous's rule, order N..NW, write after recursion);
+  76/76 grid, mana and re-derive on both anchors (`py/raise_gate.py`), click A/B 16 and 1 corners equal to the
+  model (`py/click_ab.py`). Lower on your own settlement sets entity +13 bit 2 and charges 20 x stale `$3962c`.
+  All five gates in `gates.toml` pass (`tools/gates.py run populous2`).
 
 ## Running
 
@@ -39,12 +44,12 @@ Nothing running.
    `$470fe`), `$29c7e`, `$29226` (`$473b0` array), `$2a0b2`, `$2d4c8`, `$136ba`/`$14158` (current player's side record).
    The computer god is likely among them. Then the entity states beyond 2/4/6 (table `$2311c`) and `$24f3a`
    (state 2's test), `$24a92`; drive a walker into a settle or a fight so the other states run under `hits`.
-2. Drive a raise and a lower through the UI and compare with Populous's raise (`terrain.md` section 2): find the
-   land-click hit test, then a same-snapshot click vs no-click A/B; gate `raise_point` `$1ec8c` under callcap.
-3. Gate `gen_land` `$1ebee`: snapshot before the briefing's world build, model hill walk + raise in Python,
+2. Gate `gen_land` `$1ebee`: snapshot before the briefing's world build, model hill walk + raise in Python,
    compare the cell map byte for byte (Populous's `verify_gen.py` is the template); pin the walk's D4 stop rule.
-4. Decrunch: port `$2246a` to Python and compare each `.PAK` against its RAM copy (QAZ.PAK's raw 32000 bytes too);
+3. Decrunch: port `$2246a` to Python and compare each `.PAK` against its RAM copy (QAZ.PAK's raw 32000 bytes too);
    then `BLOCKn`/`S16`/`S32` formats for `graphics.md`.
+4. What bit 2 of entity +13 does (set by a lower on your own settlement; state 2 tests bit 1): drive it from
+   `p2_game_60m` with `click_ab.py`'s pointer on cell (12,33) and a right click, then `hits` the entity states.
 5. Cell byte 0 bits 3-7 (footfall count, only `$2436e` writes it in play): find its reader; and what the
    `$4505a` array holds (empty on both anchors; `$26644` updates it).
 
@@ -66,8 +71,8 @@ None.
 
 ## Next session
 
-1. `/resume populous2`; check `p2_game_60m.snap` exists (else rerun `drive.txt`); `py/entity_states.sh` should
-   print 29 / 522 / 535 / 377 / 158.
-2. Open item 2 (raise/lower through the UI), keeping Populous's `terrain.md` section 2 beside it: a land click
-   should also show scenery dying on a lowered cell (`update_scenery`, `$18` ticks).
-3. Then open item 1's remaining routines.
+1. `/resume populous2`; `uv run python tools/gates.py run populous2` should print 5/5 PASS.
+2. Open item 2 (`gen_land`): `raise_point` is now proven, so the remaining unknown is `hill_walk`'s D4 stop rule;
+   snapshot before the briefing's world build (from `p2_briefing`) and compare the cell map byte for byte.
+3. Then open item 1's remaining main-loop routines (`$25652`, which writes commands 2 and 4 itself, is the
+   likeliest computer-god routine).
