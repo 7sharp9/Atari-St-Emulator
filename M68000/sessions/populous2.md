@@ -1,10 +1,10 @@
 # Populous II: handoff
 
-Updated 2026-11-13 by the session that ended at commit `8588de5`.
+Updated 2026-11-13 by the session that ended at commit `cbe35b2`.
 
 ## Resume point
 
-- Last commit of this workstream: `8588de5` populous2: raise and lower from a click to the cell map, gates.toml.
+- Last commit of this workstream: `cbe35b2` populous2: gen_land byte for byte.
 - Working data: `M68000/scratchpad/populous2/` (`src/WILD29.MSA` from the Dropbox `WILD! #29.zip`, `wild29.st`,
   `files/`, `anchors/`, `pop2_1770.bin` the depacked image, `pop2_all.asm` the whole-image listing). Rebuild:
   `reversing/populous2/README.md` "Provenance" and "Drive recipe".
@@ -32,7 +32,10 @@ Updated 2026-11-13 by the session that ended at commit `8588de5`.
   → `raise_point` `$1ec8c` / `lower_point` `$1eed4` (Populous's rule, order N..NW, write after recursion);
   76/76 grid, mana and re-derive on both anchors (`py/raise_gate.py`), click A/B 16 and 1 corners equal to the
   model (`py/click_ab.py`). Lower on your own settlement sets entity +13 bit 2 and charges 20 x stale `$3962c`.
-  All five gates in `gates.toml` pass (`tools/gates.py run populous2`).
+  All six gates in `gates.toml` pass (`tools/gates.py run populous2`).
+- `gen_land` `$1ebee` byte for byte: 30/30 seeds, cell map plus seed and counters (`py/gen_gate.py` on
+  `anchors/p2_gen_entry.snap`, rebuilt by `py/gen_entry.sh`); walk stops at a rejected corner or height 8;
+  controls 16/30 (stop at 6) and 0/30 (write before recursion). README "World generator".
 
 ## Running
 
@@ -44,8 +47,10 @@ Nothing running.
    `$470fe`), `$29c7e`, `$29226` (`$473b0` array), `$2a0b2`, `$2d4c8`, `$136ba`/`$14158` (current player's side record).
    The computer god is likely among them. Then the entity states beyond 2/4/6 (table `$2311c`) and `$24f3a`
    (state 2's test), `$24a92`; drive a walker into a settle or a fight so the other states run under `hits`.
-2. Gate `gen_land` `$1ebee`: snapshot before the briefing's world build, model hill walk + raise in Python,
-   compare the cell map byte for byte (Populous's `verify_gen.py` is the template); pin the walk's D4 stop rule.
+2. Model the rest of the world build `build_world` `$22942` after `gen_land`: the scatter passes `$1f870` and
+   `$1fa6c` (rock `$2f`/`$3f` on 10 flat cells for the natural seed; scenery records too?) and `$22986` (people).
+   Start from `p2_gen_entry`, `bp 2294e` (after gen_land) then callcap each pass; compare cells and the
+   `$3f42a`/`$3ff1a` arrays against `p2_zeus`.
 3. Decrunch: port `$2246a` to Python and compare each `.PAK` against its RAM copy (QAZ.PAK's raw 32000 bytes too);
    then `BLOCKn`/`S16`/`S32` formats for `graphics.md`.
 4. What bit 2 of entity +13 does (set by a lower on your own settlement; state 2 tests bit 1): drive it from
@@ -71,8 +76,7 @@ None.
 
 ## Next session
 
-1. `/resume populous2`; `uv run python tools/gates.py run populous2` should print 5/5 PASS.
-2. Open item 2 (`gen_land`): `raise_point` is now proven, so the remaining unknown is `hill_walk`'s D4 stop rule;
-   snapshot before the briefing's world build (from `p2_briefing`) and compare the cell map byte for byte.
+1. `/resume populous2`; `uv run python tools/gates.py run populous2` should print 6/6 PASS.
+2. Open item 2: the scatter passes `$1f870`/`$1fa6c` and the people placement `$22986`, to finish the world build.
 3. Then open item 1's remaining main-loop routines (`$25652`, which writes commands 2 and 4 itself, is the
    likeliest computer-god routine).
