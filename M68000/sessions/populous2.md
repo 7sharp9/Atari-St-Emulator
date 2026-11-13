@@ -49,7 +49,7 @@ Nothing running.
 ## Open, in priority order
 
 1. Name the rest of the main-loop routines (README "Main loop"): `$25652` and `$27faa` (both read the side records
-   `$470fe`), `$29c7e`, `$29226` (`$473b0` array), `$2a0b2`, `$2d4c8`, `$136ba`/`$14158` (current player's side record).
+   `$470fe`), `$29c7e`, `$2a0b2`, `$2d4c8`, `$136ba`/`$14158` (current player's side record).
    The computer god is likely among them. Then the entity states beyond 2/4/6 (table `$2311c`) and `$24f3a`
    (state 2's test), `$24a92`; drive a walker into a settle or a fight so the other states run under `hits`.
 2. People placement `$22986` (last pass of `build_world`): from `build/c_22986.snap` callcap it and model the
