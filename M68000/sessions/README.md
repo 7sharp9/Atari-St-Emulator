@@ -18,6 +18,7 @@ continuation record: the next-session prompt is always the one line `/resume <wo
 | `midwinter.md` | Midwinter reversing, first 3D game (`reversing/midwinter/`) |
 | `lemmings.md` | Lemmings reversing, lemming behaviour first (`reversing/lemmings/`) |
 | `populous.md` | Populous reversing (`reversing/populous/`) |
+| `populous2.md` | Populous II reversing (`reversing/populous2/`) |
 | `powermonger.md` | PowerMonger reversing and port (`reversing/powermonger/`) |
 | `supersprint.md` | Super Sprint reversing (`reversing/supersprint/`) |
 
