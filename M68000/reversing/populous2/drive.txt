@@ -1,0 +1,30 @@
+kbd 02
+s 100000
+kbd 82
+s 40000000
+snap p2_title.snap
+mouse move 100 60
+s 100000
+mouse move 40 38
+s 300000
+mouse down l
+s 60000
+mouse up l
+s 20000000
+snap p2_briefing.snap
+mouse move -90 94
+s 300000
+mouse down l
+s 60000
+mouse up l
+s 30000000
+snap p2_zeus.snap
+mouse move 100 -12
+s 300000
+mouse down l
+s 60000
+mouse up l
+s 40000000
+snap p2_game_start.snap
+s 60000000
+snap p2_game_60m.snap
