@@ -9,3 +9,5 @@ anchors under `scratchpad/populous2/anchors/` (`scratchpad/ANCHORS.md`; rebuilt 
 | `find_corner_grid.py <snap> [--control]` | no separate 65x65 corner grid in RAM | best real candidate 2875/4086 (all-sea baseline); planted grid 4071 |
 | `rand_gate.py <snap> [n]` | `rand` `$215dc` model (32-bit LCG `$bb40e62d`, seed `$47382`) | 50/50; control without the zero-seed rule 49/50 |
 | `fdc_files.py <st> <fdc.log>` | file and DMA address behind every FDC sector read | 11 of 13 game files at their table address |
+| `walkers.py <snap> [--dump]` | object heap (`$3f42a` scenery, `$3ff1a` entities, `$4505a`, `$46f9a`): every live record in exactly one occupant list, its own cell's (cell word 2, links +2/+4 signed from `$3ff1a`) | `p2_game_start` 22/22, `p2_game_60m` 31/31, 0 list faults; control (cell from bytes 7/9) 22 and 31 lists broken |
+| `entity_states.sh [outdir]` | `hits` on `update_entities` `$2309a` and its state handlers over 2.4M steps from `p2_game_60m`, then `walkers.py` on the end state | 29 ticks, 522 first dispatches (18 x 29), 535 with 13 state-4 expiries; state 6 377 (13 x 29), state 4 158 (145 + 13 from state 2); end state 31/31 |

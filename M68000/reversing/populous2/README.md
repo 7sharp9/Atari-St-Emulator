@@ -133,7 +133,8 @@ cells, which suggests Populous's 8x8 close-up view), then `$1334a`, `$2309a`, `$
 `$392f4`. An event trace of 2.4M steps (200 VBLs) from `p2_game_60m` runs the loop **29 times**,
 one game tick per about 7 VBLs: every routine named here is called exactly 29 times, among 23 call
 targets at that count (`tools/call_census.py ev60.bin`; the census is
-`scratchpad/populous2/calls60.txt`). None of them is named yet.
+`scratchpad/populous2/calls60.txt`). Named so far: `$2309a` `update_entities` and `$1fcce`
+`update_scenery` ("Objects and entities"); `$26644` walks the `$4505a` array.
 
 ### The landscape (verified)
 
@@ -162,10 +163,75 @@ for a separate 65x65 grid (byte or word, every even base `$2000..$80000`) that d
 the best real candidate matches 2875 of 4086 cells, the all-sea baseline, while a planted copy of
 the true grid (`--control`) matches 4071.
 
-At `p2_game_start` byte 2 is zero on 4078 cells (1, 2, `$70` or `$f5` on the rest) and byte 3 is
-non-zero on 21 cells with 19 distinct even values, which looks like an index (an occupant, by
-analogy with Populous's `$37fd4`); both are unnamed. Byte 0 also carries bit 3 or 4 on 57 cells,
-unexplained.
+Bytes 2-3 are one word, the head of the cell's occupant list, and byte 0's bits 3-7 are a count
+of entities that have stepped onto the cell ("Objects and entities" below).
+
+### Objects and entities (layout verified; states counted, handlers read)
+
+Everything that stands on a cell is a record in one heap of four arrays that share a header:
++0 type, +2 next and +4 prev (signed word offsets from `$3ff1a`, 0 for none), +6 and +8 the x and
+y position words (high byte the cell, low byte the fraction of a cell), +12 the side (0 = free).
+
+| array | records | live at `p2_game_start` / `p2_game_60m` | what |
+|---|---|---|---|
+| `$3f42a` | 200 x 14 bytes | 11 / 11 (type `$16`, side 3) | scenery, updated by `$1fcce` |
+| `$3ff1a` | 400 x `$34` bytes, record 0 the null sentinel | 9 / 18 (sides 1 and 2) | entities, updated by `$2309a` |
+| `$4505a` | 250 x 32 bytes | 0 / 0 | updated by `$26644` (state byte +22, table at `$26668`); not yet seen live |
+| `$46f9a` | 3 x 14 bytes | 2 / 2 (type `$14`, sides 1 and 2, both on cell 32,32) | one per side; by Populous's analogy the papal magnets (inferred) |
+
+Each cell's word 2 heads a doubly linked list of the records on it. `move_entity` `$2436e(A0,
+D6=x, D7=y)` writes the new position, unlinks the record from its old cell's list, pushes it on
+the new cell's and adds 8 to the new cell's byte 0 (the old cell's count is left alone).
+`py/walkers.py` checks the lists on a snapshot: every live record of all four arrays is in
+exactly one list, its own cell's, and every list node is a record whose prev link is the node
+before it: **22/22** at `p2_game_start`, **31/31** at `p2_game_60m` and at 2.4M steps after it,
+0 list faults each; taking the cell from the low bytes 7/9 instead breaks 22, 31 and 31 lists. A
+`watch` over the cell map for 2.4M steps from `p2_game_60m` sees 55 writes, 54 of them `$2436e`'s
+three per move (18 cell changes). The byte-0 count only grows: non-zero on 57 cells at
+`p2_game_start`, 187 at `p2_game_60m`, 203 after 2.4M more steps, almost all 1 or 2 and only 18 of
+them under a current occupant. What reads it is not found yet; a footfall count is the obvious
+reading (inferred).
+
+**Entity records** (`$34` bytes). Two types are live in play: type 4, positioned on a cell centre
+(`$xx80`), in state 6; and type 2, at fractional positions, in state 4. Byte 1 of a type-4 record
+runs 1..`$0c` (unnamed; a settlement size is the Populous reading). +14 and +16 are signed
+velocity words (±`$14`, a twentieth of a cell per tick); +20 a step countdown; +22 the state and
++23 the state to take next; the long +26 is halved when a record over `$14` is split into a copy
+(`$26522` copies all `$34` bytes into a free slot and sets the copy's state to `$24`), which makes
+it a strength or population (inferred). `$2622a` scans the array for the nearest record of another
+side with +26 > 0 (read).
+
+`update_entities` `$2309a` first resets the per-tick fields of the side records 1 and 2
+(`$470fe`, `$47238`; the side records are `$46fc4 + side * $13a`, also indexed by the current
+player `$4739c` in `$136ba` and `$14158`), then for each live entity calls `$24a92` and dispatches
+on +22 through the word table at `$2311c` (20 entries, states 0..`$26`). State 4 (`$233b4`)
+advances the animation index +10 through `$32902` and counts +20 down; at expiry (`$233d8`) it
+loads +23 into +22 and re-dispatches through `$23100`, otherwise (`$233e2`) it adds the velocity to
+the position and calls `$2436e` when the cell changes. State 2 (`$23164`) calls `$24f3a`, which
+re-dispatches when it returns non-zero; otherwise it goes on and, on the path taken here, branches
+back into `$233b4` (`$2328a` or `$233ae`). State 6 is `$23580`. `hits` over the 2.4M-step window
+(`py/entity_states.sh`), with 18 live entities throughout:
+
+| point | calls | accounted for |
+|---|---|---|
+| `$2309a` | 29 | one per tick |
+| `$230fa` (first dispatch of a live record) | 522 | 18 x 29 |
+| `$23100` = `$24a92` = `$2310e` (dispatch) | 535 | 522 + 13 re-dispatches |
+| state 4 expiry `$233d8` | 13 | the 13 re-dispatches, all into state 2 |
+| state 2 `$23164`; `$24f3a` returning zero (`$23180`) | 13; 13 | |
+| state 6 `$23580` | 377 | 13 settled records x 29 |
+| state 4 `$233b4` | 158 | 535 − 377 − 13 = 145 dispatched + 13 from state 2 |
+| state 4 move path `$233e2` | 145 | 158 − 13 expiries |
+
+So in this window a walker's step countdown expires 13 times, each time into state 2, whose test
+`$24f3a` (unread) fails every time and sends it straight back to walking.
+
+`update_scenery` `$1fcce` walks the 200 scenery records. Byte 1 is a counter: positive values
+count down every tick in which `$3979c & $30e86` is 0; when the record's cell has shape 0 (flag
+`$88` in the shape table `$3697a`, set for shape 0 only) a live record's counter is negated and
+then counts toward `$30e89` (`$18`), where the record is freed and unlinked (`$24430`). So scenery
+on a cell lowered into the sea dies after `$18` ticks (read; not yet driven). Type `$1e` records
+take a separate path through the animation table `$32902`.
 
 ### World generator `$1ebee` (read)
 
@@ -215,8 +281,9 @@ files go to `$a000` (the second screen) instead.
 
 Only the conquest start against Epimetheus has run. Not driven: any click in play (raise/lower,
 powers, the panel), the custom game and deity creation, save/load, the two-player link, the end of
-a battle. Unread: every routine of the main loop by name, Timer A, the sprite and block formats,
-`LANDn.DAT`, the entity records, the computer god.
+a battle. Unread: the main-loop routines other than `$2309a` and `$1fcce`, the entity states other
+than 2, 4 and 6 (and `$24f3a`, `$24a92`), the `$4505a` array, the reader of the cell footfall
+count, Timer A, the sprite and block formats, `LANDn.DAT`, the computer god.
 
 ## Files
 
@@ -226,6 +293,8 @@ a battle. Unread: every routine of the main loop by name, Timer A, the sprite an
 | `populous2.sym` | names used here |
 | `py/corners.py` | the corner-height model, its re-derivation and the `$1f176` callcap gate |
 | `py/find_corner_grid.py` | the RAM search for a separate corner grid, with a planted control |
+| `py/walkers.py` | the object heap and the per-cell occupant lists, with a low-byte control |
+| `py/entity_states.sh` | per-state call counts of `update_entities` over 29 ticks, and the list check after them |
 | `py/rand_gate.py` | `rand` `$215dc` against its model, 50 callcaps |
 | `py/fdc_files.py` | names the file behind each sector of an `ATARI_TRACE_FDC` log |
 | `compilation_menu.png`, `title.png`, `briefing.png`, `zeus.png`, `game_start.png`, `game_60m.png` | the milestones (`tools/snap_render.py` of the boot and the five anchors) |
