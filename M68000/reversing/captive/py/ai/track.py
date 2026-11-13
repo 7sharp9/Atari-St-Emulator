@@ -1,4 +1,5 @@
-"""Track creature groups near the party, one sample per main frame (60,000 steps).
+"""Track creature groups near the party, one sample per 60,000 steps (a main frame in req4.snap;
+the natural base's main frame is longer, so a "frame" here is a sample, not a $102a0 call: use sched.py for scheduling).
 track.py <snap> <frames> [radius] [keys]  keys: comma list of 'frame:hex' keypad presses made during the run.
 Prints, per frame, each group within radius: index, x, y, facing, flags A = bit 3 aware, H = bit 4 hostile, S = bit 5, 6 = bit 6, G = byte 4 bit 7, member 0 word +2 ("w2", hp by guess)."""
 import os, sys, struct; sys.path.insert(0, os.path.dirname(os.path.abspath(__file__))); from cap import *

@@ -23,17 +23,22 @@ party. The breadcrumbs never fade.
 
 ## Scheduling
 
-- `$102a0` (cr_UpdateAll) runs once per main frame, every 60,000 steps (5 VBLs). It advances the frame RNG, then
-  walks the group list. **Proven**: 20 calls in 1.2M steps (call census, `base.evt`, from `req4.snap`).
+- `$102a0` (cr_UpdateAll) runs once per main frame. It advances the frame RNG, then walks the group list. The main
+  frame's length depends on the load: 60,000 steps (5 VBLs) from the poked `req4.snap` (20 calls in 1.2M steps, call
+  census `base.evt`), and 68,793 to 87,207 steps, median 72,000 (6 VBLs), over 100 frames in the natural base
+  (`sched.py base1/in.snap 100`). **Proven**. A "frame" below is one call of `$102a0`, not a fixed step count.
 - The frame RNG is `15530(A6)`: `x = x * $5e5 + $29` mod 65536 (`$102a0`-`$102ac`; the same step in `$105f8`,
   cr_Rand, for each wandering group). A second generator with the same constants at `1770(A6)` drives animation
   and attack rolls (`$10a78`, `$10e24`). **Inferred**.
 - Each group has a timer at +6 and a period at +7. While timer <= period the timer counts up; when it exceeds the
   period it is cleared and `$10304` (cr_GroupThink) runs for the group, so a group acts every period + 2 frames
-  (`$102de`-`$102fa`). **Proven**: `track.py p2.snap 200 7`, group 16 (period 16) acted at frames 4, 22, 40, 58 and
-  76.
-- A group whose forward step is blocked has its timer set to period / 2 (`$104f6`-`$10500`), so it retries sooner.
-  **Inferred**.
+  (`$102de`-`$102fa`). **Proven**: `sched.py base1/in.snap 100` (natural base, no pokes) predicts from each frame's
+  timer and period which groups call `$10304`: 2400/2400 group-frames over 24 groups. In the poked base,
+  `track.py p2.snap 200 7` saw group 16 (period 16) act at frames 4, 22, 40, 58 and 76.
+- `$10304` can leave the timer at period / 2 instead of 0 (`$104f6`-`$10500`, on the blocked-step path), so the group
+  acts again after period - period / 2 + 2 frames. **Proven** for the value: in the same run, every timer left after
+  a think is 0 or period / 2, and every interval is period + 2 minus that timer (group 1, period 9, stands blocked at
+  (28,0) and acts every 7 frames). That `$10500` is the writer is **inferred** from the code.
 
 ## Data
 
