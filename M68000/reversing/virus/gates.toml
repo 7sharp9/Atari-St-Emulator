@@ -1,0 +1,13 @@
+# Virus's promoted gates, for tools/gates.py (`uv run python tools/gates.py run virus`).
+# Needs scratchpad/virus/aha.st (README "Provenance"); rebuild the data with `bash reversing/virus/drive.sh` then
+# `bash reversing/virus/py/capture.sh` (about a minute together). The gate below only re-reads those captures and runs
+# the Python models, so it runs no emulator and cannot catch an emulator change; the captures are the fresh part.
+# The script prints each model line followed by a labelled broken-model control; the controls are not in `expect`.
+
+[[gate]]
+name = "models"
+cmd = "bash py/gate_all.sh"
+cwd = "."
+expect = ["re:level 0: match 65455/65455", "re:level 1: match 65455/65455", "re:level 2: match 65455/65455", "re:level 1: model object cells 571, RAM object cells 571, identical type at the same cell: 571", "re:level 2: model object cells 1775, RAM object cells 1774, identical type at the same cell: 1774", "re:camera x,y,z = 1604,-6724,3047  level 0: grid words .* match 330/330", "re:camera x,y,z = 2332,-17310,9356  level 0: grid words .* match 330/330", "re:camera x,y,z = 3112,-23858,15057  level 0: grid words .* match 330/330", "re:camera x,y,z = 3970,-25424,19302  level 0: grid words .* match 330/330", "re:tile calls 132: colour index == type word 132/132;  8 vertex words == rows at A6 and A6.52: 132/132", "re:slope table entries .* 8064/8064", "re:pos 119/119, vel 119/119, att 119/119, mat 119/119", "re:pos 119/119, vel 119/119, att 119/119, mat 4/119", "re:stage-1 particle updates modelled 447; all six fields equal 447/447"]
+cite = "README.md (the sections for each model)"
+minutes = 1
