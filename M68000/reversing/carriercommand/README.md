@@ -266,10 +266,35 @@ Read from code, not driven:
   unreferenced one-sector variant of the reader.
 - **The score in decimal.** `$9f2c` keeps the score as 12 decimal digits and adds with `divu #10` carries, so it
   never converts binary to decimal.
-- **Leftovers.** An unreferenced debug print at `$14048..$140b6` (15 words at `$df6`, 22 at `$e14`, 21 records from
-  `$66710`, in decimal columns), just after the view table. View 33 (`$15978`): Ctrl+A and Ctrl+B set `$1246`, which
-  the sound code copies to `$2142a`, and with the cheat on keypad +/- step the type word of entity `$64d10` through
-  1..73, perhaps a model viewer (inferred). The message "Lumbering" (`$187d2`, with the `$19` prefix of the game's
+- **View 33 is the title screen.** The view table at `$13fbc` has 35 longwords (views 0..34, unused numbers point at the `rts` `$13fba`);
+  `$722` holds the view of each screen slot (`$716` is the current slot), `$71c` a requested view and `$71a` the active one.
+  Entry 33 is `$15978`, slot 5. From `c_eng.snap` (the title menu) `$71a` is 33 and the handler runs 54 times in 3M steps against 0
+  for the main loop `$3a04` and the cheat-phrase check `$3df2` (`leftovers.py title`): the title is the 3D view engine rotating
+  the carrier model, entity `$64d10`, behind the three buttons (`title_viewer.png`). No button record reaches slot 5 (the records at
+  `$43cc2..` set slots 0, 2, 3, 4 through `$f2f8` and views 1..4, 9..12, 16, 17, 19, 20, 24..26, 28 through `$f334`; code sets 32, 18, 27).
+  Ctrl+A and Ctrl+B set `$1246` to 0 and 1, which the sound code copies to `$2142a`. With the cheat flag `$1185` set (a poke here),
+  keypad + and - step the entity's type word (`$64d12`) through 1..73 and wrap, a hidden model viewer: from the title, + moved type 1 to 2
+  and - moved it to 73 (1/1 each), and + with no cheat flag left it at 1. Reachable in the shipped game only if the flag survives to the
+  title (inferred, not driven). Poking the type word to each of 1..73 draws a model at the title camera; 71 read back, 19 and 65 reset to 1.
+- **Unreferenced code.** The debug print `$14048..$140b6` sits directly after the view table (a view number 35 would read its first
+  bytes as a handler address). It clears the 3D window with `$42e6`, then prints 22 words from `$e14` in decimal and 21 six-byte
+  records from `$66710` (the item packets of `economy.md`) as four bytes and a word. Its first loop (`lea $df6` with a count of 14)
+  has no body, so the 15 words at `$df6` are never printed. With view 0's table entry poked to `$14048` the game's own flip shows it
+  (`debug_dump.png`, `leftovers.py dump`); a plain call draws into the back buffer. Three more routines have no reference and are named
+  by their bodies: `$3dbc` spawns an aircraft (type `$21`) at (5000, 500, -10000) into slot `$5f5da`, just after the new-game setup
+  (forced call: record type 33 at that position, and a live record after 600,000 steps against an all-zero control, 1/1 each);
+  `$1e462` subtracts D0 from the hull `20(A1)` and on underflow zeroes it and runs `$1c788`, `$18ea2` (forced, hull poked to 100:
+  damage 10 gives 90, damage 5000 gives 0, 2/2); `$19e1c` is the pitch version of the heading helper `$19e0a` (inferred from the
+  bodies; a forced call returned values that mean nothing without a caller's D1). `$2119e` is a WD1772 Read Track (`$e0`) with DMA to the
+  game's 6,400-byte noise buffer `$4f1ee` (`$509e` fills it from the random generator); its forced call never returned (the emulator
+  reported a stuck loop at `$201d0`), so what it reads is not known. "Unreferenced" rests on static scans (direct `bsr`/`bra`/`jsr`/`jmp`
+  at every even address of the image, 24-bit longword literals, absolute-base jump tables; a relative-table scan returned only matches
+  in instruction bytes) and a hits census of 16 snapshots at 100M steps each (about 1,385 main loops each, 20,849 in all, all candidates 0
+  against a main loop of 20,849 as positive control; `leftovers.py census`). The played stretches were idle, with no bombing or
+  weapon fire, so this is not a proof. `$1f7e4` and `$1ecb6` are not dead: the disassembly shows them dead because the string "Bomb
+  dropped." (`$1f7c6`, the Manta's bomb release in the state machine `$1f72e`, called from `$1cc76`) and an inline sound word
+  (`$1eca4`, the carrier fire-key handler's exit `$1eca6`) decode as code; the real branches reach them and the census did not exercise them.
+  The message "Lumbering" (`$187d2`, with the `$19` prefix of the game's
   messages) has no reference. Island 14 is ODRACIR, RICARDO reversed (whether a name or a joke is not known).
 
 ## Running it
@@ -341,6 +366,8 @@ drones and island structures (`$193dc`, a jump table by type), and the 3D frame 
 | `gates.toml` | the promoted proofs for `tools/gates.py` |
 | `language.png`, `title.png`, `strategy.png` | milestones |
 | `cheat.png` | "Cheat Mode active" after the phrase |
+| `title_viewer.png` | the title screen, view 33: the carrier model rotating behind the menu (`py/curio/leftovers.py title`) |
+| `debug_dump.png` | the unreferenced debug print `$14048` shown through a poke of view 0's handler (`leftovers.py dump`) |
 | `islands.png` | the 64 islands from the fixed tables, starting owners and the supply graph (`py/world/render_map.py`) |
 | `models.png` | the 3D model table decoded and drawn (`py/render/sheet.py`) |
 | `py/ccpaths.py` | repo root and work dir (`$CARRIER_WORK`, default `scratchpad/carrier`) for every script |
@@ -349,7 +376,7 @@ drones and island structures (`$193dc`, a jump table by type), and the 3D frame 
 | `py/world/` | `rng.py`, `prove_production.py`, `prove_line.py`, `prove_transfer.py`, `gate_economy.sh`, `render_map.py` |
 | `py/ai2/` | `drive.py` (state-change log for the enemy carrier), `defence.py` (structure launch census with a difficulty poke), `menu.py`, `gate_difficulty.sh` |
 | `py/units/` | `carrier_proof.py` (per-tick carrier model against the emulator), `atan_port.py`, `atan_grid.py`, `repair_proof.py`, `flare_test.py`, `takeoff_proof.py` (per-tick Manta take-off model), `flight_proof.py` (per-tick airborne autopilot), `landing_proof.py` (per-tick deck landing, `--stow` the lift down), `runway_proof.py` (touchdown window, per-tick taxi, parking and runway take-off), `walrus_proof.py` (per-tick Walrus launch, cruise and docking), `fuel_proof.py` (fuel rule and its 16-frame cadence), `manta_snaps.py` (the Manta anchor snapshots), `gate_units.sh` |
-| `py/curio/` | `hidden.py` (hidden keys and cheat extras against a no-key control, the disabled exception handler, the manual-word decode), `gate_hidden.sh` (`gates.toml` "hidden") |
+| `py/curio/` | `hidden.py` (hidden keys and cheat extras against a no-key control, the disabled exception handler, the manual-word decode), `gate_hidden.sh` (`gates.toml` "hidden"), `leftovers.py` (the `$118e` meter proof, the title view and its keypad viewer, the forced `$3dbc` and `$1e462` calls, the debug print, the dead-code census), `gate_leftovers.sh` (`gates.toml` "leftovers") |
 | `py/render/` | `rig.py` (REPL and callcap driver), the five gates, `gate_render.sh`, `model.py`, `sheet.py`, `views.py`, `show.py`, `seq.py`, `subdivide.py` (a model as OBJ, subdivided and silhouette-scored, `render.md` section 6) |
 
 ## Not exercised in the emulator

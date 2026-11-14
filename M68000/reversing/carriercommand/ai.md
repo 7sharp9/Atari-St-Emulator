@@ -257,8 +257,9 @@ cheat flag poked):
   restored. 1 entry with the cheat, 0 without and 0 with no key (`keypad6_key.png`).
 - **Keypad 8, frame meter** (`$865`, at `$174fa`): toggles `$1227`, which prints `$aee` = 10000 / `$ae8` (Timer C
   ticks per main frame, counted by `$17906` on vector `$114`) with a decimal point inserted, and `$118e`, a counter
-  cleared each frame and incremented at `$7688`, whose meaning is not identified (1 against 0;
-  `keypad8_key.png` shows "40.0  6" at the top left of the view; the value varies with the frame). An older copy of the meter print, `$178d2..$178f8`, has no reference of any kind.
+  cleared each frame and incremented at `$7688`, the instruction before `jmp (A1)` in the model draw dispatcher `$7624`: it counts the
+  models drawn that frame (1 against 0 for the key; the value read at each `$17534` stop equals the `$7688` arrivals since the previous stop,
+  6/6 windows, and 0/6 if `$7624` is counted instead: `py/curio/leftovers.py meter`; `keypad8_key.png` shows "40.0  6" at the top left of the view). An older copy of the meter print, `$178d2..$178f8`, has no reference of any kind.
 
 ## 8. The two games
 

@@ -4,6 +4,7 @@
 00116e	cheat_phrase_inverted
 001185	cheat_enabled_flag
 001186	cheat_invulnerable_flag
+00118e	models_drawn_counter
 001230	rng_state
 001544	colour_code_pair_table_64
 001864	sine_table_q14_4096
@@ -64,6 +65,9 @@
 011af6	manta_launch_cmd
 011b74	manta_default_destination
 012f06	launch_flare
+013fbc	view_handler_table
+014048	debug_print_unreferenced
+015978	title_view_33
 01713c	repair_step
 0171d4	system_effects_update
 017216	effect_linear_from_half

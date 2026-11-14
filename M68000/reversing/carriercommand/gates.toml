@@ -49,3 +49,11 @@ cwd = "py/curio"
 expect = ["re:ctrl\\+V version: keys 1 control 0", "re:alt\\+help message: keys 1 control 0", "re:ctrl\\+S pause: keys 1 control 0", "re:ctrl\\+Q resume: keys 1 control 0", "re:keypad 6 colour card: keys 1 control 0", "re:keypad 6 without cheat: keys 0 control 0", "re:keypad 8 frame meter: keys 1 control 0", "re:keypad 7 main loops: keys 215 control 18", "re:keypad 7 view draws: keys 1 control 17", "re:andy handler: .* until after 72204 steps", "re:andy shipped: .* max_steps after 3000000 steps"]
 cite = "README.md (Hidden keys and leftovers), ai.md section 7"
 minutes = 2
+
+[[gate]]
+name = "leftovers"
+cmd = "bash gate_leftovers.sh"
+cwd = "py/curio"
+expect = ["re:meter .118e = arrivals between stops: 6/6 windows", "re:meter broken .* 0/6 windows", "re:title view33 .15978 arrivals 54 main loop .3a04 0 cheat check .3df2 0", "re:title keypad plus: type 1 -> 2, expected 2: 1/1", "re:title keypad minus: type 1 -> 73, expected 73: 1/1", "re:without the cheat flag: type -> 1", "re:forced .3dbc: slot .5f5da type 33 at \\(5000, 500, -10000\\): 1/1; x after 600000 steps 6149; control slot all zero: 1/1", "re:forced .1e462 hull 100 after damage 10 and 5000: 2/2"]
+cite = "README.md (Hidden keys and leftovers), ai.md section 7"
+minutes = 2
