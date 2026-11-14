@@ -75,6 +75,10 @@ $py "$here/runway_proof.py" taxi 450 150 -3500 120 3000 40 > "$t.b" 2>&1
 for k in a:lined-up b:skewed; do
   grep '^taxi ticks' "$t.${k%%:*}" | awk -v n="${k#*:}" '{printf "taxi %s %d/%d\n", n, $5, $3}'
 done
-cat "$t.a" "$t.b" | awk '$1=="control"{split($5,r,"/"); key=$2; seen[key]=1; if (r[1]<r[2]) br[key]=1}
+cat "$t.a" "$t.b" | awk '$1=="control" && $2 !~ /^(to_|climb_|roll_|full|hold_)/ {split($5,r,"/"); key=$2; seen[key]=1; if (r[1]<r[2]) br[key]=1}
   END{n=0; b=0; for (k in seen) {n++; if (k in br) b++; else u=u" "k}; printf "taxi controls %d/%d (unexercised:%s)\n", b, n, u}'
-rm -f "$t.a" "$t.b"
+$py "$here/runway_proof.py" takeoff 600 > "$t.c" 2>&1
+grep '^takeoff ticks' "$t.c" | awk '{printf "runway takeoff %d/%d\n", $5, $3}'
+awk '$1=="control" && $2 ~ /^(to_|climb_|roll_|full|hold_)/ {split($5,r,"/"); n++; if (r[1]<r[2]) b++; else u=u" "$2}
+  END{printf "runway takeoff controls %d/%d (unexercised:%s)\n", b, n, u}' "$t.c"
+rm -f "$t.a" "$t.b" "$t.c"

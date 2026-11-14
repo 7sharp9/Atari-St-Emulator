@@ -23,6 +23,7 @@ Proof labels as in `ai.md`. Gate: `py/units/gate_units.sh` (`gates.toml` "units"
 | Manta deck landing per tick (21 fields: slot, entity, `$dcc`, `$122c`), carrier at rest, carrier turning, from 12,000 out; then the lift down to the hangar | `landing_proof.py` | 250/250, 400/400, 500/500, controls 23/32; stow after 11 ticks |
 | Manta runway touchdown, one tick either side of each limit on island 0's airstrip | `runway_proof.py window` | 23/23 cases |
 | Manta runway taxi and parking per tick (states 4 and 5), lined up and skewed | `runway_proof.py taxi` | 399/399, 449/449, controls 15/22 |
+| Manta runway take-off per tick (state 6) from parked to airborne | `runway_proof.py takeoff` | 159/159, controls 11/14 |
 
 ## 1. Carrier motion `$1e4a0`
 
@@ -303,11 +304,26 @@ down the runway, fuel back to `$7fff`), and from (150, -3500) at altitude 120, 3
 least one run for 15 of 22; the seven left are the slot terms (only slot 0 was driven: 600, 3720), the two arrival
 windows 150 and 20 (never sat on) and the hull speed limit, never binding at speed 64; their values are read from code.
 
-State 6 (read from code, not yet driven) refuses with "Runway damaged - cannot take off" when record 1 is no longer an
-airstrip; otherwise it taxis to (0, 2700) at speed 12, climbs toward 155 while rolling to (0, -3000), throttles to 200
-once lined up, and becomes airborne (+28 = 3) with a holding point 6000 along the runway if it has no destination.
-The launch request bit is set from the UI at `$12ecc`. Every craft in states 4 to 6 reads entity +60 without a null
-check.
+**Runway take-off, state 6 (proven, `runway_proof.py takeoff`).** A launch request (slot +0 bit 5, set from the UI
+at `$12ecc`) is taken by state 5: it clears the bit and, if record 1 is still an airstrip, sets +28 = 6, phase 0 and
+clears +51 ("Runway damaged - cannot take off" otherwise). Then, with `steer` as above:
+
+```
+phase 0 (taxi):   demand 12;  pitch decays;  altitude (low word) toward 120 by 1
+                  offset to (0, 2700) within 100 on both axes: phase 1;  steer to (0, 2700)
+phase 1 (roll):   altitude toward 155 by 2;  offset to (0, -3000):
+    within 150:   +28 = 3 (airborne);  if +51 is set, autopilot off;  else with no destination: destination the
+                  runway point (0, 6000), cruise 60, target altitude 300 (i + 1) + 500, flag bit 2 cleared
+    otherwise:    heading toward atan2 of the offset by $200;  once it equals it, demand 200
+                  then the speed update and the move (no attitude update)
+```
+
+From the parked Manta of the lined-up run, the launch request gives state 6 on the next tick, phase 1 at tick 86 and
+airborne at tick 159 at speed 200 and altitude 155, holding point (-1, 5999) in the runway frame, target altitude
+800: 159/159 ticks on every field of slot 0 (with its destination, cruise, target altitude and +51) and its entity.
+11 of its 14 constants break a tick when nudged; the three left are the arrival windows 100 and 150 and the 2700 end
+of the taxi, which the run never sits on. Every craft in states 4 to 6 reads entity +60 without a null check (read
+from code).
 
 Inferred from code:
 
@@ -323,7 +339,7 @@ Inferred from code:
 
 ## 6. Open
 
-- The runway take-off (state 6) from a parked Manta, per tick as `runway_proof.py` does; the other slots' bays.
+- The other slots' bays (only slot 0 was driven); a runway landing on an enemy airstrip.
   The lift's own motion (`$1e838`), up and down.
 - The Walrus launch and driving.
 - An autopilot run with an island across the course, to show the carrier grounding instead of steering round.

@@ -246,6 +246,20 @@ the 4 Manta and 4 Walrus slots that is probably fuel (`$498+10`, `$572+8`); keyp
 (+20) to full, `$fa0`; keypad 3 (`$3ec2..$3f48`) teleports each craft on autopilot to its destination, and the
 carrier to its own (`vehicles.md` section 5).
 
+Three more cheat keys, each proven against the same snapshot and budget with no key (`py/curio/hidden.py keys`, the
+cheat flag poked):
+
+- **Keypad 7, fast-forward** (`$862`, tested at `$3a2e`): while it is held the main loop skips the 3D view `$13f8e`
+  and the screen flip `$17b9c`. Over 1.26M steps, 215 main-loop passes (`$3a04`) and 1 view draw, against 18 and
+  17 with no key: the simulation runs about 12 times faster.
+- **Keypad 6, colour test card** (`$86d`, handler `$20dfa`): an 8 x 8 grid of polygons in the 64 colour codes
+  (`render.md` section 5) through the polygon filler `$59d8`, held until keypad 6 is pressed again, then the screen is
+  restored. 1 entry with the cheat, 0 without and 0 with no key (`keypad6_key.png`).
+- **Keypad 8, frame meter** (`$865`, at `$174fa`): toggles `$1227`, which prints `$aee` = 10000 / `$ae8` (Timer C
+  ticks per main frame, counted by `$17906` on vector `$114`) with a decimal point inserted, and `$118e`, a counter
+  cleared each frame and incremented at `$7688`, whose meaning is not identified (1 against 0;
+  `keypad8_key.png` shows "40.0  6" at the top left of the view; the value varies with the frame). An older copy of the meter print, `$178d2..$178f8`, has no reference of any kind.
+
 ## 8. The two games
 
 The title menu's two start buttons differ only in `$1244` and the starting state (proven by clicking each from

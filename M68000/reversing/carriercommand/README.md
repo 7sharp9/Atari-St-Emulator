@@ -9,7 +9,7 @@ assembly (1 `LINK` frame, about 920 `RTS`), so it is analysed from traces and ca
 | Doc | Covers | Proof |
 |---|---|---|
 | `ai.md` | the enemy carrier's state machine, how it picks its next island, capture and attack, fighting the player's carrier and retreat, island defences, difficulty, the cheat mode, the two games | target choice 1344/1344 score words and 21/21 decisions, with constant-by-constant controls; difficulty A/B/C 3/3 arms; combat states driven state by state |
-| `vehicles.md` | the player's carrier motion and autopilot, the arctangent, repair priorities, missiles and flares, the craft slots, the Manta lift, launch, take-off, flight and deck landing | carrier 150/150 and 600/600 ticks (1950/1950 in the full run), arctangent 529/529, repair 10/10 and 12/12, flares 5/5, take-off 42/42 twice, airborne flight 300/300, 400/400 and 400/400, fuel 300/300 twice, deck landing 250/250, 400/400 and 500/500, runway touchdown 23/23 cases, taxi 399/399 and 449/449 |
+| `vehicles.md` | the player's carrier motion and autopilot, the arctangent, repair priorities, missiles and flares, the craft slots, the Manta lift, launch, take-off, flight and deck landing | carrier 150/150 and 600/600 ticks (1950/1950 in the full run), arctangent 529/529, repair 10/10 and 12/12, flares 5/5, take-off 42/42 twice, airborne flight 300/300, 400/400 and 400/400, fuel 300/300 twice, deck landing 250/250, 400/400 and 500/500, runway touchdown 23/23 cases, taxi 399/399 and 449/449, runway take-off 159/159 |
 | `economy.md` | the fixed island tables, world creation, the RNG, the supply graph and distance matrix, production, production lines and packets, island building | production 175/175, line cost and steps 14/14 each, landings 4/4, RNG 1/1, matrix per call 41/41 and 129/129 dumps, packet hops 14/14 twice |
 | `render.md` | the 3D engine: sine table, chained 2D rotations, projection, depth tree plus BSP plus back-face culling, the self-modifying span filler, the model format | sine 4096/4096, rotations 360/360 and 120/120, projection 480/480, face test 120/120, spans 780/780 (2183/2183 over all 64 colour codes), BSP draw order 1264/1264 draws |
 | `packer.md` | Automation Packer V2.3r: the `LSD!` LZ77 format, the backwards in-place depack and its safety margin, ratios against modern compressors | depacker output identical to `tools/lsd_depack.py`; final read/write gap 218 bytes on all six packed files; margin while input remains 218 to 220 (219 for Carrier Command) |
@@ -32,7 +32,7 @@ The game's rules restated for re-use in another design, without addresses. Each 
 it (A = `ai.md`, E = `economy.md`, V = `vehicles.md`, R = `render.md`); anything not proven there is labelled
 inferred. It covers what is decoded so far: the
 world and its economy, the enemy carrier, the island defences, the player's carrier, repair and countermeasures,
-and the renderer, and the Manta's take-off, airborne autopilot, fuel, deck landing and runway landing. The Manta's runway take-off, the Walrus, drone launchers and command-centre missiles in action, the
+and the renderer, and the Manta's take-off, airborne autopilot, fuel, deck and runway landing and runway take-off. The Walrus, drone launchers and command-centre missiles in action, the
 end of an island assault, the production-priority and fuel screens are not decoded yet. The crack's stack leak
 and the Automation Packer belong to this copy, not the game ("Provenance", `packer.md`).
 
@@ -123,7 +123,8 @@ and the Automation Packer belong to this copy, not the game ("Provenance", `pack
   below 150 inside a runway-aligned window with small stick, heading error and speed is simply set down and taxis
   to a bay by script, turns to face down the runway and refuels; outside the window it takes damage and is bounced
   back up to 145; at 35 or lower it loses 2000 hull a tick (window 23/23 cases either side of every limit, taxi
-  399/399 and 449/449). (V 5)
+  399/399 and 449/449). A runway take-off is the same script in reverse: creep to the end, turn, open to full
+  throttle once lined up (159/159). (V 5)
 - **Missiles home and flares decoy.** A missile re-targets every 5 calls to any of the (at most two) flares within
   6000 of it (5/5 cases); its guidance slews yaw and pitch by at most 11.25 degrees a call (inferred). (V 4)
 - **Two games from one engine.** Strategy starts from the player's home island against an enemy holding eight;
@@ -213,8 +214,57 @@ and the Automation Packer belong to this copy, not the game ("Provenance", `pack
   offset `$1c` gives `CARRIER.PRG` (sha256 `34caa0021659ecd33f28fbd368f1672645b384cc0e5a4392c8bf7b37b54cc937`),
   put alone in `\AUTO\` on a blank double-sided disk: `carrier_auto.st` (sha256
   `54261b30545e9a354ada6f0a3e11b80000432029d769584938a36984d8ed9464`).
-- After depacking, the game prints "Yes, I have kicked out the OS", takes over the machine and runs from low
-  RAM (code about `$3900..$235f8`); addresses in these docs are those runtime addresses.
+- After depacking, the game takes over the machine and runs from low RAM (code about `$3900..$235f8`); addresses
+  in these docs are those runtime addresses. The game's own message "Yes, I have kicked out the OS" is not printed
+  at boot: it is the Alt+Help key ("Hidden keys and leftovers").
+
+## Hidden keys and leftovers
+
+Proven against a no-key control from `c_s30` (`py/curio/hidden.py`, PNGs in `scratchpad/carrier/curio/`; the key table at `$794` holds one word per
+scancode, so the addresses below decode to the keys named):
+
+| Keys | Handler | Effect | Count, keys against control |
+|---|---|---|---|
+| Ctrl+V | `$16e24` | the message line shows "Release Version 1.01    29/03/88" (`ctrlvversion_key.png`) | 1 / 0 |
+| Alt+Help | `$3acc` | the message line shows "Yes, I have kicked out the OS" | 1 / 0 |
+| Ctrl+S, Ctrl+Q | `$3ab6`, `$3a92` | pause (`$f84a`) and resume (`$f85e`): XON/XOFF | 1 / 0 each |
+
+Alt+Help's string has one copy in RAM and one reference, the PC-relative `lea` at `$3adc`; a cold boot to the
+language menu runs it 0 times in 80M steps, and the boot screens at 3M and 8M steps show only the packer's banner.
+The cheat-mode keys are in `ai.md` section 7.
+
+**A disabled crash screen, "Andy's exception handler."** `$175be..$175d8` fills the vectors `$8..$1ff` with
+`$nn017916`, the vector number in the top byte. The 68000 keeps all 32 bits of the PC, so a handler at
+`$17918` can recover the number from its own address: it raises the mask, takes its PC with `pea 2(PC)`, saves the
+registers, the supervisor stack and USP to `$380..$3cc` in TOS's post-mortem layout (`$12345678` at `$380`), and
+jumps to `$20a04`, which prints the banner, the exception's name from the table at `$20bf3`, the PC, SR as flag
+letters, the registers and 32 stack words, then loops forever at `$20b4c`. It never runs: every vector points at
+`$17916`, a bare `rte` one word before the handler, and no other reference to `$17918` exists in RAM. Pointing vector
+4 at `$17918` and executing an illegal opcode reaches the dump loop in 72,204 steps and draws the full dump
+(`andy_handler.png`); with the vector as shipped the same run never reaches it in 3M steps (`hidden.py andy`). This is
+why the crack's time bomb ends in a silent halt rather than a dump. Whether the developer or the cracker moved the
+vector back one word cannot be told without an original disk.
+
+Read from code, not driven:
+
+- **Manual-word protection.** 192 words, 64 per language (English, German, French), stored length-prefixed at
+  `$4cd1a` with each byte XORed with its position from 1 and with `(index + 1) ^ $61`; the page, paragraph and word
+  numbers, 9 ASCII digits per entry at `$4c65a`, are XORed with the same key (`$9da2`; `hidden.py words` decodes all
+  192: entry 0 is page 7, paragraph 1, word 7, BEING). The table is reached by `lea $bb81,A1` then
+  `lea 12345(A1),A1`, an obfuscated `$ebba`. In this cracked copy the compare loop `$9ede` writes the typed answer
+  over the stored word, so entry 60 (page 33, paragraph 3, word 19) reads as spaces in `c_s30`.
+- **Saves bypass GEMDOS.** `$20eba` reads sectors through the FDC itself at 10 sectors a track; a save slot is 180
+  sectors (90 KB) from sector `199 slot + 1`, on a disk recognised by the boot-sector name "GMDSK!" (template at
+  `$1662`, compared at `$fee2`; single-sided, 10 sectors a track, media byte `$f8`). A save is accepted only if it
+  starts with `jmp $3964` and "Release Version 1.01    29/03/88" (`$ff30`, compared at `$ff18`). `$20efc` is an
+  unreferenced one-sector variant of the reader.
+- **The score in decimal.** `$9f2c` keeps the score as 12 decimal digits and adds with `divu #10` carries, so it
+  never converts binary to decimal.
+- **Leftovers.** An unreferenced debug print at `$14048..$140b6` (15 words at `$df6`, 22 at `$e14`, 21 records from
+  `$66710`, in decimal columns), just after the view table. View 33 (`$15978`): Ctrl+A and Ctrl+B set `$1246`, which
+  the sound code copies to `$2142a`, and with the cheat on keypad +/- step the type word of entity `$64d10` through
+  1..73, perhaps a model viewer (inferred). The message "Lumbering" (`$187d2`, with the `$19` prefix of the game's
+  messages) has no reference. Island 14 is ODRACIR, RICARDO reversed (whether a name or a joke is not known).
 
 ## Running it
 
@@ -292,11 +342,12 @@ drones and island structures (`$193dc`, a jump table by type), and the 3D frame 
 | `py/ai/` | `score.py` (target-choice model), `gate_score.py` |
 | `py/world/` | `rng.py`, `prove_production.py`, `prove_line.py`, `prove_transfer.py`, `gate_economy.sh`, `render_map.py` |
 | `py/ai2/` | `drive.py` (state-change log for the enemy carrier), `defence.py` (structure launch census with a difficulty poke), `menu.py`, `gate_difficulty.sh` |
-| `py/units/` | `carrier_proof.py` (per-tick carrier model against the emulator), `atan_port.py`, `atan_grid.py`, `repair_proof.py`, `flare_test.py`, `takeoff_proof.py` (per-tick Manta take-off model), `flight_proof.py` (per-tick airborne autopilot), `landing_proof.py` (per-tick deck landing, `--stow` the lift down), `runway_proof.py` (touchdown window, per-tick taxi and parking), `fuel_proof.py` (fuel rule and its 16-frame cadence), `manta_snaps.py` (the Manta anchor snapshots), `gate_units.sh` |
+| `py/units/` | `carrier_proof.py` (per-tick carrier model against the emulator), `atan_port.py`, `atan_grid.py`, `repair_proof.py`, `flare_test.py`, `takeoff_proof.py` (per-tick Manta take-off model), `flight_proof.py` (per-tick airborne autopilot), `landing_proof.py` (per-tick deck landing, `--stow` the lift down), `runway_proof.py` (touchdown window, per-tick taxi, parking and runway take-off), `fuel_proof.py` (fuel rule and its 16-frame cadence), `manta_snaps.py` (the Manta anchor snapshots), `gate_units.sh` |
+| `py/curio/` | `hidden.py` (hidden keys and cheat extras against a no-key control, the disabled exception handler, the manual-word decode) |
 | `py/render/` | `rig.py` (REPL and callcap driver), the five gates, `gate_render.sh`, `model.py`, `sheet.py`, `views.py`, `show.py`, `seq.py`, `subdivide.py` (a model as OBJ, subdivided and silhouette-scored, `render.md` section 6) |
 
 ## Not exercised in the emulator
 
-The Manta's runway take-off (state 6), the lift's own motion, the Walrus launch and driving, a drone launcher or command
+The lift's own motion, the Walrus launch and driving, a drone launcher or command
 centre firing, the island-capture end of an attack, the production-priority and fuel screens, saving and
 loading. The 3D model drawing order matches the game on the far draw path only (`render.md` section 4).

@@ -4,6 +4,7 @@ parking (+28 = 5, $1d5f8) against the emulator, on the airstrip of island 0 (VUL
 
 usage: runway_proof.py window
        runway_proof.py taxi <ticks> [u v alt heading speed]
+       runway_proof.py takeoff <ticks>
 
 From m_air.snap (Manta 0 airborne near the carrier, entity +60 = the block of island 0, whose record 1 is the airstrip
 type $24) the Manta is poked onto an approach: position (u, v) in the runway's frame (the frame $1ccb0 computes:
@@ -19,6 +20,10 @@ stick values poked are the ones that reach the test after that tick's autopilot 
 taxi: from the touchdown, slot 0 and its entity are read at every entry of $1cab4, and the model predicts each entry
 in state 4 or 5 from the one before; prints mismatches, the phase timeline, 'taxi ticks N match M' and a control
 per constant. Default approach (0, -3000), altitude 140, heading = the runway's, speed 60.
+
+takeoff: the default touchdown, run until parked (+28 = 5), then the launch-request bit (slot +0 bit 5, which the
+UI sets at $12ecc) is poked and every entry is modelled through state 6 ($1d6a8) to the hand-off to flight (+28 = 3,
+with the holding point and target altitude it sets); prints 'takeoff ticks N match M' and the controls.
 """
 import pathlib as _pl, sys as _sys; _sys.path.insert(0, str(_pl.Path(__file__).resolve().parent.parent))
 _sys.path.insert(0, str(_pl.Path(__file__).resolve().parent))
@@ -78,7 +83,8 @@ def read(s):
     h = lambda b, o: struct.unpack('>h', b[o:o + 2])[0]
     l = lambda b, o: struct.unpack('>l', b[o:o + 4])[0]
     return dict(flags=sl[0], state=sl[28], phase=sl[29], s2=h(sl, 2), s4=h(sl, 4), v=h(sl, 6), s8=h(sl, 8),
-                fuel=h(sl, 10), hull=h(sl, 20), c48=h(sl, 48), w46=h(sl, 46),
+                fuel=h(sl, 10), hull=h(sl, 20), c48=h(sl, 48), w46=h(sl, 46), b51=sl[51], cruise=h(sl, 42),
+                destx=l(sl, 30), talt=l(sl, 34), destz=l(sl, 38),
                 eflags=e[0], pitch=h(e, 4), heading=struct.unpack('>H', e[6:8])[0], roll=h(e, 8),
                 x=l(e, 10), alt=l(e, 14), z=l(e, 18))
 
@@ -130,7 +136,9 @@ def window():
 
 P0 = dict(taxi_speed=64, taxi_alt=120, alt_rate=8, taxi_v=2650, near=150, bay_speed=8, bay_dx=600, bay_x0=900,
           bay_v0=3270, bay_v1=3720, bay_near=20, head_rate=0x200, turn_rate=0x400, park_alt=100, park_pitch=-694,
-          refuel=64, hull_shift=4, vmax_add=50, vmax_cap=250, accel=4, decel=16, clr_bug=1)
+          refuel=64, hull_shift=4, vmax_add=50, vmax_cap=250, accel=4, decel=16, clr_bug=1,
+          to_speed=12, to_alt=120, to_rate=1, to_v=2700, to_near=100, climb_alt=155, climb_rate=2, roll_v=-3000,
+          roll_near=150, full=200, hold_cruise=60, hold_alt_k=300, hold_alt0=500, hold_v=6000)
 P = dict(P0)
 
 
@@ -177,6 +185,39 @@ def step(a):
     if a['state'] == 5:                                        # $1d5f8: parked, refuelling
         f = s16(b['fuel'] + P['refuel'])
         b['fuel'] = 0x7fff if f < 0 else f
+        if b['flags'] & 0x20:                                  # launch request; record 1 is still the airstrip
+            b['flags'] &= ~0x20
+            b['state'], b['phase'], b['b51'] = 6, 0, 0
+        return b
+    if a['state'] == 6:
+        if a['phase'] == 0:                                    # $1d6b8: taxi to (0, 2700) at 12, rise to 120 by 1
+            b['s8'] = P['to_speed']
+            b['pitch'] = decay(b['pitch'])
+            b['alt'] = toward(s16(a['alt']), P['to_alt'], P['to_rate'])
+            dx, dz = to_point(b, 0, P['to_v'])
+            if abs(s16(dx)) <= P['to_near'] and abs(s16(dz)) <= P['to_near']:
+                b['phase'] = 1
+            head_for(b, dx, dz)
+            return b
+        b['alt'] = toward(s16(a['alt']), P['climb_alt'], P['climb_rate'])    # $1d6fe: roll and climb
+        dx, dz = to_point(b, 0, P['roll_v'])
+        if abs(s16(dx)) <= P['roll_near'] and abs(s16(dz)) <= P['roll_near']:
+            b['state'] = 3                                     # airborne
+            if b['b51']:
+                b['flags'] &= ~1
+            elif not b['flags'] & 2:                           # holding point 6000 along the runway
+                b['flags'] = (b['flags'] | 2) & ~4
+                b['cruise'] = P['hold_cruise']
+                b['talt'] = P['hold_alt_k'] * (0 + 1) + P['hold_alt0']
+                ox, oz = rot_inv(0, P['hold_v'], RH)
+                b['destx'], b['destz'] = BX + s16(RX + ox), BZ + s16(RZ + oz)
+        else:
+            t = atan2(dx, dz)
+            b['heading'] = toward(b['heading'], t, P['head_rate']) & 0xffff
+            if b['heading'] == t & 0xffff:
+                b['s8'] = P['full']
+        speed(b)
+        integrate(b)
         return b
     ph = a['phase']
     if ph == 0:                                                # $1d4dc: taxi to (0, 2650), settle to 120
@@ -220,7 +261,7 @@ def step(a):
 
 
 FIELDS = ['flags', 'state', 'phase', 's2', 's4', 'v', 's8', 'fuel', 'hull', 'c48', 'pitch', 'heading', 'roll', 'x',
-          'alt', 'z']
+          'alt', 'z', 'b51', 'cruise', 'destx', 'talt', 'destz']
 
 
 def taxi(ticks, u=0, v=-3000, alt=140, dh=0, sp=60):
@@ -235,7 +276,10 @@ def taxi(ticks, u=0, v=-3000, alt=140, dh=0, sp=60):
     assert S_[1]['state'] == 4, ('no touchdown', S_[1])
     n = len(S_) - 1
     usable = [k for k in range(1, n) if S_[k]['state'] in (4, 5) and S_[k]['w46'] != 2]
+    report(S_, usable, 'taxi')
 
+
+def report(S_, usable, name):
     def score(verbose):
         ok = 0
         for k in usable:
@@ -254,7 +298,7 @@ def taxi(ticks, u=0, v=-3000, alt=140, dh=0, sp=60):
             tl.append(f'{x["state"]}.{x["phase"]}@{k}')
     print('timeline (state.phase@tick): ' + ' '.join(tl))
     f = S_[-1]
-    print(f'parked at runway frame {frame(f["x"], f["z"])}, heading {f["heading"]:#06x} (runway {RH:#06x}), '
+    print(f'last tick at runway frame {frame(f["x"], f["z"])}, heading {f["heading"]:#06x} (runway {RH:#06x}), '
           f'altitude {f["alt"]}, fuel {S_[1]["fuel"]}..{f["fuel"]}')
     broke = 0
     for key, base in P0.items():
@@ -265,11 +309,39 @@ def taxi(ticks, u=0, v=-3000, alt=140, dh=0, sp=60):
         print(f'  control {key} = {P[key]}: {m}/{len(usable)}')
     P.clear(); P.update(P0)
     print(f'controls broken {broke}/{len(P0)}')
-    print(f'taxi ticks {len(usable)} match {ok}')
+    print(f'{name} ticks {len(usable)} match {ok}')
+
+
+def takeoff(ticks):
+    s = start(0, -3000, 140, RH, 60)
+    for k in range(400):
+        r = s('run', max_steps=400000)
+        assert r['reason'] == 'breakpoint', r
+        if s.read(S + 28, 1)[0] == 5:
+            break
+    else:
+        sys.exit('never parked')
+    s('poke', addr=S, width=1, value=s.read(S, 1)[0] | 0x20)   # launch request
+    S_ = [read(s)]
+    for k in range(ticks):
+        r = s('run', max_steps=400000)
+        assert r['reason'] == 'breakpoint', r
+        S_.append(read(s))
+        if S_[-1]['state'] == 3:
+            break
+    s('bp_clear', addrs=[0x1cab4])
+    s.close()
+    usable = [k for k in range(len(S_) - 1) if S_[k]['state'] in (5, 6)]
+    f = S_[-1]
+    print(f'airborne after {len(S_) - 1} ticks: state {f["state"]}, speed {f["v"]}, altitude {f["alt"]}, '
+          f'destination {frame(f["destx"], f["destz"])} in the runway frame, target altitude {f["talt"]}')
+    report(S_, usable, 'takeoff')
 
 
 if __name__ == '__main__':
     if sys.argv[1] == 'window':
         window()
+    elif sys.argv[1] == 'takeoff':
+        takeoff(int(sys.argv[2]))
     else:
         taxi(int(sys.argv[2]), *map(int, sys.argv[3:]))

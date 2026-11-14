@@ -30,7 +30,7 @@ minutes = 1
 name = "units"
 cmd = "bash gate_units.sh"
 cwd = "py/units"
-expect = ["150/150", "600/600", "529/529", "10/10", "12/12", "5/5", "re:takeoff at rest 42/42", "re:takeoff carrier turning 42/42", "re:takeoff controls 11/13", "re:flight launch 300/300", "re:flight ceiling 400/400", "re:flight low-hull 400/400", "re:flight controls 22/26", "re:fuel full hull 300/300", "re:fuel low hull 300/300", "re:landing rest 250/250", "re:landing carrier-turning 400/400", "re:landing far-low 500/500", "re:landing controls 23/32", "re:stow: hangar .* after 11 ticks, lift at rest after 21", "re:runway window 23/23", "re:taxi lined-up 399/399", "re:taxi skewed 449/449", "re:taxi controls 15/22"]
+expect = ["150/150", "600/600", "529/529", "10/10", "12/12", "5/5", "re:takeoff at rest 42/42", "re:takeoff carrier turning 42/42", "re:takeoff controls 11/13", "re:flight launch 300/300", "re:flight ceiling 400/400", "re:flight low-hull 400/400", "re:flight controls 22/26", "re:fuel full hull 300/300", "re:fuel low hull 300/300", "re:landing rest 250/250", "re:landing carrier-turning 400/400", "re:landing far-low 500/500", "re:landing controls 23/32", "re:stow: hangar .* after 11 ticks, lift at rest after 21", "re:runway window 23/23", "re:taxi lined-up 399/399", "re:taxi skewed 449/449", "re:taxi controls 15/22", "re:runway takeoff 159/159", "re:runway takeoff controls 11/14"]
 cite = "vehicles.md (proof table)"
 minutes = 9
 
