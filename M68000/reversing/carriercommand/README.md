@@ -343,7 +343,7 @@ drones and island structures (`$193dc`, a jump table by type), and the 3D frame 
 | `py/world/` | `rng.py`, `prove_production.py`, `prove_line.py`, `prove_transfer.py`, `gate_economy.sh`, `render_map.py` |
 | `py/ai2/` | `drive.py` (state-change log for the enemy carrier), `defence.py` (structure launch census with a difficulty poke), `menu.py`, `gate_difficulty.sh` |
 | `py/units/` | `carrier_proof.py` (per-tick carrier model against the emulator), `atan_port.py`, `atan_grid.py`, `repair_proof.py`, `flare_test.py`, `takeoff_proof.py` (per-tick Manta take-off model), `flight_proof.py` (per-tick airborne autopilot), `landing_proof.py` (per-tick deck landing, `--stow` the lift down), `runway_proof.py` (touchdown window, per-tick taxi, parking and runway take-off), `fuel_proof.py` (fuel rule and its 16-frame cadence), `manta_snaps.py` (the Manta anchor snapshots), `gate_units.sh` |
-| `py/curio/` | `hidden.py` (hidden keys and cheat extras against a no-key control, the disabled exception handler, the manual-word decode) |
+| `py/curio/` | `hidden.py` (hidden keys and cheat extras against a no-key control, the disabled exception handler, the manual-word decode), `gate_hidden.sh` (`gates.toml` "hidden") |
 | `py/render/` | `rig.py` (REPL and callcap driver), the five gates, `gate_render.sh`, `model.py`, `sheet.py`, `views.py`, `show.py`, `seq.py`, `subdivide.py` (a model as OBJ, subdivided and silhouette-scored, `render.md` section 6) |
 
 ## Not exercised in the emulator

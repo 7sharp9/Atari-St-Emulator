@@ -41,3 +41,11 @@ cwd = "py/ai2"
 expect = ["3/3"]
 cite = "ai.md section 6 (A/B/C)"
 minutes = 3
+
+[[gate]]
+name = "hidden"
+cmd = "bash gate_hidden.sh"
+cwd = "py/curio"
+expect = ["re:ctrl\\+V version: keys 1 control 0", "re:alt\\+help message: keys 1 control 0", "re:ctrl\\+S pause: keys 1 control 0", "re:ctrl\\+Q resume: keys 1 control 0", "re:keypad 6 colour card: keys 1 control 0", "re:keypad 6 without cheat: keys 0 control 0", "re:keypad 8 frame meter: keys 1 control 0", "re:keypad 7 main loops: keys 215 control 18", "re:keypad 7 view draws: keys 1 control 17", "re:andy handler: .* until after 72204 steps", "re:andy shipped: .* max_steps after 3000000 steps"]
+cite = "README.md (Hidden keys and leftovers), ai.md section 7"
+minutes = 2
