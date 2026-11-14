@@ -605,10 +605,81 @@ starts can see ("Land 2 as a rate").
 | step | what | proof | status |
 |---|---|---|---|
 | 1 | Injection gate: an order written into a state-2 slot of an AI side runs like a natural one, and `$6522` issues nothing for that side | `gate_inject.sh` 7/7 (above) | done |
-| 2 | A* reachability tool over the terrain planes | sampler port 4128/4128 against `$1648e` (`gate_sampler.py`); the census's 4230 stuck pairs classified (`classify_stuck.py`): 2417 reachable with water on the line, each with a verified waypoint path; one waypoint followed live where the control stays stuck (`live_check.py`) | done |
+| 2 | A* reachability tool over the terrain planes | sampler port 4128/4128 against `$1648e` (`gate_sampler.py`); the census's 4230 stuck pairs classified (`classify_stuck.py`): 2417 reachable with water on the line, each with a verified waypoint path; one waypoint followed live where the control stays stuck (`live_check.py`); cheaper in-game rules scored against it ("Wall following against A*") | done |
 | 3 | Observe/act harness driving the REPL, scripted baseline commander | observe/act/step built and gated; every player order gated from an AI or the local slot (`gate_orders.sh` 57/57, `gate_ungated.sh` 52/52, `gate_local.sh`); `loop.py` deterministic and replayable, a land played to its verdict on side 1 twice with identical logs and snapshots (`gate_loop.sh`, `gate_loop_side1.sh`) | done |
 | 4 | LLM commander | land outcomes against the original AI on the same seeds, sides swapped. Measured on rand1 side 3 over six starts ("Policies against the game's AI"): rollout ahead of the AI on lords from 5 of 6 starts, the LLM not separable under three prompts, scripted behind from 6 of 6. On land 2 side 1 over 30 starts ("Land 2 as a rate"): scripted and the Haiku LLM win 0, the rollout 4, the hybrid (LLM proposes, rollout scores) 8, the same with a random proposer 7, the rollout deciding only as often as the LLM 7; no two search arms separable | rollout done; LLM measured: adds nothing over a random proposer on land 2 |
 | 5 | State-space forecaster | prediction error against rollouts and against the rule recurrence. Built: exact rollouts (`rollout.py`, `gate_rollout.sh` 20/20) | in progress |
+
+## Wall following against A*
+
+The question: would a cheap in-game rule make A* unnecessary for the stuck men of `classify_stuck.py`? A Python model
+(`bug2/follow.py`) keeps the game's straight leg (mode `$10`/`$12`: `$164bc` step, probe `dwell` points, walk them) and
+replaces the mode `$48` fan, on a blocked probe, by a wall follower. The man walks to the last land step before the
+water, keeps the coast on one hand (one step of `speed` per tick along the game's own `$12d56` rotate vectors, 16
+headings, first land heading scanned from 22.5 degrees on the wall side round to the far side) and leaves per rule
+(Bug2: crossing the original start-to-target line closer than the hit point; k-clear: a straight line to the target
+clear for 4 cells, optionally also closer than the hit). Terrain is the exact `$1648e` sampler (`bug2/check_sampler.py`,
+20000/20000 random points on each of two planes); points off the plane count as blocked. The scoring set is the
+`classify_stuck.py` census, rebuilt by `bug2/extract_pairs.py`: 4230 pairs, of which 2417 are class b (reachable, water
+on the line). The wall-follower parameters (16 headings, scan start 22.5 degrees) were tuned on 80 class-b pairs of
+`W5G_k80` and `X10G_k44` and scored on all.
+
+Limits of the evidence. The 2417 class-b records are 2202 distinct (start, target, speed) triples and 133 men, on six
+maps (one per series), so they are not independent trials. Ratios are against `astar.Map.path`'s string-pulled
+waypoint path, not a true shortest path. The model has no followers (word 28), group hand-off, moving targets or
+collisions.
+
+**Control: the model's movement rule.** `astar.Map.simulate_walk` (3000 ticks) says stuck for 537/537 target-in-water,
+1003/1003 other-landmass and 2211/2417 class-b pairs (3751/3957 of the census's stuck pairs, not N/N) and arrives for
+239/239 class-c pairs. The 206 class-b pairs it lets arrive are the re-dispatched, mid-sweep and moving-target men of
+"Known risks" (not re-derived here). Broken-model control: with `Map.sample` returning land everywhere the model says
+stuck for 0/3957 (`bug2/control_water_blind.py`). The follower's straight mode arrives with no follow ticks on 239/239
+class-c pairs.
+
+**Land component labels.** Agreement with the A* triangle graph over the 4196 non-boat pairs: cell labels (a cell is
+land if either triangle is, 4-connected, 64 x 128 cells, about 8 KB at a byte each) 4196/4196; the same 8-connected
+4169/4196 (27 unreachable pairs called reachable); a 32-unit point-lattice flood fill 4107/4196 (89 reachable pairs
+called unreachable). The 4-connected labels also call all 1003 other-landmass and 537 target-in-water pairs
+unreachable. This is exact on these six maps; it is not shown for others.
+
+**Followers on the 2417 class-b pairs** (ratio = path length over the A* path: median / 90th percentile / worst; "loops"
+are exact repeats of the follower's state, the 400,000-tick cap was never reached):
+
+| rule | solved | ratio | loops | state beyond the record |
+|---|---|---|---|---|
+| Bug2, left hand | 2416 | 3.82 / 47.9 / 335 | 1 | flag byte, hit distance 2 B, origin 4 B (3 B if the saved origin words are reused) |
+| Bug2, right hand | 2355 | 1.24 / 7.9 / 613 | 62 | same |
+| Bug2, hand by smaller first turn | 2416 | 3.30 / 42.1 / 335 | 1 | same |
+| Bug2, both hands, keep the shorter (oracle: two runs) | 2417 | 1.17 / 1.63 / 48.4 | 0 | not a per-unit state |
+| k-clear (4 cells), left / right | 826 / 1990 | 1.07 / 3.3 / 4.7; 1.05 / 1.30 / 83 (solved pairs only) | 1591 / 427 | flag byte |
+| k-clear plus closer than hit, left / right | 2416 / 2394 | 3.52 / 47.8 / 335; 1.08 / 7.8 / 613 | 1 / 23 | flag byte, 2 B |
+| k-clear plus closer than hit, both hands (oracle) | 2417 | 1.06 / 1.20 / 48.3 | 0 | not a per-unit state |
+| broken control: Bug2 left, scan start 0 (never turns toward the wall) | 116 | | 2301 | |
+
+The byte counts are the model's state, not a 68000 implementation (inferred). Plain k-clear loops on most pairs; the
+hit distance is what makes the leave rule work. Per man, the median of the per-man median ratios is 3.98 (left), 1.21
+(right) and 1.17 (both hands) over 133 men; over the 2202 distinct pairs both hands solve 2202 with median 1.18
+(`bug2/permen.py`). The left/right gap is geometry, not a bias in the code: on a synthetic symmetric lake the two hands
+differ by 0.1% (8098 and 8106 units, `bug2/check_symmetry.py`). Every failure is a heading-quantisation loop: of the 62
+right-hand failures 47 solve with 64 headings and 59 with 64 headings and scan start 11 degrees; the one left-hand
+failure solves with 64 headings (`bug2/check_quantisation.py`). Bug2 on the 1003 other-landmass pairs loops on 1003/1003
+(it needs the labels to refuse the order) and on the 239 class-c pairs arrives without following a coast.
+
+Maps (terrain green and blue, A* yellow, Bug2 left red, start white dot, target magenta square):
+`bug2/map_typical.png` (X10G_k40 obj 243, ratio 3.8), `bug2/map_worst.png` (X10G_k143 obj 51: 150 units apart across a
+water sliver, the left hand walks 135,215 units against A*'s 403) and `bug2/map_failure.png` (X10G_k25 obj 160, a
+left-hand loop starting at the map edge).
+
+**Live, one pair, one run (pokes).** `bug2/live_prep.py` string-pulls the left-hand path of `W5G_k80_c20` obj 49 into
+4 waypoints that the game's leg rule walks; `bug2/live_bug2.py` pokes the target longword (record + 20) to each in turn
+in 6M-step windows, against an unpoked control. The control oscillates in mode `$48`, never nearer than 921 units to
+the original target; the poked man stands 0 units from it from chunk 12. Waypoint 1 was only passed at 153 units
+(outside the 128 threshold: the fixed-window poke cut the corner) and the man later left on a job re-dispatch and
+came back. A poked result, one pair.
+
+**Reading.** Wall following solves reachability (2416 of 2417 with one hand, 2417 with either) but with one hand the
+path is heavy-tailed, so it does not replace A* for path length; the hand-free versions are oracles. Untested: a cheap
+hand selector (a short look-ahead of both coasts), other maps, moving targets and followers.
 
 ## Files
 
@@ -651,6 +722,13 @@ starts can see ("Land 2 as a rate").
 | `classify_stuck.py [prefix...]` | the stuck census split into unreachable / water on line / not stuck / boat |
 | `walk/` | the per-tick walker from a full record and the census that checks it: `list206.py` → `model206.py` → `census_run.py` (110 game runs) → `census_cmp.py` → `classify_fixed.py`; `trace_cmp.py` for one man, `reset_test.py` for the re-dispatched |
 | `live_check.py <snap> <obj> [--chunks N]` | a man's target poked to the first waypoint, against a control |
+| `bug2/follow.py` | the wall-following model (Bug2, k-clear) on the exact `$1648e` sampler; data under `scratchpad/pm_bug2/` |
+| `bug2/extract_pairs.py` | `classify_stuck.py`'s census loop dumped to `scratchpad/pm_bug2/pairs.pkl` (4230 pairs) |
+| `bug2/run_all.py [procs]`, `bug2/report.py` | scores every pair (control model, component labels, A* path, followers) to `results.pkl`; the tables above and the three PNGs (`scratchpad/pm_bug2/maps/`) |
+| `bug2/control_water_blind.py` | the movement-model broken control (0/3957) |
+| `bug2/check_sampler.py`, `check_symmetry.py`, `check_quantisation.py`, `permen.py` | sampler 20000/20000, hand symmetry, the heading-quantisation loops, per-man and per-pair ratios |
+| `bug2/live_prep.py <snap> <obj>`, `bug2/live_bug2.py <snap> <obj> [--chunk N] [--per K]` | Bug2 waypoints for one man, then poked one at a time against a control |
+| `bug2/map_typical.png`, `map_worst.png`, `map_failure.png` | the three maps |
 
 All write under `$CMD_WORK` (default `scratchpad/cmd1`).
 
