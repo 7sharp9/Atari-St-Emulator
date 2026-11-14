@@ -128,12 +128,28 @@ mission 1) is planet slot 1, PLANET-BUTRE. Target 9 of mission 1 is object 107, 
   `$2f4f0` once, `$2f676` and `$b5c2` 0, nothing written to `14788`, and the ship stays in orbit ("DOCKING COMPLETE").
   The final base has no compound: request 4 goes straight to mode 3, and the party is placed at (53,0), facing 2 (S), while
   the modules load ("LOADING ..." for about 12M steps after LAND; 310 FDC reads, all completed, against 280 for a
-  target landing). The base view is up by 13M steps. Left without input, the party dies there: the group beside it
-  at (54,0) (`$1d33a`, type `$1d`, aware and hostile) attacks (`$10e4a`, then `$f884` and droid damage `$9a9a`), the
-  live-droid count `410(A6)` falls 4, 3, 1, 0 between 14.6M and 15.35M, and `$876a` sets `14800` = 1, "DROID'S HAVE
-  FAILED!" (`py/world/station/death.py`, `fdc.py`). A target landing left the same way loses no droid in 60M steps,
-  but it puts the party in a compound, not beside a guard. Whether a party that moves off (53,0) survives, and why a
-  group stands beside the entrance, are not tested.
+  target landing). The base view comes up between 12.1M and 12.4M steps after LAND. Left without input, the party
+  dies there: a group (`$1d33a`, one member of type `$1d`) walks up beside it to (54,0), turns hostile, and attacks
+  (`$10e4a`, then `$f884` and droid damage `$9a9a`); the live-droid count `410(A6)` falls 4, 3, 1, 0 between 14.6M and
+  15.35M, and `$876a` sets `14800` = 1, "DROID'S HAVE FAILED!" (`py/world/station/death.py`, `fdc.py`). A target
+  landing left the same way loses no droid in 60M steps.
+  - **The group is not a guard.** `$25d88`, the late random fill, places it at (56,3) with +5 = 0 (not hostile, not
+    aware); its record at the generator's stage `$23d16` is byte-identical to the one written in play
+    (`38030010000001031d1424abb0670000`, `py/mapgen/full/` stage dumps, D0 = 10, D2 = 1). It does not move during the
+    load. From about the moment the view comes up it wanders (`$1052e`/`$10530`): (56,2), (56,1), (56,0), (55,0), then
+    (54,0) about 1.2M steps after its first move. About 30k steps after it arrives, the view renderer draws it:
+    `$d390`, called from `$a92a` (return address `$a92e` on the stack), writes +5 = `$15` (seen and hostile; `ai.md`
+    "Seen, hostile and regroup"), then `$10480` sets aware and the attacks start (`py/world/station/guard.py`, a write
+    watch on its record; `guard.py caller` for the stack).
+  - **One step forward saves the party.** Same fork, same 40M-step budget, one `$68` (forward) press at a varied time:
+    pressed any time from before the view (also during "LOADING ...", where the press is buffered and taken later) up to
+    about 13.4M after LAND, the party ends at (53,1) with all four droids, `14800` = 0 and no `$9a9a` call; the group
+    passes through (53,0) behind it and wanders off, +5 bit 4 still clear at every 1M-step sample to 20M. Pressed at
+    13.6M, as the group reaches (54,0), the party still reaches (53,1) and is dead by 16.0M. Unmoved, it is dead by
+    15.6M; strafe W (`$6c`) does not move it, dead by 15.0M (`py/world/station/survive.py`: 21 arms, the 9 with a
+    forward press by 13.4M all survive, the other 12 all die). The player therefore has about 1.0M to 1.5M steps
+    after the view appears (83 to 125 VBLs at 12,000 steps per VBL) to step off the entrance. Whether that window holds on real hardware depends on the emulator's step-per-frame approximation and
+    is not tested; the window measured is relative to the view, and the group does not move before the view.
 - **Seeds passed to `fed_MapGen`.** A target landing stores a base seed `32(A6) = mission × 11 + (k − 1)` and a body
   seed `14790(A6) = (mission & $1ff) × 150 + (slot − 1)`. These become MapGen's D0 and D1 (README, "The base
   generator").

@@ -267,7 +267,10 @@ from `g16_adj.snap`):
   `$104bc`, `$104c2`, `$d390` and `$1053c`; only `$d390` sets bit 2.
 - With one labelled poke making group 16 not hostile (+5 = `$0a`), facing it turns it to `$1e` and the member then
   attacks (`$10e4a` writes its slot byte). Facing away it stays `$0a`.
-- Not observed: a group that the generator left not hostile turning hostile by coming into view in play.
+- A group the generator left not hostile turns hostile by coming into view in play: in the final base the `$25d88`
+  group `$1d33a` (+5 = 0) wanders to (54,0), beside the party's cell, and `$d390`, called from `$a92a`, writes +5 =
+  `$15` (`world.md` section 1, "Final target"; `py/world/station/guard.py`). A party that steps forward first is
+  never drawn with the group in view and the group stays not hostile.
 
 **`$10534` (cr_Regroup)** is the tail of every move, contact and turn (reached from `$103c2`, `$104e4`, `$1051e`,
 and by falling through from the move at `$10520`). When bit 2 is set it clears it and moves at most one member:
