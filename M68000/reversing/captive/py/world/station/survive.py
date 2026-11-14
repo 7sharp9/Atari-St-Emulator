@@ -53,6 +53,10 @@ print('to $b5c6 (max_steps = still generating):', r['reason'], st())
 base = s('fork')['id']
 HITS = ['$10e4a', '$f884', '$9a9a', '$876a']
 G = 0x1d33a                                             # the attacking group (death.py 'trace'; guard.py)
+if 'save' in sys.argv:
+    # fwd1 at T = 4, run to +12M, save scratchpad/captive/station/fin_safe.snap (party (53,1), view up, group passed)
+    s('step', n=4_000_000); key(0x68); s('step', n=7_640_000)
+    print('save', st()); s('save', path=os.path.join(W, 'station', 'fin_safe.snap')); s.close(); sys.exit()
 if 'track' in sys.argv:
     # fwd1 at T = 4M; group record, party and a render every 1M steps to +20M
     VIEW = 'view' in sys.argv                            # 'track view': no key, 250k renders from +6M to +8M

@@ -398,6 +398,29 @@ step 2,216,659 and `$87d6` at 4,555,866, mode 3 -> 1. The event completes only b
 52 frames) than the 40-frame count. Killing Trill instead gives the "TRILL HAS BE KILLED" screen (section "Damage and
 death").
 
+**The rescue in the generated final base** (`py/world/station/trill.py`, from `station/fin_safe.snap`: the station
+landing of `world.md` section 1, "Final target", with the party stepped to (53,1)). Trill is group 0 (`$1c782`) at
+(18,19), one type-`$1f` member, period 50, flags `$8058`, behind the coded door (19,19) (tile `$4c`, code 0). One
+**labelled poke** puts the party at (20,19) facing W; everything after is input. The four corner clicks of code 0
+(BL, TR, TL, BR, from the table at `$e358`) open the door (tile `$4c` to `$5c`) and the view draws Trill (flags
+`$805f`), but in 30M steps Trill neither moves nor attacks and `14798(A6)` stays 0. One forward key into the doorway
+(19,19), beside Trill: `14798` is counting within 3M steps and passes 40 by 5M; over 8M steps from that step `$10eec`,
+`$87d6`, `$8804`, `$8814` and `$134b8` run once each and `$9a9a` never, the mission goes 0 to 1, `14800` = -1, and the
+screen is "CONGRATULATIONS ... LEGEND OF TRILL" (`scratchpad/captive/station/trill/p5_end.png`). So Trill waits for the
+party to stand beside it.
+
+**The walk there is not driven.** Following the dig arrows from Trill back to the lift that floor 1's entrance reaches
+((61,1) up to (45,1)) is 161 cells through 10 locked doors (locks 1, 3, 4, 11, 13, 17, 22, 24, 28, 29: four flame or
+wall doors of kind 1 or 2, four sliding doors), hand doors and the coded door. `trill.py` reaches the lift arrival by
+play with four droids. There group 78 (`$1ceca`, one type-`$1e` member, hit points 10,440), which was not hostile on
+the earlier snapshot (+5 `$02`/`$03`), is hostile and aware (`$18`) as the party arrives, and it moves in behind the
+party while lock 22's panel (46,2) is clicked: the clicks open the lock (state word `$bf`, door tile 0 to `$20`), and
+the party is dead (`14800` = 1) before it can walk through. The dispatcher `$8912` sends scan codes `$06`-`$0d`
+to eight per-hand counters at `338(A6)` and `$b16e` (read, inferred to be the droids' hands). Pressing all eight every
+cycle while facing the group leaves its hit points at 10,440, against the same in a no-key control, and the party
+dies in both arms (`py/world/station/fight.py`). A walk by play from the mission-1 party therefore has to avoid being
+seen rather than fight; that route plan is not attempted.
+
 ## Finishing a base
 
 A normal base is finished by blowing up its generators and getting out. The state is the word `13410(A6)`:
@@ -670,7 +693,9 @@ Moving in the base (**proven**, `keys.py`, `click.py`):
 - A final base reached by play and left without Trill (value 2 is driven only with `13412` poked).
 - A real use of the die reaching `$1207c`, and the `$e270` branch on D2 bit 4 (`$e312`, `$e34e`, inferred to be the
   open-door case).
-- A group the generator left not hostile turning hostile by coming into view in play.
+- Trill reached by walking from the final base's entrance: a route that keeps groups out of the party's view, since
+  the mission-1 party does not hurt them (section "Trill and leaving a base"). What the hand keys `$06`-`$0d` and
+  `$b16e` do is not read past the dispatcher.
 - What the `$22` trigger does to the party or a group; `$c570`.
 - Difficulty: the AI code reads no mission or level number. Speed (+7), skill (+5), hit points (+2) and the hostile
   and relentless flags come from the generator, so any scaling is there. Not compared across levels.
