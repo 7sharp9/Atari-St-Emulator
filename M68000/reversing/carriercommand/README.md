@@ -235,7 +235,8 @@ scancode, so the addresses below decode to the keys named):
 | Ctrl+S, Ctrl+Q | `$3ab6`, `$3a92` | pause (`$f84a`) and resume (`$f85e`): XON/XOFF | 1 / 0 each |
 
 Alt+Help's string has one copy in RAM and one reference, the PC-relative `lea` at `$3adc`; a cold boot to the
-language menu runs it 0 times in 80M steps, and the boot screens at 3M and 8M steps show only the packer's banner.
+language menu runs it 0 times in 80M steps (`printf 'hits 80000000 3adc\n' | dotnet exec bin/Debug/net8.0/M68000.dll 0 repl
+--disk-a scratchpad/carrier/carrier_auto.st`), and the boot screens at 3M and 8M steps show only the packer's banner.
 The cheat-mode keys are in `ai.md` section 7.
 
 **A disabled crash screen, "Andy's exception handler."** `$175be..$175d8` fills the vectors `$8..$1ff` with
