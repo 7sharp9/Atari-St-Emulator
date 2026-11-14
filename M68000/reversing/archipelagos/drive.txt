@@ -1,0 +1,61 @@
+# Cold boot to Archipelagos gameplay on The Medway Boys #58 (see README "Running it").
+# Run from M68000/ (the 30,000,000 boot steps are the first argument):
+#   ATARI_NOTRACE=1 dotnet exec bin/Debug/net8.0/M68000.dll 30000000 repl --disk-a scratchpad/archipelagos/tmb58.st < reversing/archipelagos/drive.txt
+# or py/run_drive.sh. Snapshots are written under scratchpad/archipelagos/.
+snap scratchpad/archipelagos/boot30m.snap
+# menu splash ("press any key", Crawio loop at $a61e), then the menu itself (Crawio loop at $a79a)
+s 20000000
+s 20000000
+kbd 3b
+s 40000
+kbd bb
+s 20000000
+snap scratchpad/archipelagos/menu.snap
+# menu key 2 = arch.boy: its text screen waits for a key (Cnecin)
+kbd 03
+s 60000
+kbd 83
+s 30000000
+snap scratchpad/archipelagos/k2.snap
+# any key starts the loader
+kbd 39
+s 60000
+kbd b9
+s 100000
+# POKE 1 (README "Emulator gap"): NOP the boot loader's bne at $7047a
+ww 7047a 4e71
+ww 7047c 4e71
+bp 1301c 30000000
+snap scratchpad/archipelagos/at1301c.snap
+# POKE 2: NOP the same test in the game's own loader copy at $13578
+ww 13578 4e71
+ww 1357a 4e71
+s 30000000
+snap scratchpad/archipelagos/p2.snap
+s 15000000
+snap scratchpad/archipelagos/p3.snap
+# title: space leads to the code-word screen
+kbd 39
+s 40000
+kbd b9
+s 3000000
+snap scratchpad/archipelagos/n0.snap
+# code-word screen: any typed text then Return forces island 1 ($1bf32)
+kbd 02
+s 40000
+kbd 82
+s 100000
+kbd 1c
+s 40000
+kbd 9c
+s 3000000
+s 10000000
+snap scratchpad/archipelagos/n2.snap
+# map screen: space enters the island
+kbd 39
+s 40000
+kbd b9
+s 4000000
+s 15000000
+snap scratchpad/archipelagos/m2.snap
+q

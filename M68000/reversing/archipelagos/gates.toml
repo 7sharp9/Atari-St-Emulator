@@ -1,0 +1,13 @@
+# Archipelagos' gates, for tools/gates.py (`uv run python tools/gates.py run archipelagos`).
+# Needs scratchpad/archipelagos/tmb58.st (the disk image, converted from the MSA, never committed) and the
+# snapshots `py/run_drive.sh` writes there (about a minute). The gate captures fresh entry/exit snapshots with its
+# own emulator runs (about 15 s), so a changed emulator changes the counts. The broken-model control lines
+# print in the same output and are not expected counts.
+
+[[gate]]
+name = "islands"
+cmd = "bash run_gate.sh"
+cwd = "py"
+expect = ["65536/65536", "9/9", "11792/11792"]
+cite = "README.md, 'The island generator'"
+minutes = 1
