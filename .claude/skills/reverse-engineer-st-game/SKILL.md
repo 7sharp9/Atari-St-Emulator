@@ -140,6 +140,9 @@ After the per-frame routine list, the decompile and a gameplay snapshot exist, t
 - Agents that time an A/B follow CLAUDE.md's speed-claim rule ("Emulator changes"). One MAME per agent, each in its own run directory.
 - Subagents cannot write report files: ask for the report as the final message and save it as `agents/<area>/report.md` the moment it arrives.
 - Append to the brief rather than re-briefing when something new is learned mid-run, and re-read your own addenda for over-claims.
+- Tell agents not to use the `mcp__stserver__*` tools: they are one process shared by the parent and every agent. Each agent runs its own REPL or its own `stserver` through `tools/stclient.py`, one emulator at a time (nine agents ran this way with no collision).
+- Tell agents to run commands in the foreground and send the final message once. An agent that leaves background wait-timers re-sends its whole report each time one expires (a Populous II agent sent five identical copies); stop it with `TaskStop` once the report is saved.
+- A behavioural negative from an agent ("nothing carries over between runs", "it never adapts") is bounded by how each run ended: ask whether the run reached its natural end. Virus's attract flights were each ended with ESC, and the state that carries over is written only on the demo's own death and game-over path (`reversing/virus/demo.md`).
 - If agents die on an API or network error, resume each with `SendMessage` to its agent id; they keep their context.
 
 **Reconcile before merging.**
