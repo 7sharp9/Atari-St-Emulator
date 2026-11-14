@@ -4,7 +4,7 @@ Captain Blood boots from the Zuul #40 compilation menu and runs: the title, the 
 the canyon flight, the planet scan and the UPCOM icon conversation with two races have been reached (the conversation
 by a labelled poke that skips the canyon flight, see "Running it"). This is the **French build**: the vocabulary is
 French, and the crack has overwritten the header text. The reason to reverse it is the conversation system: a
-120-word icon vocabulary, a rule list per alien race and a bit array of state, located here and not yet decoded.
+120-word icon vocabulary, a rule list per alien race and a bit array of state; the rule interpreter is decoded and modelled in `rules.md`.
 
 The engine is one hand-written 68000 image (33,852 bytes at `$adfc..$13238`; 0 LINK frames, 227 RTS, 366 BSR), so
 the route is trace and callcap, not a decompile.
@@ -24,7 +24,8 @@ boot narrative, the milestone drives, the depacked files' match against RAM, the
   which hooks trap #1, depacks files as they are read and `Pexec`s `ZUUL.PRG`, the Captain Blood loader and engine
   (19,618 bytes packed).
 - Captain Blood's data files: `BLOOD_I` (title picture), `BLOOD_K`, `BLOOD_M`, `BLOOD_P`, `BLOOD_VX` (8-bit samples),
-  `BLOOD.COM` (the conversation data), `BLOOD.CPT`, `ARCHE` (a 32,000-byte screen), `CLONE`, `IKON.DTA` (the icons).
+  `BLOOD.COM` (the conversation data), `BLOOD.CPT` (the save-game file, see "Galaxy and terrain"), `ARCHE` (a 32,000-byte
+  screen), `CLONE` (140 bytes packed, role unknown), `IKON.DTA` (the icons).
   The rest of the disk belongs to the menu's other two programs.
 - Every data file ends in a 12-byte trailer: a checksum seed, the unpacked size, `JEK!`. The packer is a long-word
   bitstream read backwards; `py/jekdepack.py` is a transcription of the hook's depacker (`$ab30..$acdc`). Its
@@ -87,8 +88,8 @@ plus the fixed part (`$b10 + $783 + $2757`).
 | `$20` | **vocabulary**: 120 records of 16 bytes, a flag byte (`$40` 72 times, `$c0` 45, `$41` 3) and a name, 1-based. HEURE, FREQ, COORDONNEES; verbs and qualities (VOULOIR, AIMER, CONNAITRE, TUER, DONNER, TELEPORTER, AMI, ENNEMI ...); names (ARCHE, MAXON, OORXX, CROOLIS-VAR, CROOLIS-ULV, YUKAS, BUGGOL, ONDOYANTE, MIGRAX, IZWAL ... BOW-BOW); digits 0 to 9 at 111 to 120. What the flag bits mean is not known |
 | `$810` | **state**: a bit array (runtime `$61c10`). Rule conditions test it and rule actions set and clear it (read); it also holds 5 status bits a planet from bit 100 |
 | `$910` | **races**: 16 records of 32 bytes: a name, then the offset and length of the race's part of streams A and B. The offsets are contiguous and sum to the header's lengths. Named: IZWALS, CROOLIS, BUGGOLS, YUKAS, ONDOYANTES, MIGRAX, ESPRITS (record 8); the rest are dots or empty |
-| `$b10` | **stream B** (`$783` bytes): a bit mask per rule element (read, not decoded) |
-| `$b10 + $783` | **stream A** (`$2757` bytes): the rules. A record is a header byte (type in the top 3 bits, payload length in the low 5), a flag byte and the payload; each race's list parses exactly to its `$ff` terminator |
+| `$b10` | **stream B** (`$783` bytes): three mask bytes per 8 plain-rule elements: required, omit from the reply, not looked for (gated, `rules.md`) |
+| `$b10 + $783` | **stream A** (`$2757` bytes): the rules. A record is a header byte (type in the top 3 bits, payload length in the low 5), a flag byte and the payload; each race's list parses exactly to its `$ff` terminator. The record types, flag bits and what they do are in `rules.md`; three races' rules read as words are `tables/izwals_rules.txt`, `croolis_rules.txt`, `yukas_rules.txt` (`py/rules/dump_rules.py <race index>`) |
 
 Rules a race: Yukas 695, Izwals 554, Croolis 324, record 6 (unnamed) 153, Ondoyantes 100, Buggols 3, Migrax 2. By
 type bits, Izwals: 461 plain, 43 `$40`, 49 `$80`, 1 `$c0`; only Yukas and Ondoyantes use `$a0`.
@@ -116,24 +117,76 @@ same pointer move with no click, 600,000 steps each:
 | `$e22e` compose the reply's tokens | 1 | 0 |
 | `$e284` tokens to the alien's icon line | 1 | 0 |
 
-Read from the code, each stage seen running above and none of it modelled: `$e45a` rolls the ST's random number
-(XBIOS 17, `$bd82`) and on about 1 roll in 16 sets a state bit; it walks the race's stream A; a condition record tests
-a state bit, or for two of the types the clock; a plain record goes to the matcher `$e6a2`, which compares the
-player's tokens (`$e3f2`) with the rule's (exact, always, or all present under the stream B masks, some rules with a
-coin flip); the matching rule is composed into `$e412` (token 3 inserts a planet's coordinates, 2 a number) and drawn
-into the alien's line; type `$40` records set (positive) or clear (negative) state bits; if nothing matched the scan
-runs once more, which is the second `$e45a` call.
+The routines are modelled in Python (`py/rules/cbmodel.py`) and gated against `callcap`: 1750/1750 cases of the
+engine and its four sub-routines on the Izwal conversation, with seven broken-model controls that each fail
+(`rules.md`, `uv run python reversing/captainblood/py/rules/gate.py`). In short: `$e45a` rolls the ST's random number
+(XBIOS 17, `$bd82`) and on 1 roll in 16 sets state bit 7; it runs the leading action records, then walks the race's
+stream A. A condition record tests state bits, or for two of the types the clock; a plain record goes to the matcher
+`$e6a2`, which compares the player's tokens (`$e3f2`) with the rule's (exact, always, or every required element present
+under the stream B masks, some rules behind a coin flip); the matching rule's own payload, less the elements its mask
+marks as not echoed, is composed into `$e412` (token 3 inserts a planet's coordinates, 2 a number, read) and drawn into
+the alien's line; `$40` records set (positive) or clear (negative) state bits. When no rule replied the scan
+restarts from the top, re-rolling, up to the retry counter `$e3ee` allows (the second `$e45a` hit in the census is
+that first rescan, entered by a branch). The gate NOPs the redraw call at `$e584` (a poke); the redraw, `$e284` and
+`$e344` are not modelled.
 
 Buffers: the player's sentence at `$dc32` (length word) and `$dc34` (8 icons), the alien's line at `$dc44` (8 icons).
 `$e3f0` bit 8 means the alien has more to say: an icon click is refused while it is set, and each mouth click then
 shows the next part (four parts in a row seen from `u2.snap`).
 
-## Galaxy and terrain (read)
+## Galaxy and terrain
 
-- 128 planets at `$ba4e`, 4 bytes each: y, x, a status word. `$b830` places them with the ST's random number call,
-  rejecting duplicates. Whether the galaxy is the same on every boot, or on real hardware, is untested. The position
-  is `$ba46`, the planet found there `$ba48` (`$ffff` for none). A contact needs status bits 0 and 3: 65 of the 128
-  qualify in this run.
+**The table.** 128 planets at `$ba4e`, 4 bytes each: a position word (high byte y, low byte x), a zero byte and a status
+byte. The position is `$ba46`, the planet found there `$ba48` (`$ffff` for none). Only the position is random. The status
+byte is the planet's 5 bits at state bit `100 + 5*index` of `BLOOD.COM`'s state array (file offset `$810`, runtime
+`$61c10`), copied in by `$b942` after `$b830` finishes: it equals the file's bits for 128/128 planets in two arms, so
+which index is inhabited, and its race (index >> 4), never changes; only where the index sits on the map does.
+Status values are `$02` (53 planets), `$0b` (18), `$12` (10) and `$1b` (47); bit 1 is set on all 128 and bit 4 on 57. A
+contact needs status bits 0 and 3: 65 of the 128, 16 each in index groups 0, 1, 3 and 6 and 1 in group 4.
+`py/galaxy/status_check.py scratchpad/captainblood/depacked/BLOOD.COM scratchpad/captainblood/galaxy/arms/ctl1.txt`.
+
+**The generator `$b830`** (named from its body; its only caller is `$b7f8`, the start of the game) draws from XBIOS
+Random (`$bd82`, trap #14 function 17) from entry 127 down to 0. Entry 127 is one draw with the low byte halved and no
+filter. Each later entry draws until the word is `>> 1`, its low byte (x) is in `9..$f6`, the word is in `$801..$78ff` (y
+from 8 to 120) and it differs from every entry already placed. Entry 0 is the start planet. The Random routine is TOS
+1.00's own (`$fc132c`, from the trap #14 table at `$fc07ce`; the emulator runs the ROM's code): if the seed `$29b8` is 0 it
+is set to `(hz200 << 16) | hz200`; each call is `seed = seed * $bb40e62d + 1` and returns `(seed >> 8) & $ffffff`.
+`py/galaxy/galaxy_model.py` reproduces the position words from the `_hz_200` count alone: 128/128 on the ordinary run
+and on five poked seeds (hz200 2161, 2159, 4000, 1 and 2200); broken-model controls (multiplier, increment, shift, seed
+plus one) give 0, 1, 0 and 0 of 128. The y-bound and duplicate rules are read from the code: the gate does not discriminate
+them (no draw in these runs hits either), so changing them leaves 128/128.
+
+**Determinism.** The seed is `_hz_200` (`$4ba`) at the first Random call, and the game freezes that count itself: `$bec6`
+(`andi.b #$c0,$fffa09`, inside the routine at `$beae`) switches Timer C off 2.4 to 2.5M steps after F3, leaving `$870`
+(2160) from there to the galaxy build. The count is `$546` in both the 60M and 150M menu snapshots, so time spent at the
+menu or at the title's key wait does not enter it. Ten arms from `f3_33M.snap` with no poke (identical input twice, a
+key delay of 1, 500, 3,000, 9,000, 100,000 and 1,000,000 steps, a key hold of 203,000 and 300,000) all give seed
+`$3c197fb5` and the same table: 0/128 planets differ in position, 0/128 in status. Arms with the count poked
+(`w 4ba <value>` before the title key; a poke) give a wholly different position set for each value (128/128 planets
+differ from the ordinary run in position for 2159, 2161, 2200, 4000 and 1; for 2159, 2161 and 4000 at most 1 of 128 coordinate words is shared) with
+the status fields unchanged (0/128 differ). The poke at the natural value 2160 reproduces the table (0/128), so the poke
+path itself changes nothing. `py/galaxy/arm.sh`, `runarms.sh`, `diffarms.py`.
+Same galaxy on every boot: in this emulator, yes, because timing is by step count. On real hardware it depends on the
+tick count when the game switches Timer C off, which is the time TOS boot and the loads take and nothing the player does;
+one tick of difference gives a different galaxy. That real-hardware variation is inferred from the code and the emulator's
+fixed 3000-steps-per-tick timer, not measured on hardware or in another emulator.
+
+**The save file.** `BLOOD.CPT` is a 4096-byte save block (header `$18`, the longs `$f6f8` and `$cb32`, the 256-byte state
+array `$61c10`, then 197 longs from `$b9bc`, which includes the galaxy table; file offset of the table `$1b2`). The cockpit's
+hit table (`$d58a`, entry 2, handler `$d044`, pointer about (60,36), enabled only on the cockpit screen, left click) loads
+it with Fopen/Fread of `$1000` bytes to `$70000`, and `$d106` onwards writes it (Fcreate/Fwrite; read, not run). After the
+load click the table equals the file's for 128/128 entries (0/128 before), with the status bytes equal to the generated
+galaxy's 128/128; no hz200 in 0..65535 reproduces the file's galaxy, so it is not an output of this generator.
+A loaded game therefore has a fixed galaxy whatever the seed was. `py/galaxy/cpt_load.sh` (it includes `cpt_check.py`).
+In an ordinary boot to the bridge the game opens `ethnicol.jar` (ten times, failing), `blood_vx`, `blood_k`, `blood_i`,
+`blood_p`, `arche`, `ikon.dta` and `blood.com` and never `BLOOD.CPT` (a GEMDOS chain over 17 opener hits; `blood_m` was
+not among those captured). `CLONE` has no name string in the image and no opener hit; the FDC trace shows its two sectors
+read, but in 10-sector multi-reads, so that is not evidence it is opened (`py/galaxy/fdc_files.py`, with `PACT.TOS` and
+`PACT2.TOS` read 0 as the negative control). Its role is unknown.
+
+**Status bit 4** (read, not run). `$10bbc` (`btst #4,$ba4a`, the current planet's status) in the canyon-flight setup
+selects `$10a74 = $a0` instead of `$f8`; the reader of `$10a74` was not found. `$b8f6` writes back only status bits 0 to 3
+and sets bit 2, so bit 4 comes from the data file; `$fbb0` clears it for the current planet in the scan routine `$fb36`.
 - The canyon flight `$10686` seeds a generator at `$f35c` (multiplier `$b0a1`, state `$f384`) from the planet, so the
   terrain is a function of position; the flight code is around `$10800..$11400` and is not read.
 
@@ -141,12 +194,11 @@ shows the next part (four parts in a row seen from `u2.snap`).
 
 1. A clean canyon landing, so the conversation is reached with no poke (flight loop `$10800..$11400`, speed byte
    `$10a54`, distance word `$10a66`, the packet handler `$c746`); then the speak census again on that route.
-2. The rule language as a Python model: matcher `$e6a2`, conditions `$e58a`, actions `$e628`, composer `$e22e`,
-   gated against `callcap` of `$e45a` over sentences and state bits with a broken-model control. What stream B and
-   the vocabulary flag bytes mean. The race rule for races 3, 4 and 6.
+2. The rule language is modelled (`rules.md`). Open: the vocabulary flag bytes, what the state bits mean beyond the
+   three read in `rules.md`, and driving races other than Izwals (3, 4 and 6 are decoded from the data only).
 3. The icons as a PNG tied to the vocabulary (the grid mapping `$dc54`, `$dc56`, `$e046`), then scripted sentences.
-4. Where the duplicates are tracked (`CLONE`, `BLOOD.CPT` are unread); the planet status bit 4; `ethnicol.jar`.
-5. The galaxy's seed: is the random state at game start fixed in this emulator, and what would hardware give.
+4. What `CLONE` is (unopened in a boot to the bridge; no name string in the image); who reads `$10a74` and what planet status bit 4 selects (find the reader, then `watch`); `ethnicol.jar`.
+5. Real-hardware galaxy variation: the emulator's Timer C is a fixed step count, so only a hardware or cycle-timed run can show how much `_hz_200` at the Timer C shutoff varies between boots.
 6. `bp b26e` never stopped (0 hits in 60M steps) though the trace shows `Supexec($b26e)`: not diagnosed.
 
 ## Files
@@ -159,6 +211,17 @@ shows the next part (four parts in a row seen from `u2.snap`).
 | `py/drive.py` | pointer to (x, y) by exact relative moves, click, settle, snapshot and render |
 | `py/goto_planet.sh` | bridge to a planet's conversation screen, with the labelled `$d5c0` poke |
 | `py/census_speak.sh` | the reply engine under a mouth click against a no-click control |
+| `py/galaxy/arm.sh`, `runarms.sh` | the galaxy build from the title's key wait with a chosen key delay, hold and optional `_hz_200` poke; dump of `$ba4e`, `$ba46`, `$29b8`, `$4ba` to `scratchpad/captainblood/galaxy/arms/` |
+| `py/galaxy/diffarms.py` | the arms' tables against `ctl1`: `ctl1` 0/128, ordinary-input arms 0/128, poked-seed arms 128/128 in position and 0/128 in status |
+| `py/galaxy/galaxy_model.py` | TOS Random plus the `$b830` loop from the `_hz_200` count: 128/128; `--break mul\|add\|shift\|y\|dup\|seed`, an unknown name is an error |
+| `py/galaxy/status_check.py` | planet status byte against `BLOOD.COM`'s state bits, 128/128, and the 65 contact-capable planets |
+| `py/galaxy/cpt_load.sh`, `cpt_check.py` | the cockpit load button replaces the table with `BLOOD.CPT`'s: 0/128 before, 128/128 after |
+| `py/galaxy/fdc_files.py` | which disk files' sectors an FDC trace read (FAT12 chains) |
+| `py/rules/cbmodel.py`, `cbdata.py` | the rule interpreter model and the `BLOOD.COM` loader it uses (`blood_com.py` prints at import, so it cannot be imported) |
+| `py/rules/gate.py` | the model against `callcap` of `$e45a`, `$e6a2`, `$e58a`, `$e628`, `$e22e`: `TOTAL 1750/1750`; `--break NAME` for the controls; also `gates.toml` |
+| `py/rules/drive_pairs.py` | sentences poked into `$dc34`, mouth clicked, reply compared with the model |
+| `py/rules/dump_rules.py` | a race's rules as words with the stream B masks: `tables/*_rules.txt` |
+| `rules.md` | the rule language: records, flags, masks, engine flow, proof and caveats |
 | `title.png`, `bridge.png`, `galaxy_map.png`, `canyon.png`, `upcom_izwals.png`, `upcom_croolis.png` | the milestones |
 
 Working data (`scratchpad/captainblood/`, gitignored): `disk/ZUUL040.MSA`, `zuul40.st`, `files/` (extracted),
