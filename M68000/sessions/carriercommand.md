@@ -1,11 +1,11 @@
 # Carrier Command: handoff
 
-Updated 2026-11-14 by the session that ended at the commit after `912de8c`.
+Updated 2026-11-14 by the session that ended at the commit after `fcd1b5f`.
 
 ## Resume point
 
-- Last work commits: `201db69` runway touchdown and taxi, `912de8c` runway take-off and the hidden keys, then the
-  hidden gate.
+- Last work commits: `201db69` runway touchdown and taxi, `912de8c` runway take-off and the hidden keys, `bf45541`
+  the hidden gate, `fcd1b5f` the Walrus.
 - Working data: `M68000/scratchpad/carrier/` (rebuild recipe: `reversing/carriercommand/README.md` "Running it"
   and "Snapshots"; `tools/recipe.py` rebuilds the c80 -> c_s30 chain; indexed in `scratchpad/ANCHORS.md`). Manta
   snapshots in `scratchpad/carrier/manta/` (`py/units/manta_snaps.py`); agent notes in
@@ -36,6 +36,8 @@ difficulty).
 - Hidden keys Ctrl+V, Alt+Help, Ctrl+S/Q; cheat keypad 6 (colour card), 7 (fast-forward), 8 (frame meter); the
   disabled "Andy's exception handler" (`py/curio/hidden.py`, hidden gate; README "Hidden keys and leftovers", `ai.md`
   section 7). Agent record: `scratchpad/carrier/agents/curio/report.md`.
+- Walrus launch, cruise, dock and stow 428/428 (carrier at rest), launch and cruise 900/900 (carrier turning), controls
+  20/31 (`walrus_proof.py`; `vehicles.md` section 5 "Walrus"). Collisions `$1bb4e` read from code, seen once.
 
 ## Running
 
@@ -43,7 +45,9 @@ Nothing running. (stserver PID 49135 belongs to another session.)
 
 ## Open, in priority order
 
-1. Walrus launch (`$1201a`, type 6) and driving, per tick as `runway_proof.py` does.
+1. The Walrus on land and in the coast band (`$1e224`): drive one onto VULCAN (island box edge 12,000 from the
+   carrier in `c_s30`) and model the land limits; its turret (bits 5 and 6, entity +38); a collision as a record
+   with its own control.
 2. The lift's motion `$1e838` up and down, per tick (`landing_proof.py --stow` prints the descent: 163, 147, ... 20).
 3. An attack run to capture: `ai/atk2.txt` with the time-bomb poke, round by round against `ai.md` section 4.
 4. Drone launcher `$25` and the command centre's missiles: A/B on difficulty.
@@ -74,7 +78,7 @@ Nothing running. (stserver PID 49135 belongs to another session.)
 ## Next session
 
 1. `/resume carriercommand`; run the six gates.
-2. Walrus (Open 1): launch with the game's handler from `c_s30` (or a Manta snapshot with the lift free), then a
-   `walrus_proof.py` on the `runway_proof.py` pattern; promote into the units gate.
+2. Walrus on land (Open 1): `walrus_proof.py` with a destination poked onto VULCAN, model `$1e224` and the land
+   speed limits; promote into the units gate.
 3. Infographic candidates for the blog list (7sharp9.github.io IDEAS.md entry 9, owned by the blog workstream):
-   the deck-landing script, the tagged exception vectors, the XOR-keyed manual words.
+   the deck-landing script, the tagged exception vectors, the XOR-keyed manual words, the Walrus dock.
