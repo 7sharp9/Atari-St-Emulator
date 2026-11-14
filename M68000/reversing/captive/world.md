@@ -135,8 +135,8 @@ mission 1) is planet slot 1, PLANET-BUTRE. Target 9 of mission 1 is object 107, 
   landing left the same way loses no droid in 60M steps.
   - **The group is not a guard.** `$25d88`, the late random fill, places it at (56,3) with +5 = 0 (not hostile, not
     aware); its record at the generator's stage `$23d16` is byte-identical to the one written in play
-    (`38030010000001031d1424abb0670000`, `py/mapgen/full/` stage dumps, D0 = 10, D2 = 1). It does not move during the
-    load. From about the moment the view comes up it wanders (`$1052e`/`$10530`): (56,2), (56,1), (56,0), (55,0), then
+    (`38030010000001031d1424abb0670000`, `py/world/station/gencheck.py` on the stage dumps, D0 = 10, D2 = 1). It
+    does not move during the load. From about the moment the view comes up it wanders (`$1052e`/`$10530`): (56,2), (56,1), (56,0), (55,0), then
     (54,0) about 1.2M steps after its first move. About 30k steps after it arrives, the view renderer draws it:
     `$d390`, called from `$a92a` (return address `$a92e` on the stack), writes +5 = `$15` (seen and hostile; `ai.md`
     "Seen, hostile and regroup"), then `$10480` sets aware and the attacks start (`py/world/station/guard.py`, a write

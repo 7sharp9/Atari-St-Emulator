@@ -47,6 +47,7 @@ Captive's own boot code. That code copies the loader into low RAM (`$206`-`$1200
 | on the planet surface | LAND | `landed.png` |
 | inside a base | target 1's landing site selected at zoom 2, ORBIT, LAND, walk to the compound door, enter its corner code, step to the entrance cell (`py/ai/natural_base.repl`; `ai.md`, "Getting into a base") | `base1.png` |
 | a base finished, and the mission's end screen | the level event a Trill attack raises, set by labelled pokes from inside the base: the party returns to the compound entrance; at the final base the mission number advances and the end screen shows (`py/ai/level_event.py`; `ai.md`) | `ai_trill_end.png` |
+| Trill rescued in the final base | the station landing (`14794(A6)` = 10 poked, labelled), one forward step off the entrance, the party poked beside the vault (labelled), the coded door by its corner clicks, a step beside Trill: "TRILL HAS BEEN RESCUED" and mission 2 (`py/world/station/trill.py`; `ai.md`, "Trill and leaving a base") | `ai_trill_vault.png`, `ai_final_group78.png` (the creature that kills a walking party) |
 | a base blown up with the party inside | EXPLOSIVES on a generator, then stay until the fire reaches the entrance: "BASE HAS BEEN DESTROYED! WITH YOU IN IT!!!" in the same frame, and a click restarts at MISSION 0001 (`py/phoopel/state3/`; `ai.md`, "Finishing a base") | `ai_state3_end.png` |
 
 `drive.txt` does the first three from a cold boot (about 300M steps) and writes `scratchpad/captive/mission1.snap`;

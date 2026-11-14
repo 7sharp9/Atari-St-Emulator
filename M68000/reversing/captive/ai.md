@@ -410,8 +410,8 @@ screen is "CONGRATULATIONS ... LEGEND OF TRILL" (`scratchpad/captive/station/tri
 party to stand beside it.
 
 **The walk there is not driven.** Following the dig arrows from Trill back to the lift that floor 1's entrance reaches
-((61,1) up to (45,1)) is 161 cells through 10 locked doors (locks 1, 3, 4, 11, 13, 17, 22, 24, 28, 29: four flame or
-wall doors of kind 1 or 2, four sliding doors), hand doors and the coded door. `trill.py` reaches the lift arrival by
+((61,1) up to (45,1)) is 161 cells through 10 locked doors (locks 1, 3, 4, 11, 13, 17, 22, 24, 28, 29: five kind-1
+wall doors, two kind-2 flame doors, three kind-0 sliding doors), hand doors and the coded door. `trill.py` reaches the lift arrival by
 play with four droids. There group 78 (`$1ceca`, one type-`$1e` member, hit points 10,440), which was not hostile on
 the earlier snapshot (+5 `$02`/`$03`), is hostile and aware (`$18`) as the party arrives, and it moves in behind the
 party while lock 22's panel (46,2) is clicked: the clicks open the lock (state word `$bf`, door tile 0 to `$20`), and
@@ -420,6 +420,10 @@ to eight per-hand counters at `338(A6)` and `$b16e` (read, inferred to be the dr
 cycle while facing the group leaves its hit points at 10,440, against the same in a no-key control, and the party
 dies in both arms (`py/world/station/fight.py`). A walk by play from the mission-1 party therefore has to avoid being
 seen rather than fight; that route plan is not attempted.
+
+![Trill (type `$1f`) in its chair, seen from the vault doorway (19,19): the game's view, cropped and scaled 4x](ai_trill_vault.png)
+
+![group 78 (type `$1e`) face-on at the final base's lift arrival, cropped and scaled 4x](ai_final_group78.png)
 
 ## Finishing a base
 

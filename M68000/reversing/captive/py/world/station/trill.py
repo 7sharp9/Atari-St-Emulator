@@ -48,7 +48,7 @@ def face(f):
     raise SystemExit(f'cannot face {f}: {st()}')
 def locks():
     out = {}
-    for i in range(32):                                  # 13270(A6) is not the count here (18 against 32 records)
+    for i in range(32):                                  # the count is the generator module's 13270, not copied to federation
         r = s.read(LOCKS + 10 * i, 10)
         if r[9] != 0x20: break
         out[(r[6], r[7])] = dict(i=i, W=(r[0], r[1]), code=int.from_bytes(r[2:4], 'big'), key=r[8] & 3, door=(r[8] >> 2) & 3)

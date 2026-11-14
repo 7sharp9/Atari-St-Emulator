@@ -713,9 +713,10 @@ D0 = 1 and 32 from D0 = 9. For each picked dead end:
    `$27` (tile `$26`). P gets feature `$0c`. W becomes a `$22` wall object with parameter = the direction and G0
    `$ffc3`.
 9. **Lock list** `13720(A6)` = `$1d782`, 10 bytes per lock: W (x, y), the code word, a zero word, D (x, y), key kind |
-   door kind << 2 | `$10` when the RNG word is above `$7000`, then `$20`. No count survives the stage: in the
-   D0 = 10, D2 = 1 base `13270(A6)` reads 0 in every stage dump from `$23cf6` on and 18 in play, against 32 records,
-   so a reader walks the records while byte 9 is `$20` (`py/world/station/trill.py`).
+   door kind << 2 | `$10` when the RNG word is above `$7000`, then `$20`. The count is the module's `13270` (32 for
+   D0 = 10, D2 = 1 from the lock stage `$23cf6` on, `py/world/station/gencheck.py`); it is not copied to federation,
+   whose word at `13270(A6)` is unrelated (18 in play in that base), so a reader in play walks the records while
+   byte 9 is `$20` (`py/world/station/trill.py`).
 
 **The gold word is the amount.** A GOLD item picked up in play shows its word as the piece count ("GOLD 1kg 537
 PIECES" for word 537), and the hand word equals the listed word for 3 of 3 pickups (537, 1097, 1013). The game keeps
