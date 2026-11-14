@@ -5,6 +5,7 @@ continuation record: the next-session prompt is always the one line `/resume <wo
 
 | file | workstream |
 |---|---|
+| `archipelagos.md` | Archipelagos reversing: island generator, the blood, the custom FDC loader (`reversing/archipelagos/`) |
 | `black_tiger.md` | Black Tiger reversing (`reversing/black_tiger/`) |
 | `blog.md` | blog posts for 7sharp9.dev curated from the game research (`~/GitHub/7sharp9.github.io`, `IDEAS.md`) |
 | `cadaver.md` | Cadaver spike (`reversing/cadaver/`) |
@@ -22,6 +23,7 @@ continuation record: the next-session prompt is always the one line `/resume <wo
 | `populous2.md` | Populous II reversing (`reversing/populous2/`) |
 | `powermonger.md` | PowerMonger reversing and port (`reversing/powermonger/`) |
 | `supersprint.md` | Super Sprint reversing (`reversing/supersprint/`) |
+| `virus.md` | Virus reversing: landscape generator, renderer, flight model, particles, the attract-mode autopilot (`reversing/virus/`) |
 
 Add a row when a workstream gets its first handoff.
 
