@@ -1,11 +1,11 @@
 # Carrier Command: handoff
 
-Updated 2026-11-14 by the session that ended at commit `f3910d8`.
+Updated 2026-11-14 by the session that ended at the commit after `912de8c`.
 
 ## Resume point
 
-- Last commit of this workstream: `f3910d8` carriercommand: Manta deck landing proven per tick, the stow is the
-  player's lift-down command.
+- Last work commits: `201db69` runway touchdown and taxi, `912de8c` runway take-off and the hidden keys, then the
+  hidden gate.
 - Working data: `M68000/scratchpad/carrier/` (rebuild recipe: `reversing/carriercommand/README.md` "Running it"
   and "Snapshots"; `tools/recipe.py` rebuilds the c80 -> c_s30 chain; indexed in `scratchpad/ANCHORS.md`). Manta
   snapshots in `scratchpad/carrier/manta/` (`py/units/manta_snaps.py`); agent notes in
@@ -16,7 +16,8 @@ Updated 2026-11-14 by the session that ended at commit `f3910d8`.
 
 ## Proven so far
 
-Gates: `uv run python tools/gates.py run carriercommand`, 5/5 PASS at `f34871c`; units PASS at `f3910d8` (render, economy, target, units,
+Gates: `uv run python tools/gates.py run carriercommand`, 6/6 PASS (render, economy, target, units, difficulty at
+`201db69`+, hidden after `912de8c`) (render, economy, target, units,
 difficulty).
 
 - Enemy target choice `$2337a`: 1344/1344 score words, 21/21 decisions (`py/ai/gate_score.py`; `ai.md` section 2).
@@ -29,7 +30,12 @@ difficulty).
 - Deck landing (state 0, phases 0-4, `$1cfc2`): 250/250 carrier at rest, 400/400 carrier turning, 500/500 from
   12,000 out, controls 23/32 (`landing_proof.py`; `vehicles.md` section 5 "Deck landing"). The stow is the player's
   lift-down `$11f3c`: hangar after 11 ticks, lift at rest after 21 (`--stow`, a record).
-- Runway states 4-6 and ground contact: read from code only (`vehicles.md` section 5).
+- Runway touchdown window 23/23 cases either side of every limit on VULCAN's airstrip; taxi and parking 399/399 and
+  449/449 (controls 15/22, incl. the `$1d53e` clr.w side effect); runway take-off 159/159 (11/14)
+  (`runway_proof.py`; `vehicles.md` section 5). Airstrips: only the nine starting bases.
+- Hidden keys Ctrl+V, Alt+Help, Ctrl+S/Q; cheat keypad 6 (colour card), 7 (fast-forward), 8 (frame meter); the
+  disabled "Andy's exception handler" (`py/curio/hidden.py`, hidden gate; README "Hidden keys and leftovers", `ai.md`
+  section 7). Agent record: `scratchpad/carrier/agents/curio/report.md`.
 
 ## Running
 
@@ -37,13 +43,14 @@ Nothing running. (stserver PID 49135 belongs to another session.)
 
 ## Open, in priority order
 
-1. Drive a runway touchdown on an airstrip island (record 1 type `$24`; 9 of 64 islands): poke a Manta inside and
-   just outside each limit (`vehicles.md` section 5 "Ground contact") and read +28, hull; then states 4-6.
-2. Walrus launch (`$1201a`, type 6) and driving, same method.
-3. The lift's motion `$1e838` up and down, per tick (`landing_proof.py --stow` prints the descent: 163, 147, ... 20).
-4. An attack run to capture: `ai/atk2.txt` with the time-bomb poke, round by round against `ai.md` section 4.
-5. Drone launcher `$25` and the command centre's missiles: A/B on difficulty.
-6. Production priorities and fuel screens (`$22770`, `$228d2`).
+1. Walrus launch (`$1201a`, type 6) and driving, per tick as `runway_proof.py` does.
+2. The lift's motion `$1e838` up and down, per tick (`landing_proof.py --stow` prints the descent: 163, 147, ... 20).
+3. An attack run to capture: `ai/atk2.txt` with the time-bomb poke, round by round against `ai.md` section 4.
+4. Drone launcher `$25` and the command centre's missiles: A/B on difficulty.
+5. Production priorities and fuel screens (`$22770`, `$228d2`).
+6. Curiosity leads not yet proven (agent record above): the debug dump `$14048`, view 33 (`$15978`, a model viewer?),
+   the dead-code candidates `$3dbc`, `$1f7e4`, `$1e462`, `$1ecb6`, `$2119e`, `$19e1c` (need a hits census), what
+   `$118e` counts in the frame meter, the save format driven through the game's own save screen.
 
 ## Known traps
 
@@ -60,14 +67,14 @@ Nothing running. (stserver PID 49135 belongs to another session.)
 - Emulator fix for mouse input: model the MFP in-service register (README "Running it").
 - Optional: instruction-fetch bus error frame (`68k.fs` `EnterGroup0Vector`) uses the data function code.
 - Which subdivided Manta to keep: fit1 (0.932) or fit2 (0.961).
-- Push: master is 2 commits ahead of origin (the landing commit and this handoff).
+- Push: master is ahead of origin by this session's commits (landing, runway, hidden keys, handoffs).
 - Leftover worktree `.claude/worktrees/agent-a528a4455254d699f` (not this workstream): 7 uncommitted emulator
   files that look like the trace opt-in change already landed as `0c44c77`; check and remove with your OK.
 
 ## Next session
 
-1. `/resume carriercommand`; run the five gates.
-2. Runway touchdown (Open 1): find the nine airstrip islands from the island blocks (record 1 type `$24`), place
-   Manta 0 from `m_air.snap` on a runway approach under autopilot, and write `runway_proof.py` on the
-   `landing_proof.py` pattern: the touchdown window (in and just out of each limit), then states 4 and 5 per tick.
-3. Promote it into `gate_units.sh` with `re:` expects in `gates.toml`.
+1. `/resume carriercommand`; run the six gates.
+2. Walrus (Open 1): launch with the game's handler from `c_s30` (or a Manta snapshot with the lift free), then a
+   `walrus_proof.py` on the `runway_proof.py` pattern; promote into the units gate.
+3. Infographic candidates for the blog list (7sharp9.github.io IDEAS.md entry 9, owned by the blog workstream):
+   the deck-landing script, the tagged exception vectors, the XOR-keyed manual words.
