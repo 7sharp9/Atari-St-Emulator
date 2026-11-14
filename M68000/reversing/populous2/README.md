@@ -134,8 +134,8 @@ cells, which suggests Populous's 8x8 close-up view), then `$1334a`, `$2309a`, `$
 one game tick per about 7 VBLs: every routine named here is called exactly 29 times, among 23 call
 targets at that count (`tools/call_census.py ev60.bin`; the census is
 `scratchpad/populous2/calls60.txt`). Named so far: `$2309a` `update_entities` and `$1fcce`
-`update_scenery` ("Objects and entities"), `$29226` `run_commands` ("Raise and lower");
-`$26644` walks the `$4505a` array.
+`update_scenery` ("Objects and entities"), `$29226` `run_commands` ("Raise and lower"), `$25652`
+`ai_run_sides` and the rest of the list ("The computer god"); `$26644` walks the `$4505a` array.
 
 ### The landscape (verified)
 
@@ -376,6 +376,68 @@ side's experience byte for that group (side record +82+group) shifted right by 5
 (`$136ba` reads it shifted right by 2; that this is the display is inferred), so a raised corner costs 5 shown mana. Populous 1
 charged `4n + 10`.
 
+### The computer god `$25652` (read; the controller word driven)
+
+`ai_run_sides` `$25652` runs once a tick, after `update_entities`, and plays a side through the same command record
+the mouse writes: it posts at most one command a tick into the side's record (`$473b0` for side 1, `$473ba` for side
+2), and `run_commands` `$29226` then executes it like a click. It loops the two side records (`$470fe`, `$47238`,
+stride `$13a`) and branches on the **controller word, side record +26**: 2 is a human and the side is skipped, 4 is the
+computer, `$12` runs the land stages below every tick and skips the last two (the options screen `$15e7c` toggles +26
+between these values beside the strings "COMPUTER V HUMAN", "COMPUTER V COMPUTER" and "HUMAN V HUMAN"; that `$12` is a
+human side with land help is inferred, not driven).
+
+For a computer side: `subi #1,76(A1)`, then `ai_flush_mailbox` `$256d6`, then nothing more until the countdown +76
+reaches 0, when it reloads from +104 (30 on battle 0, so the cascade runs every 31 ticks) and, if the command record
+is free, runs a cascade in which the first stage to post a command ends the side's turn:
+
+| stage | posts | when (read) |
+|---|---|---|
+| `$25770` `ai_level_settlement` | command 4 (lower) on a neighbour cell higher than the settlement, 2 (raise) on a lower one | +46 names a settlement whose size byte +1 differs from +19; mana above 4 x the raise cost + 2; own countdown +44 |
+| `$259ba` `ai_release_settlement` | command 4 on its own strongest settlement (+30) | that settlement's strength long +26 is above a threshold from `$36d0e` (200 on this battle); mana; countdown +48 |
+| `$25a32` `ai_cast_power` | a power command | tick long `$3979a` at least 250 and the enemy has a settlement; draws `rand % 148(A1)` into the side's plan list of (power, kind) pairs at +152 (slot 0 is no power); the kind picks the target: the enemy's strongest settlement, the nearest land within 2 or 6 cells of it, queued in +56/+58 for the next flush, or only with a leader of strength `$1000`; mana above 4 x the power's cost |
+| `$25bf4` `ai_magnet_and_mode` | command 8 (papal magnet) to the enemy's oldest settlement, or a walker mode `$0e`/`$10`/`$12`/`$14` | only with more own settlements than `$30722` (30) does it move the magnet; below that it only leaves mode `$10` |
+
+**The mailboxes.** The stages do not search the map. `update_entities` zeroes side-record words 28, 36, 46, 50 and 54
+(and sets 32 to `$ffff`) each tick (`$230c6`), and the entity handlers refill them: a settlement in state 6 writes
++46 (a settlement that wants its land changed), +28/+30 (the strongest own settlement), +32/+34 (the oldest, by the
+birth tick in entity +46) and counts itself in +36; a walker about to step into water or against an obstacle posts
+its cell in +50/+52/+53, and one needing a raise under itself posts in +54. `ai_flush_mailbox` turns +54, the queued
+power and +52/+53 into commands, the last two regardless of the countdown. A human side's mailboxes are filled and
+never read.
+
+**Driven: the controller word** (`py/god_census.sh`, three arms of 12,000,000 steps from `p2_game_60m`, `hits`):
+
+| arm | ticks `$29226` | computer branch `$25670` | cascade `$25690` | posts (mailbox + level + release) | commands executed `$292e4` |
+|---|---|---|---|---|---|
+| unpoked (side 2 is the computer) | 143 | 143 | 4 | 2 + 2 + 1 | 5 |
+| side 2's +26 poked to 2 (`ww 47252 2`) | 143 | 0 | 0 | 0 | 0 |
+| side 1's +26 poked to 4 (`ww 47118 4`) | 134 | 268 | 122 | 18 + 61 + 12 | 91 |
+
+Every command executed is one of the three posts in each arm. With side 1 poked the cascade runs on almost every
+tick, not every 31st: side 1's reload word +104 is the likely cause and was not read. Over 120,000,000 unpoked steps
+(1424 ticks; an agent's run, `scratchpad/populous2/agents/god/h3.log`) the cascade ran 46 times and all 49 executed
+commands were raises and lowers from those three sites (20 + 23 + 6); `$25a32` and `$25bf4` ran 17 times each and
+posted nothing, because on battle 0 side 2's plan list is empty (+148 = 1) and it has 6 settlements against the
+magnet's 30. The power and magnet stages have run only under pokes of the plan list and of `$30722`.
+
+**The release.** Command 4 on a side's own settlement sets bit 2 of entity +13 and lowers nothing ("Raise and
+lower"). Seen once after `$259ba` posted it: at the settlement's next state-6 expiry it took the branch at `$236b8`
+that allocates a walker group, +13 went back to 0 and its strength fell from 411 to 293. So lowering your own
+settlement sends its people out, as lowering a castle does in Populous; the share that leaves (`114(A2)`) is read only.
+
+**Against Populous** (`reversing/populous/ai.md`, `ai_think $13eda`): the same design, one command through the
+human's path with the human skipped by a controller word. Populous II replaces the reaction-frame `busy` flag with a
+countdown and a free-record test, replaces the walk over the walkers with mailboxes the entity update fills, keys
+the settlement release on a strength threshold instead of an option bit, and draws powers from a per-battle plan
+list in which each entry carries its own targeting rule.
+
+**The other once-a-tick routines** (read to their end or first data): `$29c7e` `run_scripted_commands` replays a
+per-battle table at `$39638` (6-byte entries: tick, a command byte at +3, x/y at +4) through `do_command` as side 3,
+empty on battle 0; `$27faa` expires and animates a 200-record array at `$3e7aa`, empty in every run; `$2a0b2`
+services 10-byte request records at `$2a396` (sound requests, inferred); `$2d4c8` is a bare `rts`; `$136ba` draws the
+current player's mana bar and power icons and `$14158` the highlight of the side's mode word +12. None of them makes
+a decision.
+
 ### Random numbers (verified)
 
 `rand` `$215dc` is not Populous's: seed long `$47382` (0 is replaced by `$bc614e`),
@@ -410,9 +472,10 @@ files go to `$a000` (the second screen) instead.
 
 Only the conquest start against Epimetheus has run. Driven: raise and lower by a click. Not driven:
 the other powers and the panel, the custom game and deity creation, save/load, the two-player link, the end of
-a battle. Unread: the main-loop routines other than `$2309a`, `$1fcce` and `$29226`, the entity states other
+a battle, the computer god's power and magnet stages in natural play (a later battle), the `$12` controller from the
+options screen. Unread: `$26644`, `$1334a` and `$1bfe` of the main loop, the entity states other
 than 2, 4 and 6 (and `$24f3a`, `$24a92`), the `$4505a` array, the reader of the cell footfall
-count, the settlement flag bit 2 of entity +13, the experience discount of `power_cost`, Timer A, the sprite and block formats, `LANDn.DAT`, the computer god.
+count, the settlement flag bit 2 of entity +13, the experience discount of `power_cost`, Timer A, the sprite and block formats, `LANDn.DAT`.
 
 ## Files
 
@@ -433,6 +496,7 @@ count, the settlement flag bit 2 of entity +13, the experience discount of `powe
 | `py/build_passes.sh` | snapshots between the passes of the world build, from `p2_gen_entry` |
 | `py/scatter_gate.py` | the scenery scatters `$1f870` and `$1fa6c` under callcap against the model, with the stale-D2 bonus forced |
 | `py/rand_gate.py` | `rand` `$215dc` against its model, 50 callcaps |
+| `py/god_census.sh` | the computer god `$25652` against its controller word: three poked arms under `hits` |
 | `py/fdc_files.py` | names the file behind each sector of an `ATARI_TRACE_FDC` log |
 | `compilation_menu.png`, `title.png`, `briefing.png`, `zeus.png`, `game_start.png`, `game_60m.png` | the milestones (`tools/snap_render.py` of the boot and the five anchors) |
 

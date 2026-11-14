@@ -56,3 +56,10 @@ cmd = "bash reversing/populous2/py/build_passes.sh scratchpad/populous2/build_fa
 expect = ["re:equal to the model 30/30"]
 cite = "README.md \"World generator\"; py/README.md"
 minutes = 1
+
+[[gate]]
+name = "god_census"
+cmd = "bash reversing/populous2/py/god_census.sh"
+expect = ["re:(?m)^unpoked: ticks 143 computer-branch 143 cascade 4 posts 2\\+2\\+1 commands 5$", "re:(?m)^side2_human: ticks 143 computer-branch 0 cascade 0 posts 0\\+0\\+0 commands 0$", "re:(?m)^side1_computer: ticks 134 computer-branch 268 cascade 122 posts 18\\+61\\+12 commands 91$"]
+cite = "README.md \"The computer god\"; py/README.md"
+minutes = 1
