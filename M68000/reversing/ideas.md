@@ -41,11 +41,19 @@ water, and `commander/astar.py` finds a waypoint path for each (`commander/class
 Cheaper relatives that would fit inside the game:
 
 - **Land component labels.** One flood fill at world build makes "reachable on foot" a lookup, so the
-  AI stops issuing orders that can only end at a shore.
+  AI stops issuing orders that can only end at a shore. On the six census maps, 4-connected cell labels
+  (about 8 KB at a byte per cell) agree with the A* triangle graph on 4196/4196 pairs, and a coarser
+  lattice or 8-connected fill does not (4107 and 4169); exact on those maps, not shown for others
+  (`powermonger/commander/README.md`, "Wall following against A*").
 - **Wall following (Bug2).** On hitting water, follow the coast until the straight line to the target
-  clears. One or two bytes of state per man, no search. Inferred to resolve most of the 2417; the
-  first experiment is a Python model of the mode `$10`/`$48` probe plus a Bug2 follower, scored on
-  the `classify_stuck.py` pairs against A*'s 2417.
+  clears. A Python model of the mode `$10`/`$48` probe plus a follower, scored on the 2417 reachable
+  pairs whose line crosses water (2202 distinct pairs, 133 men, six maps): one hand arrives for 2416
+  (left) or 2355 (right), either hand for 2417, with 3 to 7 bytes of extra state per man. The path is the
+  weak point: one hand gives a median 3.8x (left) or 1.24x (right) A*'s length and a worst 335x to 613x
+  (150 units across a sliver, 135,215 walked), and the 1.17x of the both-hands run is an oracle a unit
+  cannot run. It also loops forever on unreachable targets, so it needs the labels. Untested: a cheap hand
+  selector (a short look-ahead of both coasts), other maps, moving targets, followers. One pair was walked
+  live by poked waypoints (the unpoked control stays at the shore).
 - **Flow fields.** One field per destination, every unit descends it. Suits a whole army sent to one
   place, and Populous's walkers converging on the papal magnet.
 - **Jump-point A*, cached per order target**, only if coastlines that defeat wall following prove
@@ -53,15 +61,23 @@ Cheaper relatives that would fit inside the game:
 
 **Populous: the cheapest bridge in mana.** Walkers head for the magnet and drown in water; raising
 land costs mana and spreads to the neighbours. Getting people somewhere is then a shortest path
-where a cell's cost is the earth needed to make it walkable: A* with distance times the cheapest
-raise as an admissible heuristic. Uses: a player aid that shows the cheapest causeway, and a
+where a cell's cost is the earth needed to make it walkable: A* over (cell, raised corners nearby) with
+water cells on the path over two times the 14 mana of a sea-corner raise as the admissible heuristic (distance
+times the cheapest raise is not admissible: land is free and one raised corner serves two path cells). Uses: a player aid that shows the cheapest causeway, and a
 stronger computer god, since `ai_think $13eda` (`populous/ai.md` 3.1, 4800/4800 callcap matches)
 only moves the magnet and the levellers `$135fc`/`$13816` work at the walkers' own cells; nothing
-plans land to raise. The same framing gives fewest-clicks flattening of an NxN site, with total
-height difference over the most one click changes as the lower bound. The rules it needs are
-proven in `populous/terrain.md`: the neighbour-difference recursion of raise/lower and its cost,
-`4 * corners changed + 10` mana (`$37f8a`), which makes a cell's crossing cost exact rather than
-estimated. The gate is to drive the planner's clicks in the emulator and compare the mana spent.
+plans land to raise. The rules it needs are proven in `populous/terrain.md`: the neighbour-difference
+recursion of raise/lower and its cost, `4 * corners changed + 10` mana (`$37f8a`). Across water that cost is a flat
+14 per corner, so the problem is geometry: one raised corner makes a 2x2 block walkable, and the cheapest causeway
+hops two cells per click. Built (`populous/py/causeway/`): the planner is optimal for sea-corner raises (6/6 gaps
+against exhaustive search). Over 31 gaps on three snapshots a straight line costs 1.67 to 5.60 times the planner's mana
+(27 lines; the other 4 are blocked by rock), greedy nearest-cell 1.33 to 5.00 times, and the straight line with its
+corners chosen best 1.00 to 5.00 times (4 ties); the planner is never the dearer (`py/causeway/table.py`). Four gaps were driven through the game's mouse UI: the
+mana charged and the whole height map matched the model (4225/4225 corners against the model on the control run,
+mana -42, -28, -28, -70 as predicted). Caveats: the gates poke an own walker into view so the land click acts, no
+walker was walked across, and land-corner raises and lowering are not planned. Fewest-clicks flattening of an NxN
+site stays an idea: a model-only beam search flattened three sites in 3, 4 and 8 clicks, but the lower bound (total
+height difference over the most one click changes) came out 1, 1 and 2, too weak to say how far from optimal.
 
 Populous walker roaming is not a candidate: walkers settle on flat land and gather at the magnet by
 design, and pathfinding would change the game rather than improve it.
