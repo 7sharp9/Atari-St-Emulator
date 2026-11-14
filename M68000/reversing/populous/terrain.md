@@ -322,6 +322,23 @@ became rock and nine frames later a walker; the same draw on good's leader cell 
   h[i]/h[$1080-i] to both, and copies trees/buildings (`$32..$37`) point-symmetrically. Clear `$113ce`
   zeroes all maps and kills every entity.
 
+### Causeways: sea corners, walkable cells, the land-click gate
+
+Raising a corner of height 0 changes exactly that corner (no neighbour is lower than 0, so `h - nb > 1` never
+holds), so a sea-corner raise always costs 4*1+10 = **14 mana** whatever the surroundings; the cascade term appears
+only when raising land. A cell is walkable (`$18198` returns 0 for any shape other than 0, `$2f`, `$35`) exactly when
+one of its four corners is above 0 (`$c0ee`: sea only when all four are 0). So one raised sea corner makes up to four
+cells walkable, and the cheapest causeway is the fewest raised corners that connect two land cells by 8-connected steps.
+Checked on the emulator's own maps: after the planner's clicks the shape map's walkable cells equal the height model's on
+**4096/4096** cells for each of the 4 driven gaps, and 14 mana was charged on **12/12** sea-corner clicks (corner 0 to 1,
+`$37f8a` = 1); start and goal are connected in `$36e78` with the clicks and not without. The planner, its optimality check
+(6/6 gaps against exhaustive subset search) and the gates are in `py/causeway/` (README there); the planner is
+optimal for that click set only: land-corner raises and lowering are not planned.
+
+The land click (`$119e6`) needs `$3d54e` nonzero, which `$145d2` ORs together from the flags of every drawn entity in the
+8x8 window (read from the code; the 12 gated clicks all acted with an own walker, flags 2, in view). The gates keep one by
+poking own walker idx 7 into the view (labelled poke, `py/causeway/README.md`).
+
 ## Open questions
 - None specific to terrain. `$3b274` is pause and power-word bits 1-2 are attack towns / attack leader
   (`systems.md` 3, 4); LOLO1.GAM is a truncated save (`systems.md` 5.2).
