@@ -135,7 +135,7 @@ In the order `$1498a`, `$14cc0` and `$152c0` call them:
 
 - The landscape render `$18304` -> `$16d9c` starts at the camera's cell `[$12c80]` (`$4521c` on `d_ski`: row 49,
   col 50, the centre), reads each cell's height `(A0)` and its two shading bytes `2(A0)`, and steps a row with `lea -400(A0)`.
-  The projection and polygon fill are not decoded, but the vertex transform at the top of `$16d9c` fixes the
+  The projection, edge scan and fill are in `graphics.md`; the vertex transform at the top of `$16d9c` fixes the
   vertical scale. Each vertex starts from a camera-space position (`D0..D2`, 16.16) that steps by 64.0 per cell: the
   row step (`lea -400(A0)`) adds `$171fc/$17204/$1720c` (0, -0.25, 64.0 on `d_ski`), the column step (`lea 4(A0)`)
   adds `$171f8/$17200/$17208` (64.0, about 0, about 0). The cell's height minus the camera height `$1721c` (660 on

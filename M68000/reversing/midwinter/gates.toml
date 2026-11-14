@@ -64,3 +64,10 @@ cwd = "py/recruit"
 expect = ["500/500", "427/427", "re:(?m)^PASS$"]
 cite = "ai.md section 8 (proof paragraph)"
 minutes = 1
+
+[[gate]]
+name = "pipeline"
+cmd = "bash reversing/midwinter/py/pipeline/run.sh"
+expect = ["4/4", "713/713", "90/90", "re:match 190 behind-camera\\(-1\\) 60 mismatch 0", "re:(?m)screen-exact .* 110$"]
+cite = "graphics.md sections 2, 4, 5"
+minutes = 1

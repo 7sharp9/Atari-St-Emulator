@@ -1,0 +1,8 @@
+bp 14e00
+bp 14e00 400000
+snap scratchpad/midwinter/pipeline/f1_start.snap
+bp 19ce2 400000
+snap scratchpad/midwinter/pipeline/f1_build.snap
+bp 14e00 400000
+snap scratchpad/midwinter/pipeline/f2_start.snap
+q

@@ -182,6 +182,6 @@ The patcher is not identified (inferred: PACT.PRG after it loads 1.1). The remai
 ## Open
 
 - The writer of the junk MFP vectors $100..$13c, and which code clears the 80(A6)/84(A6) tables.
-- Roles of the map loop's per-frame routines ($18e8, $2122, $1b22 ...) and of the 3D inner routines ($19f20, $17fa0, $1b0e4).
+- Roles of the map loop's per-frame routines ($18e8, $2122, $1b22 ...). The 3D frame's routines are in `graphics.md`.
 - The computed file numbers (01, 02, 04, 05.2 and the five unnamed calls) need a `bp 500` log in the screens that use them.
 - The snipe icon ($3dd2) and the bio SOS icon were not driven (ENTER `$5062` is, `ai.md` section 7).
