@@ -187,11 +187,33 @@ Level 1 (graphics set 0) has three objects: 0 the entrance (type 1, at (720, 36)
 opened), 1 the exit (type 0, at (864, 116), one static frame, trigger 1 by 2 cells at (+6, +4) with code 1: the `$11` cells
 at (222, 33..34)), and 2 a 48 by 8 object of type 7 eight pixels above the exit (6 frames, looping, trigger 2 by 1 cells
 at (+1, +4) with code 0: the `$20` cells at (217..218, 31), which `$8b6e` ignores, so it is decoration only). Set 0's type
-list holds 12 types, by their records (the roles are inferred from the code and size, not from the pictures): 0 exit, 1
-entrance, 2 and 9 16 by 16 loops with no trigger, 3 and 4 32 by 32 loops with 8 by 8 triggers of code 7 and 8 (the
-one-way walls), 5 a 64 by 16 loop with a 16 by 2 trigger of code 5 (the drowning death), 6, 8 and 10 one-shots
-(15, 17 and 12 frames) with code 4 (the traps), 11 a 16 by 10 loop with code `$b`, which `$8b6e` does not dispatch. No
-type in set 0 uses code 6.
+list holds 12 types, by their records and their pictures (`objects_set0.png`, one row a type; only types 0, 1 and 7
+are matched against a screen, below): 0 the exit, a stone arch; 1 the entrance, a trapdoor that opens over its 10 frames;
+2 and 9 16 by 16 loops with no trigger, a flag on a pole (green and blue); 3 and 4 32 by 32 loops with 8 by 8 triggers
+of code 7 and 8 (the one-way walls), fields of left and right arrows; 5 a 64 by 16 loop with a 16 by 2 trigger of code 5
+(the drowning death), water; 7 the pair of torches over the exit; 6, 8 and 10 one-shots (15, 17 and 12 frames) with
+code 4 (the traps): 6 a thin post that rises over a lemming, 8 a boulder that drops on one, 10 a weight lettered
+"10 TONS"; 11 a 16 by 10 loop with code `$b`, a small green and blue oval, which `$8b6e` does not dispatch. No type in
+set 0 uses code 6.
+
+**Proven, the frame format** (`py/objgfx.py`, from `sel.snap`'s RAM against its own framebuffer, no emulator run). A
+frame is five 1-bit planes one after another, each `W/8 * H` bytes with the leftmost pixel in the MSB: colour bits 0 to 3
+in that order, then the mask at `+12` = `4 * W/8 * H`, where a 1 bit is drawn. `+10` = `5 * W/8 * H` holds for all 12
+types. The object is drawn at x minus the scroll word `$26c06` (608 in the snapshot). Opaque pixels equal to the screen:
+
+| object | frame | equal |
+|---|---|---|
+| slot 0, the entrance, at screen (112, 36) | 0 | 690 of 690 (frames 1 to 9: 126 of 414 up to 493 of 620) |
+| slot 1, the exit, at (256, 116) | 0 | 307 of 330 |
+| slot 2, the torches, at (256, 108) | 4 | 94 of 94 (the record's frame, 5: 77 of 92) |
+
+On the exit the next best plane order scores 192 of 330, the two interleaved layouts at most 24 of 227 and 26 of 225,
+and the inverted mask 415 of 486 whatever the plane order (it counts the frame's empty background), so it decides
+nothing. The exit's 23 misses are all in its bottom two rows, where the screen holds an index of 8 or more: ground
+pixels win over the object there. That the blitter skips such destination pixels is inferred from the data and from
+`$90ae`, which ORs the destination's plane-3 word into the mask; the path `$8cf8` takes for the exit's draw flags is not
+confirmed. The torches are on screen one frame behind `+2`, which fits the animator advancing after the draw (one
+sample, inferred).
 
 **Proven, the animator:** level 1's slot 2 sampled each tick from `sel.snap` reads flags 2 and frames 5, 0, 1, 2, 3, 4, 5,
 0, ... (14 of 14 samples one frame on, modulo 6), and its `+30` is `+26` plus 5 times `+10` at frame 5
@@ -284,6 +306,6 @@ inputs, not findings, and are named in each line.
 
 ## Still open
 
-The object graphics (the frame layout of `$67270`, which would name the types from their pictures), code `$b`, and the
-types of graphics sets other than 0; fields +10 (frame), +20, +36/+38/+42 beyond the readings above, and the release rate; the blocker's
+A screen match for set 0's types 2 to 6 and 8 to 11 (a level that shows them), the blitter's ground-over-object rule
+(`$8cf8`, `$90ae`), code `$b`, and the types of graphics sets other than 0; fields +10 (frame), +20, +36/+38/+42 beyond the readings above, and the release rate; the blocker's
 refusal test (`$1b60`-`$1b94`, cells with codes 1, 2, 3, `$a` under the target) and the ground-loss release.
