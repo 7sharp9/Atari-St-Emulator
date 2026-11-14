@@ -82,3 +82,16 @@ grep '^takeoff ticks' "$t.c" | awk '{printf "runway takeoff %d/%d\n", $5, $3}'
 awk '$1=="control" && $2 ~ /^(to_|climb_|roll_|full|hold_)/ {split($5,r,"/"); n++; if (r[1]<r[2]) b++; else u=u" "$2}
   END{printf "runway takeoff controls %d/%d (unexercised:%s)\n", b, n, u}' "$t.c"
 rm -f "$t.a" "$t.b" "$t.c"
+# Walrus autopilot (walrus_proof.py, from c_s30.snap through the game's launch $1201a and dock $122d6 commands):
+# launch, cruise to the default destination, stop, then dock and stow with the carrier at rest; and launch and cruise
+# with the carrier turning and moving. Controls as for the flight runs.
+t=${TMPDIR:-/tmp}/cc_walrus.$$
+$py "$here/walrus_proof.py" 900 --dock 200 > "$t.a" 2>&1
+$py "$here/walrus_proof.py" 900 644=00400000:4 648=00300000:4 > "$t.b" 2>&1
+grep '^timeline' "$t.a" | grep -o 'stowed@[0-9]*' | sed 's/^/walrus /'
+for k in a:dock b:carrier-turning; do
+  grep '^walrus ticks' "$t.${k%%:*}" | awk -v n="${k#*:}" '{printf "walrus %s %d/%d\n", n, $5, $3}'
+done
+cat "$t.a" "$t.b" | awk '$1=="control"{split($5,r,"/"); key=$2; seen[key]=1; if (r[1]<r[2]) br[key]=1}
+  END{n=0; b=0; for (k in seen) {n++; if (k in br) b++; else u=u" "k}; printf "walrus controls %d/%d (unexercised:%s)\n", b, n, u}'
+rm -f "$t.a" "$t.b"

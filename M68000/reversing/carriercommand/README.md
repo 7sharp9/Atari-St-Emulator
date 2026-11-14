@@ -9,7 +9,7 @@ assembly (1 `LINK` frame, about 920 `RTS`), so it is analysed from traces and ca
 | Doc | Covers | Proof |
 |---|---|---|
 | `ai.md` | the enemy carrier's state machine, how it picks its next island, capture and attack, fighting the player's carrier and retreat, island defences, difficulty, the cheat mode, the two games | target choice 1344/1344 score words and 21/21 decisions, with constant-by-constant controls; difficulty A/B/C 3/3 arms; combat states driven state by state |
-| `vehicles.md` | the player's carrier motion and autopilot, the arctangent, repair priorities, missiles and flares, the craft slots, the Manta lift, launch, take-off, flight and deck landing | carrier 150/150 and 600/600 ticks (1950/1950 in the full run), arctangent 529/529, repair 10/10 and 12/12, flares 5/5, take-off 42/42 twice, airborne flight 300/300, 400/400 and 400/400, fuel 300/300 twice, deck landing 250/250, 400/400 and 500/500, runway touchdown 23/23 cases, taxi 399/399 and 449/449, runway take-off 159/159 |
+| `vehicles.md` | the player's carrier motion and autopilot, the arctangent, repair priorities, missiles and flares, the craft slots, the Manta lift, launch, take-off, flight, deck and runway landing, the Walrus autopilot | carrier 150/150 and 600/600 ticks (1950/1950 in the full run), arctangent 529/529, repair 10/10 and 12/12, flares 5/5, take-off 42/42 twice, airborne flight 300/300, 400/400 and 400/400, fuel 300/300 twice, deck landing 250/250, 400/400 and 500/500, runway touchdown 23/23 cases, taxi 399/399 and 449/449, runway take-off 159/159, Walrus 428/428 and 900/900 |
 | `economy.md` | the fixed island tables, world creation, the RNG, the supply graph and distance matrix, production, production lines and packets, island building | production 175/175, line cost and steps 14/14 each, landings 4/4, RNG 1/1, matrix per call 41/41 and 129/129 dumps, packet hops 14/14 twice |
 | `render.md` | the 3D engine: sine table, chained 2D rotations, projection, depth tree plus BSP plus back-face culling, the self-modifying span filler, the model format | sine 4096/4096, rotations 360/360 and 120/120, projection 480/480, face test 120/120, spans 780/780 (2183/2183 over all 64 colour codes), BSP draw order 1264/1264 draws |
 | `packer.md` | Automation Packer V2.3r: the `LSD!` LZ77 format, the backwards in-place depack and its safety margin, ratios against modern compressors | depacker output identical to `tools/lsd_depack.py`; final read/write gap 218 bytes on all six packed files; margin while input remains 218 to 220 (219 for Carrier Command) |
@@ -32,7 +32,7 @@ The game's rules restated for re-use in another design, without addresses. Each 
 it (A = `ai.md`, E = `economy.md`, V = `vehicles.md`, R = `render.md`); anything not proven there is labelled
 inferred. It covers what is decoded so far: the
 world and its economy, the enemy carrier, the island defences, the player's carrier, repair and countermeasures,
-and the renderer, and the Manta's take-off, airborne autopilot, fuel, deck and runway landing and runway take-off. The Walrus, drone launchers and command-centre missiles in action, the
+and the renderer, and the Manta's take-off, airborne autopilot, fuel, deck and runway landing and runway take-off. The Walrus on land, drone launchers and command-centre missiles in action, the
 end of an island assault, the production-priority and fuel screens are not decoded yet. The crack's stack leak
 and the Automation Packer belong to this copy, not the game ("Provenance", `packer.md`).
 
@@ -125,6 +125,11 @@ and the Automation Packer belong to this copy, not the game ("Provenance", `pack
   back up to 145; at 35 or lower it loses 2000 hull a tick (window 23/23 cases either side of every limit, taxi
   399/399 and 449/449). A runway take-off is the same script in reverse: creep to the end, turn, open to full
   throttle once lined up (159/159). (V 5)
+- **The Walrus is driven, not flown.** It backs out of the stern dock, pivots there toward its destination, takes
+  the carrier's speed and drives on a rudder that is also its turn rate, slower afloat than on land; it stops on
+  arrival and hands control back. Docking is the launch reversed: steer to a point behind the stern, line up, slide
+  in, wait for the door (428/428, 900/900 with the carrier moving). Collisions push it back and hurt, double against
+  ships, so a reversing carrier can sink its own Walrus (from code, seen once). (V 5)
 - **Missiles home and flares decoy.** A missile re-targets every 5 calls to any of the (at most two) flares within
   6000 of it (5/5 cases); its guidance slews yaw and pitch by at most 11.25 degrees a call (inferred). (V 4)
 - **Two games from one engine.** Strategy starts from the player's home island against an enemy holding eight;
@@ -342,12 +347,12 @@ drones and island structures (`$193dc`, a jump table by type), and the 3D frame 
 | `py/ai/` | `score.py` (target-choice model), `gate_score.py` |
 | `py/world/` | `rng.py`, `prove_production.py`, `prove_line.py`, `prove_transfer.py`, `gate_economy.sh`, `render_map.py` |
 | `py/ai2/` | `drive.py` (state-change log for the enemy carrier), `defence.py` (structure launch census with a difficulty poke), `menu.py`, `gate_difficulty.sh` |
-| `py/units/` | `carrier_proof.py` (per-tick carrier model against the emulator), `atan_port.py`, `atan_grid.py`, `repair_proof.py`, `flare_test.py`, `takeoff_proof.py` (per-tick Manta take-off model), `flight_proof.py` (per-tick airborne autopilot), `landing_proof.py` (per-tick deck landing, `--stow` the lift down), `runway_proof.py` (touchdown window, per-tick taxi, parking and runway take-off), `fuel_proof.py` (fuel rule and its 16-frame cadence), `manta_snaps.py` (the Manta anchor snapshots), `gate_units.sh` |
+| `py/units/` | `carrier_proof.py` (per-tick carrier model against the emulator), `atan_port.py`, `atan_grid.py`, `repair_proof.py`, `flare_test.py`, `takeoff_proof.py` (per-tick Manta take-off model), `flight_proof.py` (per-tick airborne autopilot), `landing_proof.py` (per-tick deck landing, `--stow` the lift down), `runway_proof.py` (touchdown window, per-tick taxi, parking and runway take-off), `walrus_proof.py` (per-tick Walrus launch, cruise and docking), `fuel_proof.py` (fuel rule and its 16-frame cadence), `manta_snaps.py` (the Manta anchor snapshots), `gate_units.sh` |
 | `py/curio/` | `hidden.py` (hidden keys and cheat extras against a no-key control, the disabled exception handler, the manual-word decode), `gate_hidden.sh` (`gates.toml` "hidden") |
 | `py/render/` | `rig.py` (REPL and callcap driver), the five gates, `gate_render.sh`, `model.py`, `sheet.py`, `views.py`, `show.py`, `seq.py`, `subdivide.py` (a model as OBJ, subdivided and silhouette-scored, `render.md` section 6) |
 
 ## Not exercised in the emulator
 
-The lift's own motion, the Walrus launch and driving, a drone launcher or command
+The lift's own motion, the Walrus on land and under manual control, a drone launcher or command
 centre firing, the island-capture end of an attack, the production-priority and fuel screens, saving and
 loading. The 3D model drawing order matches the game on the far draw path only (`render.md` section 4).

@@ -24,6 +24,7 @@ Proof labels as in `ai.md`. Gate: `py/units/gate_units.sh` (`gates.toml` "units"
 | Manta runway touchdown, one tick either side of each limit on island 0's airstrip | `runway_proof.py window` | 23/23 cases |
 | Manta runway taxi and parking per tick (states 4 and 5), lined up and skewed | `runway_proof.py taxi` | 399/399, 449/449, controls 15/22 |
 | Manta runway take-off per tick (state 6) from parked to airborne | `runway_proof.py takeoff` | 159/159, controls 11/14 |
+| Walrus launch, cruise, dock and stow per tick (carrier at rest), launch and cruise with the carrier turning | `walrus_proof.py` | 428/428 (stowed at 429), 900/900, controls 20/31 |
 
 ## 1. Carrier motion `$1e4a0`
 
@@ -325,6 +326,57 @@ airborne at tick 159 at speed 200 and altitude 155, holding point (-1, 5999) in 
 of the taxi, which the run never sits on. Every craft in states 4 to 6 reads entity +60 without a null check (read
 from code).
 
+**Walrus `$1da24` (proven, `walrus_proof.py`).** The Walrus is an amphibious tank; its slot (`$572 + 52 i`) holds
++0 flags (bit 0 autopilot, bit 1 destination set, bit 5 the rudder turns the turret, bit 6 recentre the turret, bit 7
+rudder decays), +1 location (0 in the hangar, 8 out), +2 rudder (+/-255), +4 speed, +6 speed demand, +8 fuel, +20
+hull, +26 state, +27 phase, +28/+32 destination x and z, +36 cruise speed. Its entity (`$5e45a + 320 i`) has heading
++6, x/altitude/z +10/+14/+18, a dock offset +28/+30 in the carrier's frame (as the Manta's deck offset), +36 a value
+from the altitude (below) and +38 the turret angle.
+
+The launch command `$1201a` (the selected Walrus `$de0`, in its hangar; refused while another is launching, `$122d`)
+creates a type-6 entity at the carrier's position, altitude -15, dock offset (0, -580), and with no destination gives
+one (`$12298`): (2000 i - 3000, -4000) in the carrier's frame, 4000 behind it, cruise 60. It sets +1 = 8, autopilot,
+state 2. The dock command `$122d6` accepts a Walrus in a cone behind the carrier (in its frame z from -8600 to -1500
+and |x| at most 8000 and at most -(z + 600)) and sets flags `$41` (autopilot, recentre turret), state 0. Per tick, on
+autopilot (states above 3 would reach the loop tail through `bsr $1e210` instead of a branch, popping half the return
+address as the loop counter: no handler read here sets one), with `steer(p)` = rudder toward clamp((atan2 to p -
+heading) >> 5, +/-255) by 32 and the demand zeroed while the error exceeds `$400`:
+
+```
+state 2, launch:  phase 0  speed += 8 up to 60;  dock z -= speed;  heading = carrier's + $8000 (stern first);
+                           position from the dock offset;  at z <= -1500: phase 1
+                  phase 1  pivot: steer to the destination with demand 0, position from the dock offset, then motion;
+                           error within $400: phase 2
+                  phase 2  speed += the carrier's speed ($646), demand = speed;  state 3;  $122d cleared
+state 3, cruise:  demand = cruise (32 at most within 1000);  steer to the destination;  motion
+                  within 250: autopilot and destination off ("has reached its destination"), rudder decays, demand 0
+state 0, dock:    phase 0  to 1500 behind the stern: demand 60 (24 within 1000), steer, motion;  within 200: the
+                           position becomes a dock offset in the carrier's frame, phase 1;  beyond 16384: abandoned
+                  phase 1  heading toward the carrier's by $200, position from the dock offset;  equal: phase 2
+                  phase 2  dock z += 32;  at -650 or more: phase 3
+                  phase 3  wait for the dock door ($dd4 = $d000), then stow: entity freed, +1 = 0
+motion ($1dc80):  the coast band check (below);  entity +36 = $200 at altitude 15 or more, else
+                  ((altitude - 15) * $1111 >> 8) + $200;  fuel -= (speed << 4) / 80 (+128 at hull 500 or less) on
+                  16th frames;  demand clamped to [0, min(hull / 32, 96)], 48 while the altitude is below 0 (afloat),
+                  0 with no fuel;  speed toward it by 2 up, 8 down;  heading (or the turret, bit 5) += rudder * 16 / 6;
+                  (x, z) += rotate (0, speed) by heading
+```
+
+A Walrus off autopilot that is not the viewed craft runs the motion alone. From `c_s30` with the carrier at rest, the
+launch, the cruise to the default destination (stopped at tick 146), the dock command at tick 200 and the docking
+match every field of slot 0, its entity, `$122d` and `$de2` on all 428 ticks to the stow at tick 429; with the carrier
+turning and moving, launch and cruise 900/900. (`st $de2` writes only the high byte, so `$de2` reads `$ff00`, not -1.)
+Nudging each constant by one breaks a tick for 20 of 31; the eleven left are thresholds never sat on and the hull and
+low-fuel terms, which a full hull never reaches.
+
+Read from code: within 650 inside or outside an island's box edge the Walrus takes the coast path `$1e224` (not
+driven: these runs stay at sea), and deeper inside the box it drives on land, the altitude-dependent limits switching
+from the afloat 48 to 96. A collision ("motion blocked by object", `$1bb4e`, collision type 11) pushes it back a step,
+sets its speed to -speed / 4 - 20, zeroes the rudder and demand, drops autopilot and destination, and costs 1000 hull,
+2000 when the obstacle's type is 1 to 3; the carrier is type 1. With the carrier reversing at -32 onto a docking Walrus
+two such bumps destroyed it (hull 4000, 2000, 0 on consecutive ticks, the writes at `$1bc3e` and `$1bc24` under a
+`watch`); other hits cost `$752` unless the invulnerability cheat is on.
+
 Inferred from code:
 
 - Manual flight takes the stick from the mouse deltas `$1262`/`$1264`, clamped to +/-255; the throttle keys
@@ -335,12 +387,12 @@ Inferred from code:
 - Hits (`$1bc1c` Walrus, `$1bc5e` Manta) subtract `$752` from the hull, skipped while cheat invulnerability
   `$1186` is set.
 - Entities are created by `$18f9a` (type at +2, collision half-extents at +48..+54 from the 4-word table at
-  `$19092`); the Walrus launch (`$1201a`) uses type 6. Walrus slot +28 is its destination.
+  `$19092`); the Walrus launch (`$1201a`) uses type 6.
 
 ## 6. Open
 
 - The other slots' bays (only slot 0 was driven); a runway landing on an enemy airstrip.
   The lift's own motion (`$1e838`), up and down.
-- The Walrus launch and driving.
+- The Walrus on land and in the coast band (`$1e224`), its turret, and manual driving.
 - An autopilot run with an island across the course, to show the carrier grounding instead of steering round.
-- Walrus fuel (+8) and the "Fuel Transfer" / "Set Fuel Priorities" screens (the Manta's burn is proven, section 5).
+- The "Fuel Transfer" / "Set Fuel Priorities" screens (the Manta's burn is proven, section 5).
