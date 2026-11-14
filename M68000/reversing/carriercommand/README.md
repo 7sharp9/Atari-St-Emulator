@@ -9,7 +9,7 @@ assembly (1 `LINK` frame, about 920 `RTS`), so it is analysed from traces and ca
 | Doc | Covers | Proof |
 |---|---|---|
 | `ai.md` | the enemy carrier's state machine, how it picks its next island, capture and attack, fighting the player's carrier and retreat, island defences, difficulty, the cheat mode, the two games | target choice 1344/1344 score words and 21/21 decisions, with constant-by-constant controls; difficulty A/B/C 3/3 arms; combat states driven state by state |
-| `vehicles.md` | the player's carrier motion and autopilot, the arctangent, repair priorities, missiles and flares, the craft slots, the Manta lift, launch and take-off | carrier 150/150 and 600/600 ticks (1950/1950 in the full run), arctangent 529/529, repair 10/10 and 12/12, flares 5/5, take-off 42/42 twice, airborne flight 300/300, 400/400 and 400/400, fuel 300/300 twice |
+| `vehicles.md` | the player's carrier motion and autopilot, the arctangent, repair priorities, missiles and flares, the craft slots, the Manta lift, launch, take-off, flight and deck landing | carrier 150/150 and 600/600 ticks (1950/1950 in the full run), arctangent 529/529, repair 10/10 and 12/12, flares 5/5, take-off 42/42 twice, airborne flight 300/300, 400/400 and 400/400, fuel 300/300 twice, deck landing 250/250, 400/400 and 500/500 |
 | `economy.md` | the fixed island tables, world creation, the RNG, the supply graph and distance matrix, production, production lines and packets, island building | production 175/175, line cost and steps 14/14 each, landings 4/4, RNG 1/1, matrix per call 41/41 and 129/129 dumps, packet hops 14/14 twice |
 | `render.md` | the 3D engine: sine table, chained 2D rotations, projection, depth tree plus BSP plus back-face culling, the self-modifying span filler, the model format | sine 4096/4096, rotations 360/360 and 120/120, projection 480/480, face test 120/120, spans 780/780 (2183/2183 over all 64 colour codes), BSP draw order 1264/1264 draws |
 | `packer.md` | Automation Packer V2.3r: the `LSD!` LZ77 format, the backwards in-place depack and its safety margin, ratios against modern compressors | depacker output identical to `tools/lsd_depack.py`; final read/write gap 218 bytes on all six packed files; margin while input remains 218 to 220 (219 for Carrier Command) |
@@ -32,7 +32,7 @@ The game's rules restated for re-use in another design, without addresses. Each 
 it (A = `ai.md`, E = `economy.md`, V = `vehicles.md`, R = `render.md`); anything not proven there is labelled
 inferred. It covers what is decoded so far: the
 world and its economy, the enemy carrier, the island defences, the player's carrier, repair and countermeasures,
-and the renderer, and the Manta's take-off, airborne autopilot and fuel. The Manta's landing, the Walrus, drone launchers and command-centre missiles in action, the
+and the renderer, and the Manta's take-off, airborne autopilot, fuel and deck landing. The Manta's runway landing, the Walrus, drone launchers and command-centre missiles in action, the
 end of an island assault, the production-priority and fuel screens are not decoded yet. The crack's stack leak
 and the Automation Packer belong to this copy, not the game ("Provenance", `packer.md`).
 
@@ -116,7 +116,10 @@ and the Automation Packer belong to this copy, not the game ("Provenance", `pack
   the craft climbs no higher than 3500 (300/300, 400/400, 400/400). Fuel burns with speed every 16 ticks, much faster
   with a damaged hull (300/300 twice). (V 5)
 - **Landing is scripted, touchdown is a box test.** The carrier landing is a fixed sequence: fly in at a set
-  height, match the carrier's velocity, line up, slide onto the deck spot and drop. On an island airstrip, a craft
+  height (fast when far, slow when near), wait until level within 600, then stop flying: the craft is carried with
+  the carrier while its relative velocity decays, turns to the carrier's heading, slides onto the deck spot and drops
+  (250/250, 400/400 with the carrier turning, 500/500 from far out). It then sits on deck until the player sends it
+  down the lift. On an island airstrip, a craft
   below 150 inside a runway-aligned window with small stick, heading error and speed is simply set down and taxis
   to a bay by script; outside the window it takes damage and is bounced back up to 145; at sea level it is
   destroyed (all from code). (V 5)
@@ -285,11 +288,11 @@ drones and island structures (`$193dc`, a jump table by type), and the 3D frame 
 | `py/ai/` | `score.py` (target-choice model), `gate_score.py` |
 | `py/world/` | `rng.py`, `prove_production.py`, `prove_line.py`, `prove_transfer.py`, `gate_economy.sh`, `render_map.py` |
 | `py/ai2/` | `drive.py` (state-change log for the enemy carrier), `defence.py` (structure launch census with a difficulty poke), `menu.py`, `gate_difficulty.sh` |
-| `py/units/` | `carrier_proof.py` (per-tick carrier model against the emulator), `atan_port.py`, `atan_grid.py`, `repair_proof.py`, `flare_test.py`, `takeoff_proof.py` (per-tick Manta take-off model), `flight_proof.py` (per-tick airborne autopilot), `fuel_proof.py` (fuel rule and its 16-frame cadence), `manta_snaps.py` (the Manta anchor snapshots), `gate_units.sh` |
+| `py/units/` | `carrier_proof.py` (per-tick carrier model against the emulator), `atan_port.py`, `atan_grid.py`, `repair_proof.py`, `flare_test.py`, `takeoff_proof.py` (per-tick Manta take-off model), `flight_proof.py` (per-tick airborne autopilot), `landing_proof.py` (per-tick deck landing, `--stow` the lift down), `fuel_proof.py` (fuel rule and its 16-frame cadence), `manta_snaps.py` (the Manta anchor snapshots), `gate_units.sh` |
 | `py/render/` | `rig.py` (REPL and callcap driver), the five gates, `gate_render.sh`, `model.py`, `sheet.py`, `views.py`, `show.py`, `seq.py`, `subdivide.py` (a model as OBJ, subdivided and silhouette-scored, `render.md` section 6) |
 
 ## Not exercised in the emulator
 
-The Manta's landing and its flight below altitude 150, the Walrus launch and driving, a drone launcher or command
+The Manta's runway landing and its flight below altitude 150, the lift's own motion, the Walrus launch and driving, a drone launcher or command
 centre firing, the island-capture end of an attack, the production-priority and fuel screens, saving and
 loading. The 3D model drawing order matches the game on the far draw path only (`render.md` section 4).

@@ -5,8 +5,9 @@ autopilot that turns almost in place before accelerating. Repair is a priority s
 capacity equally among the damaged systems at the highest priority level. An incoming missile is decoyed by
 whichever flare its scan meets last within 6000 units, not by the nearest.
 
-Proof labels as in `ai.md`. Gate: `py/units/gate_units.sh` (`gates.toml` "units"); every run resumes `c_s30.snap`
-with pokes (REPL, or `stserver` for the take-off).
+Proof labels as in `ai.md`. Gate: `py/units/gate_units.sh` (`gates.toml` "units"); the carrier, repair, flare and take-off runs resume
+`c_s30.snap` and the flight, fuel and landing runs the Manta snapshots (`m_takeoff.snap`, `m_air.snap`), with pokes
+(REPL, or `stserver` for the Manta).
 
 | Proof | Script | Count |
 |---|---|---|
@@ -17,6 +18,9 @@ with pokes (REPL, or `stserver` for the take-off).
 | repair calls, HIGH finishing and repair moving to MEDIUM | `repair_proof.py` | 12/12 |
 | flare capture: 6000 captures, 6001 does not, the later slot wins, no flare keeps the carrier | `flare_test.py` | 5/5 cases |
 | Manta take-off per tick (phase, speed, altitude, pitch, heading, deck offset, world x and z, the hand-off to flight), carrier at rest and carrier turning; eleven of thirteen constants break when nudged in the turning run | `takeoff_proof.py` | 42/42 and 42/42, controls 11/13 |
+| Manta airborne autopilot per tick (slot and entity), the launch flight, a cruise above the ceiling, a low hull | `flight_proof.py` | 300/300, 400/400, 400/400, controls 22/26 |
+| Manta fuel every 16th frame, full hull and hull 256 | `fuel_proof.py` | 300/300 and 300/300 |
+| Manta deck landing per tick (21 fields: slot, entity, `$dcc`, `$122c`), carrier at rest, carrier turning, from 12,000 out; then the lift down to the hangar | `landing_proof.py` | 250/250, 400/400, 500/500, controls 23/32; stow after 11 ticks |
 
 ## 1. Carrier motion `$1e4a0`
 
@@ -216,12 +220,46 @@ of the runway's and speed at most 100, the Manta lands (+0 = 1, +28 = 4); a wron
 100, with the altitude floored at 145 and the pitch stick pulled toward 100 by 30 and the roll stick shaken by the
 RNG. Over open sea between 36 and 149 nothing happens.
 
-**Landing (read from code, not yet driven).** The land command `$11bf6` (within 16,384 of the carrier, lift at
-rest, deck empty) sets +28 = 0 with autopilot. State 0 then flies in at altitude 570, speed 65 (200 beyond 3500),
-steering at a tenth of the heading error; within 600 of the carrier it matches the carrier's velocity, turns to its
-heading, slides to deck offset (0, 250) and descends by 10 to 180, giving +28 = 1 with pitch -694; the lift
-(`$11f3c`, `$1e838`) then stows it (+28 = 0, +1 = 0). The abort command `$11e76` returns it to state 3 while the
-phase is 3 or less. On an island airstrip, a touchdown (above) gives state 4, which taxis in the runway's frame to
+**Deck landing `$1cfc2` (proven, `landing_proof.py`).** The land command `$11bf6` acts on the selected Manta
+(`$490`/`$494`) when it is within 16,384 of the carrier (sum of squares of the word offsets), the lift is at rest and
+the deck empty; it sets `$122c`, autopilot, +28 = 0 and phase +29 = 0. Every state-0 tick first decays the entity's
+pitch and roll and both sticks (`decay`, as above) and runs the speed update `$1d880` once; then, with (dx, dz) the
+carrier's position minus the Manta's and d = max(|dx|, |dz|):
+
+```
+phase 0 (fly in):  pitch stick toward (0 if |570 - alt| < 20 else +/-100 by its sign) by 20
+    d >= 600:           demand = 200 if d >= 4100 else 65;  roll stick toward clamp((atan2(dx, dz) - heading) / 10)
+                        by 32;  then the shared flight code ($1ccb0: fuel, speed a second time, attitude, move)
+    d < 600, pitch stick not 0:  the same steer over 32, demand kept, shared flight code
+    d < 600, pitch stick 0:      deck offset (entity +28/+30) = -(dx, dz) in the world frame;  relative velocity
+                        (+32/+36) = the Manta's (0, speed) rotated by its heading minus the carrier's (0, $646) by
+                        the carrier's;  demand = 0;  phase 1, which also runs this tick
+phase 1 (match):   +32, +36 decay and are added to the offset;  position = carrier + offset (no rotation);
+                   when +32 + +36 = 0 (words) the offset is rotated by minus the carrier heading into its frame: phase 2
+phase 2 (align):   heading toward the carrier's by $200;  position from the deck offset ($1d908);  equal: phase 3
+phase 3 (slide):   at offset (0, 250): $dcc = this Manta, phase 4;  else z toward 250 and x toward 0, each by 10,
+                   heading = the carrier's, position from the deck offset
+phase 4 (descend): altitude -= 10;  at 180 or less: altitude 180, pitch -694, +28 = 1, phase 0, $122c cleared;
+                   then the state-1 code $1d200: fuel -= 12 on 16th frames ($8fb), heading and position from the deck
+```
+
+Phases 1 to 4 skip the shared flight code, so the Manta neither burns fuel nor integrates its own velocity there;
+from phase 1 the demand of 0 is clamped up to 50 and the speed falls to it. Three runs from `m_air.snap` (Manta 0
+circling at 781, about 4,000 from the carrier) match all 21 fields of slot 0, its entity, `$dcc` and `$122c` on
+every tick: carrier at rest 250/250 (phases 0-4 begin at ticks 0, 70, 94, 110, 156; on deck at 196), carrier
+turning and moving (heading `$3f2` to `$6fe`) 400/400, and from 12,000 out at altitude 400, which flies the 200
+leg and climbs, 500/500. Nudging each constant by one breaks a tick in at least one run for 23 of 32; the nine left
+are the 570 target and its 20 dead band (the stick ramp hides a unit), the 600 and 3,500 thresholds, the near-steer
+divisor 32 (the Manta always arrives level, so that branch never ran) and shared flight constants the landing does
+not reach (the 255 stick limit, the 250 speed cap and its +50, the 3,500 ceiling); their values are read from code.
+
+Landing ends on deck in state 1; nothing moves it further until the player's lift-down command `$11f3c` (LIFT
+working, lift at rest, the deck Manta in state 1), which sets +1 = 3 and `$dca` = 1. In the at-rest run the lift
+then lowers the Manta from 180 to 20 in 10 ticks, the next tick gives +28 = 0, +1 = 0 and `$dcc` = -1 (deck empty),
+and the lift is at rest ten ticks after that (`landing_proof.py --stow`, a record: the lift's own motion `$1e838` is
+not modelled). The abort command `$11e76` returns the Manta to state 3 while the phase is 3 or less (read from code).
+
+**Runway states 4 to 6 (read from code, not yet driven).** On an island airstrip, a touchdown (above) gives state 4, which taxis in the runway's frame to
 (0, 2650) at speed 64 and altitude 120, then to a bay by slot (x = 600 i - 900, z 3270 or 3720) at speed 8, turns
 round and settles to altitude 100: state 5, parked, refuelling 64 a tick and destroyed if more than 260,000 from
 the carrier. A launch request (slot +0 bit 5, set from the UI at `$12ecc`) gives state 6 if the airstrip still
@@ -244,9 +282,8 @@ Inferred from code:
 
 ## 6. Open
 
-- Drive the landing: the land command `$11bf6` from `m_air.snap` through state 0 to the deck and the lift, and a
-  runway touchdown on an airstrip island (states 4 to 6), each per tick as `flight_proof.py` does; then the ground
-  contact damage below altitude 150. The lift's own motion.
+- Drive a runway touchdown on an airstrip island (states 4 to 6) per tick as `landing_proof.py` does, then the
+  ground contact damage below altitude 150. The lift's own motion (`$1e838`), up and down.
 - The Walrus launch and driving.
 - An autopilot run with an island across the course, to show the carrier grounding instead of steering round.
 - Walrus fuel (+8) and the "Fuel Transfer" / "Set Fuel Priorities" screens (the Manta's burn is proven, section 5).

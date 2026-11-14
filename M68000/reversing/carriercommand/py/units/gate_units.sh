@@ -50,3 +50,18 @@ rm -f "$t.a" "$t.b" "$t.c"
 # Manta fuel ($1ce56, every 16th frame by $8fb; fuel_proof.py), full hull and hull 256 (the +$100 branch)
 $py "$here/fuel_proof.py" "$M" 300 | grep '^fuel ticks' | awk '{printf "fuel full hull %d/%d\n", $5, $3}'
 $py "$here/fuel_proof.py" "$M" 300 4ac=0100:2 | grep '^fuel ticks' | awk '{printf "fuel low hull %d/%d\n", $5, $3}'
+# Manta deck landing ($11bf6 land command, state 0 phases 0-4, $1cfc2; landing_proof.py) from m_air.snap: carrier at
+# rest (then the lift-down command $11f3c to the hangar), carrier turning, and from 12,000 out at altitude 400 (the
+# far leg at speed 200, the hull speed limit and the climb). Controls as for the flight runs.
+A=$work/manta/m_air.snap
+t=${TMPDIR:-/tmp}/cc_land.$$
+$py "$here/landing_proof.py" --stow "$A" 250 > "$t.a" 2>&1
+$py "$here/landing_proof.py" "$A" 400 644=00400000:4 648=00300000:4 > "$t.b" 2>&1
+$py "$here/landing_proof.py" "$A" 500 5df64=ff8f1ee0:4 5df68=00000190:4 > "$t.c" 2>&1
+for k in a:rest b:carrier-turning c:far-low; do
+  grep '^landing ticks' "$t.${k%%:*}" | awk -v n="${k#*:}" '{printf "landing %s %d/%d\n", n, $5, $3}'
+done
+grep '^stow:' "$t.a" | sed 's/;.*//'
+cat "$t.a" "$t.b" "$t.c" | awk '$1=="control"{split($5,r,"/"); key=$2; seen[key]=1; if (r[1]<r[2]) br[key]=1}
+  END{n=0; b=0; for (k in seen) {n++; if (k in br) b++; else u=u" "k}; printf "landing controls %d/%d (unexercised:%s)\n", b, n, u}'
+rm -f "$t.a" "$t.b" "$t.c"
