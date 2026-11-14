@@ -1,10 +1,11 @@
 # Midwinter: handoff
 
-Updated 2026-10-31 by the session that ended at the handoff commit after `4d29cbe` (recruitment).
+Updated 2026-11-14 by an overseer session that promoted a subagent's 3D-pipeline pass (commit `2ae7dfe`).
 
 ## Resume point
 
-- Last commit of this workstream: `4d29cbe` (recruitment, `ai.md` section 8).
+- Last commit of this workstream: `2ae7dfe` (the 3D view for one frame, `graphics.md`). Only the new `pipeline` gate
+  was run this session (1/1 PASS); the other eight were not re-run.
 - Working data: `M68000/scratchpad/midwinter/` (indexed in `scratchpad/ANCHORS.md`, which does not list `sabotage/`,
   `shot/` or `recruit/` yet: another session holds uncommitted edits to it). Rebuild: unzip
   `~/Library/CloudStorage/Dropbox/Daves/ST games/Zuul #67.zip`, `tools/msa2st.py ZUUL067.MSA zuul067.st`,
@@ -31,7 +32,9 @@ Updated 2026-10-31 by the session that ended at the handoff commit after `4d29cb
 - Recruitment (`ai.md` 8): `py/recruit/gate_recruit.py` presence, offer, radio offer, answer 500/500 each, radio pick
   427/427, seven controls fail; `py/recruit/drive_recruit.sh` a driven join of Rudzinski against a one-byte refusal
   control. Every `$2b16c` writer listed (18 `lea` sites).
-- All eight gates: `uv run python tools/gates.py run midwinter`. The design digest covers all.
+- The 3D view for one frame at one pose (`graphics.md`): projection 190/190 vertices, edge scan 713/713 rows, span fill
+  110/110 fills and 90/90 terrain polygons from the model's own edges (`py/pipeline/run.sh`, gate `pipeline`).
+- All nine gates: `uv run python tools/gates.py run midwinter`. The design digest covers all.
 
 ## Running
 
@@ -39,8 +42,10 @@ Nothing running.
 
 ## Open, in priority order
 
-1. **3D pipeline**: `$18304` -> `$16d9c`, draw list `$19ce2`/`$1d5a6`, polygon fill; proof by rendering a frame
-   pixel for pixel. Unlocks matching encounter slots to on-screen objects and the sniping pick `$19ec4`.
+1. **3D pipeline** (`graphics.md` section 6): the frame's stages, buffers, projection, edge scan and fill are proven
+   for one frame at heading 0. Next, in order: the cell scan per heading (poke `$12c98`, compare with `$18f02`),
+   vertices at other poses, the clip and polygon builders, the object renderer `$1dd14`, then a whole frame pixel for
+   pixel. The aim pick `$19e76` (the handoff's old `$19ec4`) needs a driven snipe.
 2. **Combat and sabotage leftovers** (`ai.md` Open): a driven sniping kill ('S' at speed 0, `$131d8`, then Space,
    reusing `drive_kill.py`); an ordinary vehicle's kill; the glider shot `$20be6`; the surrender screen `$1137a`.
 3. **Recruitment leftovers** (`ai.md` Open): drive Kristiansen's radio (poke 12 as current, in the team, inside a
@@ -77,6 +82,7 @@ Nothing.
 
 ## Next session
 
-`/resume midwinter`. Item 1 (the 3D pipeline) is the largest remaining unknown. For a shorter task, item 2's sniping
+`/resume midwinter`. Item 1 (the 3D pipeline) is the largest remaining unknown: start with the cell scan per heading
+(`graphics.md` section 6). For a shorter task, item 2's sniping
 kill reuses `drive_kill.py`, or item 3's radio drive reuses `py/recruit/` (poke Kristiansen into the team and a Radio
 Station on `d_stark.snap`, select him with the bio arrow, then Decisions).

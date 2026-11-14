@@ -1,16 +1,17 @@
 # Populous II: handoff
 
-Updated 2026-11-13 by the session that ended at commit `98206d4`.
+Updated 2026-11-14 by an overseer session that promoted a subagent's computer-god pass (commit `ef4cf2a`).
 
 ## Resume point
 
-- Last commit of this workstream: `98206d4` populous2: settlement land codes, scenery scatters, 8 gates.
+- Last commit of this workstream: `ef4cf2a` populous2: the computer god is `$25652`, 9 gates.
 - Working data: `M68000/scratchpad/populous2/` (`src/WILD29.MSA` from the Dropbox `WILD! #29.zip`, `wild29.st`,
   `files/`, `anchors/`, `pop2_1770.bin` the depacked image, `pop2_all.asm` the whole-image listing). Rebuild:
   `reversing/populous2/README.md` "Provenance" and "Drive recipe".
 - Start from: `scratchpad/populous2/anchors/p2_game_start.snap` (first play frames, conquest battle 0 vs
   Epimetheus; sidecar remounts `wild29.st`), or `p2_game_60m.snap` 60M steps on with no input.
-- Uncommitted work left behind: none. `uv run python tools/gates.py run populous2`: 8/8 PASS at `98206d4`.
+- Uncommitted work left behind: none. `uv run python tools/gates.py run populous2`: 9/9 PASS at `ef4cf2a`. The
+  subagent's listings and logs are in `scratchpad/populous2/agents/god/` (`report.md`).
 
 ## Proven so far
 
@@ -38,6 +39,10 @@ Updated 2026-11-13 by the session that ended at commit `98206d4`.
 - Scenery scatters `$1f870` (trees, type `$16`) and `$1fa6c` (type `$18`): 30/30 each against the model
   (`py/scatter_gate.py`); `$1f870`'s attempt bonus reads byte `$3f6a9` through the stale D2 `$ff9d`, proven with
   the byte poked (30/30, no-bonus control 0/30).
+- The computer god is `ai_run_sides` `$25652`: one command a tick into the mouse's command record, human skipped by
+  side record +26 (2 human, 4 computer); computer branch 143 / 0 / 268 over 12M steps unpoked / side 2 human / side 1
+  computer, every executed command one of its posts (`py/god_census.sh`, gate `god_census`; README "The computer
+  god"). Its four cascade stages and the mailboxes the entity update fills are read, not modelled.
 - Cell codes `$2f`/`$3f` are side 1/side 2 settlement land, not rock: 13/13 settlements on their code, swapped
   0/13, unoccupied ones within 2 cells 28/28 (`py/owned_cells.py`); written by `$25298` in `$25168` (state 6).
 
@@ -47,17 +52,19 @@ Nothing running.
 
 ## Open, in priority order
 
-1. Name the rest of the main-loop routines (README "Main loop"): `$25652` and `$27faa` (both read the side records
-   `$470fe`), `$29c7e`, `$2a0b2`, `$2d4c8`, `$136ba`/`$14158` (current player's side record).
-   The computer god is likely among them. Then the entity states beyond 2/4/6 (table `$2311c`) and `$24f3a`
+1. The computer god's unproven half (README "The computer god"): the cascade stages are read, not modelled; the power
+   and magnet stages (`$25a32`, `$25bf4`) ran only under pokes, so reach a later battle whose plan list is not empty;
+   drive controller `$12` from the options screen; read side 1's reload word +104 (the cascade ran on 122 of 134
+   ticks with side 1 poked to computer). Then the entity states beyond 2/4/6 (table `$2311c`) and `$24f3a`
    (state 2's test), `$24a92`; drive a walker into a settle or a fight so the other states run under `hits`.
 2. People placement `$22986` (last pass of `build_world`): from `build/c_22986.snap` callcap it and model the
    entity, `$46f9a` and side-record writes (listed by diffing `c_22986` and `d_after`).
 3. Settlement land claim `$25168`/`$25298`: radius against settlement size byte 1 (`owned_cells.py` gives the cells).
 4. Decrunch: port `$2246a` to Python and compare each `.PAK` against its RAM copy (QAZ.PAK's raw 32000 bytes too);
    then `BLOCKn`/`S16`/`S32` formats for `graphics.md`.
-5. What bit 2 of entity +13 does (set by a lower on your own settlement; state 2 tests bit 1): drive it from
-   `p2_game_60m` with `click_ab.py`'s pointer on cell (12,33) and a right click, then `hits` the entity states.
+5. Bit 2 of entity +13 releases a walker group at the settlement's next state-6 expiry (`$236b8`; seen once, strength
+   411 to 293, after the computer's own command): drive it as the player from `p2_game_60m` with `click_ab.py`'s
+   pointer on cell (12,33) and a right click against a no-click control, and model the share that leaves (`114(A2)`).
 6. Cell byte 0 bits 3-7 (footfall count, only `$2436e` writes it in play): find its reader; and what the
    `$4505a` array holds (empty on both anchors; `$26644` updates it).
 
@@ -80,6 +87,6 @@ Nothing running.
 
 ## Next session
 
-1. `/resume populous2`; `uv run python tools/gates.py run populous2` should print 8/8 PASS.
+1. `/resume populous2`; `uv run python tools/gates.py run populous2` should print 9/9 PASS.
 2. Open item 2 (`$22986` people placement), which finishes the world build; then item 3 (land claim).
-3. Then open item 1's remaining main-loop routines (`$25652` is the likeliest computer god).
+3. Then open item 1: a model of the computer god's cascade against `callcap` of `$25652`, and a later battle.

@@ -1,10 +1,10 @@
 # Lemmings: handoff
 
-Updated 2026-10-31 by the seventh working session (the object table `$23044`, infographic republished).
+Updated 2026-11-14 by an overseer session that promoted a subagent's object-graphics decode (commit `70cf6bb`).
 
 ## Resume point
 
-- Last commit of this workstream: `d202acb` lemmings: object table `$23044` ... (`git log --oneline -- reversing/lemmings`).
+- Last commit of this workstream: `70cf6bb` lemmings: object graphics format ... (`git log --oneline -- reversing/lemmings`).
   The emulator fix is `8b6c474`.
 - Working data: `scratchpad/lemmings/`: `lemmings.st`, `files/`, `b300000000.snap` (cold boot, cracktro),
   `lvl1_a.snap` (level 1, all 10 out; stops in the cracktro frame, `A5 = $c822`: set `A5 = 272d4` before a
@@ -40,7 +40,10 @@ Detail and match counts are in `reversing/lemmings/mechanics.md`.
 - Exit, trap and reversal cell codes 1 to 6 (`py/objdrive.py`); the bomber's crater 113/113 pixels.
 - Objects ("Objects"): `$23044` holds each level object's 34-byte copy of its type record (`$39ce`); the cell high nibble
   is the slot (`$33d0`); animator `$32a6` once a tick, 14/14 frames of level 1's loop; code 4 traps are one-shots that
-  let a lemming through while animating, four arms, kills 0/1/1/2 as predicted (`py/trapbusy.py`). Set 0's 12 type roles inferred.
+  let a lemming through while animating, four arms, kills 0/1/1/2 as predicted (`py/trapbusy.py`).
+- Object graphics ("Objects"): a frame is five 1-bit planes in sequence, colour bits 0 to 3 then the mask (1 = draw);
+  entrance 690/690, exit 307/330, torches 94/94 opaque pixels against the level 1 screen (`py/objgfx.py`,
+  `objects_set0.png`). Set 0's types 2 to 6 and 8 to 11 are named from their pictures only.
 - Access codes 260/260 and 18/18, level catalogue, no secrets, the overrun past level 120 (`extras.md`, `py/codes.py`, `py/overrun.py`).
 
 ## Running
@@ -49,9 +52,9 @@ Nothing running.
 
 ## Open, in priority order
 
-1. Object graphics at `$67270` (frame = 4 planes then mask, `+12` the mask offset; plane order unproven): render level 1's
-   three objects and set 0's types to PNGs from `sel.snap` memory, match against a screen frame, and name the types
-   from the pictures (commit the PNGs, index them in the README).
+1. Object graphics leftovers: a screen match for set 0's types 2 to 6 and 8 to 11 (drive a level that shows them and
+   re-run `py/objgfx.py`'s match there); the blitter's ground-over-object rule (`$8cf8`, `$90ae`: the exit's 23 misses);
+   graphics sets 1 to 4; the infographic's object panel.
 2. Fields +10 (frame), +20, +36/+38/+42; the release rate (`72(A5)`/`58(A5)`, `$34ac`); the blocker's refusal test
    (`$1b60`) and ground-loss release: drive each against a control from `sel.snap`.
 3. Code `$b` (set 0 type 11, not dispatched by `$8b6e`: grep the other readers of `25(A0)`/`26(A0)`); one-way cells 7 and 8
@@ -93,6 +96,6 @@ Nothing running.
 
 ## Next session
 
-`/resume lemmings`. Item 1: decode one object frame (level 1's exit, slot 1, 48 by 17, 510 bytes at `$67270 + $22ec`) to
-a PNG and match it against a screen render of that area; then the other types. Fold results into `mechanics.md`
-"Objects" and the infographic, `JOBS=2 infographic/build.sh`, and ask Dave before republishing.
+`/resume lemmings`. Item 3's level with real traps serves item 1 too: find one in `levels.txt` with set-0 types 6, 8 or
+10, drive it, match those types on screen with `py/objgfx.py`'s decoder and confirm the trap with no pokes. Then fold
+the object pictures into the infographic, `JOBS=2 infographic/build.sh`, and ask Dave before republishing.

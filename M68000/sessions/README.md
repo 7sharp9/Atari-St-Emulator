@@ -8,6 +8,7 @@ continuation record: the next-session prompt is always the one line `/resume <wo
 | `black_tiger.md` | Black Tiger reversing (`reversing/black_tiger/`) |
 | `blog.md` | blog posts for 7sharp9.dev curated from the game research (`~/GitHub/7sharp9.github.io`, `IDEAS.md`) |
 | `cadaver.md` | Cadaver spike (`reversing/cadaver/`) |
+| `captainblood.md` | Captain Blood reversing: the UPCOM conversation rules, galaxy, canyon flight (`reversing/captainblood/`) |
 | `captive.md` | Captive reversing: disk format, base generator `fed_MapGen` (`reversing/captive/`) |
 | `carriercommand.md` | Carrier Command reversing: enemy AI, economy, 3D engine, vehicles (`reversing/carriercommand/`) |
 | `commander.md` | an LLM commander for PowerMonger with A* movement and a rollout/SSM forecaster (`reversing/powermonger/commander/`) |
