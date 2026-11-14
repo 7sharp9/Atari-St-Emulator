@@ -65,3 +65,16 @@ grep '^stow:' "$t.a" | sed 's/;.*//'
 cat "$t.a" "$t.b" "$t.c" | awk '$1=="control"{split($5,r,"/"); key=$2; seen[key]=1; if (r[1]<r[2]) br[key]=1}
   END{n=0; b=0; for (k in seen) {n++; if (k in br) b++; else u=u" "k}; printf "landing controls %d/%d (unexercised:%s)\n", b, n, u}'
 rm -f "$t.a" "$t.b" "$t.c"
+# Manta runway touchdown on island 0's airstrip (runway_proof.py, from m_air.snap): one tick either side of every
+# limit of the touchdown test, then the taxi and parking (states 4 and 5) per tick from a lined-up approach and from
+# a skewed slow one. Controls as for the flight runs (clr_bug: the $1d53e clr.w side effect, switched off).
+t=${TMPDIR:-/tmp}/cc_runway.$$
+$py "$here/runway_proof.py" window | grep '^window cases' | awk '{printf "runway window %d/%d\n", $5, $3}'
+$py "$here/runway_proof.py" taxi 400 > "$t.a" 2>&1
+$py "$here/runway_proof.py" taxi 450 150 -3500 120 3000 40 > "$t.b" 2>&1
+for k in a:lined-up b:skewed; do
+  grep '^taxi ticks' "$t.${k%%:*}" | awk -v n="${k#*:}" '{printf "taxi %s %d/%d\n", n, $5, $3}'
+done
+cat "$t.a" "$t.b" | awk '$1=="control"{split($5,r,"/"); key=$2; seen[key]=1; if (r[1]<r[2]) br[key]=1}
+  END{n=0; b=0; for (k in seen) {n++; if (k in br) b++; else u=u" "k}; printf "taxi controls %d/%d (unexercised:%s)\n", b, n, u}'
+rm -f "$t.a" "$t.b"

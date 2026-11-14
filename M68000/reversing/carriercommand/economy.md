@@ -32,7 +32,7 @@ draws the archipelago from these tables with the supply graph of section 3 (`py/
 | Record | Base | Stride | Fields |
 |---|---|---|---|
 | island | `$69b80` | 402 | +0 protected flag (`$ff` on island 0), +2/+6 x/y longs, +10/+12 w/h, +14 area `(w*h)>>16`, +18 32 structure slots of 12 bytes |
-| structure slot | record+18 | 12 | +0 type, +4 progress or HP, +6 supported flag / owner-type code, +8/+10 local x/y; slot 0 is a header (type 8) |
+| structure slot | record+18 | 12 | +0 type word (the type is its low byte, +1), +4 progress or HP, +6 supported flag / owner-type code, +8/+10 local x/y; slot 0 is a header (type 8) |
 | owner | `$69b40` | 1 | 0 free, 1 player, 2 enemy |
 | economy | `$66ec0` | 50 | +0 type (0 BASE, 1 RESOURCE, 2 FACTORY, 3 DEFENCE), +2 output stock, +4 its cap (2 x area), +6 count of supported `$2a/$2e/$2b` slots, +7 command-centre flag, +8 materials, +10 their cap, +12 production-line count, +14 up to 3 lines of 12 bytes |
 

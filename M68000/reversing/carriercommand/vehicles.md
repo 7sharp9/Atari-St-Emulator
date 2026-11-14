@@ -21,6 +21,8 @@ Proof labels as in `ai.md`. Gate: `py/units/gate_units.sh` (`gates.toml` "units"
 | Manta airborne autopilot per tick (slot and entity), the launch flight, a cruise above the ceiling, a low hull | `flight_proof.py` | 300/300, 400/400, 400/400, controls 22/26 |
 | Manta fuel every 16th frame, full hull and hull 256 | `fuel_proof.py` | 300/300 and 300/300 |
 | Manta deck landing per tick (21 fields: slot, entity, `$dcc`, `$122c`), carrier at rest, carrier turning, from 12,000 out; then the lift down to the hangar | `landing_proof.py` | 250/250, 400/400, 500/500, controls 23/32; stow after 11 ticks |
+| Manta runway touchdown, one tick either side of each limit on island 0's airstrip | `runway_proof.py window` | 23/23 cases |
+| Manta runway taxi and parking per tick (states 4 and 5), lined up and skewed | `runway_proof.py taxi` | 399/399, 449/449, controls 15/22 |
 
 ## 1. Carrier motion `$1e4a0`
 
@@ -210,15 +212,28 @@ the hull is 500 or less, from the fuel, floored at 0: about 1.2 a tick at speed 
 damaged one. 300/300 ticks with a full hull and 300/300 at hull 256; the same rule applied every frame matches 18/300.
 At zero fuel the Manta drops out of autopilot and falls (`$1cea6`, not driven).
 
-**Ground contact and runways (read from code, not yet driven).** Entity +60 points at an island block (`$62cda` or
-`$63cec`), which `$1b424` attaches when the craft is within 130,000 of an island and re-checks every 24 to 31 ticks
-(live in `m_takeoff.snap`: the Manta and the carrier both hold `$62cda`). From `$1ccb0`, at altitude 35 or less the
-craft loses 2000 hull a tick (`$1d968`, which destroys it at 0 through `$1c788` and `$18e30`). Between 36 and 149,
-inside the island's box: if the block's record 1 is an airstrip (type `$24`, "has landed on runway"), the position
-in the runway's frame within 200 across and -4000 to 2000 along, both sticks within 120 and 80, heading within 4000
-of the runway's and speed at most 100, the Manta lands (+0 = 1, +28 = 4); a wrong place costs 500 and a bad approach
-100, with the altitude floored at 145 and the pitch stick pulled toward 100 by 30 and the roll stick shaken by the
-RNG. Over open sea between 36 and 149 nothing happens.
+**Ground contact and runway touchdown (proven, `runway_proof.py window`).** Entity +60 points at an island block
+(`$62cda` or `$63cec`), which `$1b424` attaches when the craft is within 130,000 of an island and re-checks every 24
+to 31 ticks (live in `m_takeoff.snap`: the Manta and the carrier both hold `$62cda`). The shared flight code
+`$1ccb0` runs after the autopilot's steer and before the speed update and the move, and for a craft on autopilot only
+in states 0 to 3. At altitude 35 or less the craft loses 2000 hull a tick (`$1d968`, which destroys it at 0 through
+`$1c788` and `$18e30`). Between 36 and 149, inside the island's box (block +48/+50 half extents): if the block's
+record 1 (block +82) is an airstrip (type `$24`), the position minus the block and the record's offset (+10/+14 words),
+rotated by minus the record's heading (+6), must lie within 200 across and -4000 to 2000 along; both sticks within
+120 and 80, the heading within 4000 of the runway's and the speed (+6, before this tick's update) at most 100. Then
+the Manta lands: "has landed on runway", +0 = 1 (the destination flag is cleared with the rest), +28 = 4, phase 0,
+and state 4 runs the same tick. A wrong place costs 500 and a bad approach 100, with the altitude floored at 145, the
+pitch stick pulled toward 100 by 30 and the roll stick shaken by the RNG. Over open sea between 36 and 149 nothing
+happens.
+
+On island 0's airstrip (record 1 at block offset (2000, 7000), heading 12000. In `c_s30.snap` nine islands have one, structure slot 1 of the island record: the player's home and
+the enemy's eight starting islands 49, 50, 52 to 56 and 63), 23
+one-tick approaches from `m_air.snap` each give the outcome the code predicts, 23/23: a landing at 200 across and a
+wrong place at 201 on both sides, the same at -4000/-4001 and 2000/2001 along, a landing at roll stick 152 and pitch
+stick 90 and a bad approach at 153 and 91 (the tick's steer first moves them by 32 and 10, so these are the limits
+120 and 80), heading 4000 off either way against 4001, speed 100 against 101, altitude 149 against 150 (no test, still
+flying) and 36 against 35 (2000 hull lost). After a bounce the altitude reads 147 to 153: the floor of 145 plus that
+tick's climb.
 
 **Deck landing `$1cfc2` (proven, `landing_proof.py`).** The land command `$11bf6` acts on the selected Manta
 (`$490`/`$494`) when it is within 16,384 of the carrier (sum of squares of the word offsets), the lift is at rest and
@@ -259,14 +274,40 @@ then lowers the Manta from 180 to 20 in 10 ticks, the next tick gives +28 = 0, +
 and the lift is at rest ten ticks after that (`landing_proof.py --stow`, a record: the lift's own motion `$1e838` is
 not modelled). The abort command `$11e76` returns the Manta to state 3 while the phase is 3 or less (read from code).
 
-**Runway states 4 to 6 (read from code, not yet driven).** On an island airstrip, a touchdown (above) gives state 4, which taxis in the runway's frame to
-(0, 2650) at speed 64 and altitude 120, then to a bay by slot (x = 600 i - 900, z 3270 or 3720) at speed 8, turns
-round and settles to altitude 100: state 5, parked, refuelling 64 a tick and destroyed if more than 260,000 from
-the carrier. A launch request (slot +0 bit 5, set from the UI at `$12ecc`) gives state 6 if the airstrip still
-stands ("Runway damaged - cannot take off" otherwise): it taxis to (0, 2700) at speed 12, climbs toward 155 while
-rolling to (0, -3000), throttles to 200 once lined up, and becomes airborne (+28 = 3) with a holding point 6000
-along the runway if it has no destination. Speed has no minimum in states 4 to 6. Every craft in states 4 to 6
-reads entity +60 without a null check.
+**Runway taxi and parking, states 4 and 5 (proven, `runway_proof.py taxi`).** State 4 dispatches on the phase
+through a longword table at `$1d4cc` with A5 the block and A6 its record 1. Points are in the runway's frame, placed
+in the world by `$1d7d4` (rotate by the runway heading, add the record's offset as words, then the block's position);
+`steer` is `$1d812`: heading toward atan2 of the offset to the point by `$200`, the speed update `$1d880` (whose lower
+bound is 0 in states 4 to 6), and the move `$1cf58` with the entity's own pitch.
+
+```
+phase 0 (taxi):    demand 64;  both sticks, roll and pitch decay;  altitude (its low word) toward 120 by 8
+                   offset to (0, 2650) within 150 on both axes: phase 1, altitude 120, sticks, pitch and roll 0
+                   steer to (0, 2650)
+phase 1 (to bay):  demand 8;  the bay of slot i is (600 i - 900, 3270 for slots 0 and 3, else 3720)
+                   within 20 on both axes: phase 2, demand 0, speed 0;  steer to the bay
+phase 2 (turn):    roll stick decays;  if the heading is already the runway's + $8000: phase 3;
+                   heading toward it by $400;  move (speed 0)
+phase 3 (settle):  altitude -= 1;  at 100 or less: altitude 100, pitch -694, +28 = 5
+state 5 (parked):  fuel += 64 a tick, $7fff when it overflows;  slot +46 = 2 (out of radio range): destroyed;
+                   slot +0 bit 5 (launch request): state 6 if record 1 is still an airstrip
+```
+
+The tick phase 0 ends steers wrong: the `clr.w D0` at `$1d53e` that zeroes the sticks also clears the low word of the
+x offset `$1d812` is about to steer by, so a Manta just short of the point and left of it (offset -1 to -150, high
+word `$ffff`) aims at a point 65,536 to the side and turns the full `$200` the wrong way for one tick; phase 1 then
+turns it back. Two runs from the touchdown match all 16 fields of slot 0 and its entity on every tick: lined up from
+(0, -3000) at speed 60, 399/399 (phases at ticks 1, 88, 241, 265, parked at 285 at runway frame (-885, 3259) facing
+down the runway, fuel back to `$7fff`), and from (150, -3500) at altitude 120, 3000 off the runway heading, speed 40,
+449/449 (parked at 293). Nudging each constant by one, or switching the `clr.w` side effect off, breaks a tick in at
+least one run for 15 of 22; the seven left are the slot terms (only slot 0 was driven: 600, 3720), the two arrival
+windows 150 and 20 (never sat on) and the hull speed limit, never binding at speed 64; their values are read from code.
+
+State 6 (read from code, not yet driven) refuses with "Runway damaged - cannot take off" when record 1 is no longer an
+airstrip; otherwise it taxis to (0, 2700) at speed 12, climbs toward 155 while rolling to (0, -3000), throttles to 200
+once lined up, and becomes airborne (+28 = 3) with a holding point 6000 along the runway if it has no destination.
+The launch request bit is set from the UI at `$12ecc`. Every craft in states 4 to 6 reads entity +60 without a null
+check.
 
 Inferred from code:
 
@@ -282,8 +323,8 @@ Inferred from code:
 
 ## 6. Open
 
-- Drive a runway touchdown on an airstrip island (states 4 to 6) per tick as `landing_proof.py` does, then the
-  ground contact damage below altitude 150. The lift's own motion (`$1e838`), up and down.
+- The runway take-off (state 6) from a parked Manta, per tick as `runway_proof.py` does; the other slots' bays.
+  The lift's own motion (`$1e838`), up and down.
 - The Walrus launch and driving.
 - An autopilot run with an island across the course, to show the carrier grounding instead of steering round.
 - Walrus fuel (+8) and the "Fuel Transfer" / "Set Fuel Priorities" screens (the Manta's burn is proven, section 5).
