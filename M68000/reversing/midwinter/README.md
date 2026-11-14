@@ -9,9 +9,10 @@ ski view with a Bomber attacking, all unmodified apart from one poke that stubs 
 ## Design digest
 
 The game's rules restated for re-use in another design, without addresses. Each line names the section that proves
-it (T = `terrain.md`, A = `ai.md`); anything not proven there is labelled inferred. It covers what is decoded so far:
+it (T = `terrain.md`, A = `ai.md`, G = `graphics.md`); anything not proven there is labelled inferred. It covers what is decoded so far:
 the island, the enemy army, the encounters, the attacks on the player, the player's weapons, sabotage, the period
-end and the endings, and recruitment. The 3D renderer and the vehicles' handling are not decoded yet.
+end and the endings, and recruitment, and from the 3D renderer the terrain cell scan and one frame's pipeline. The
+rest of the renderer (clipping, polygon building, objects) and the vehicles' handling are not decoded yet.
 
 ### What carries the game
 
@@ -73,6 +74,10 @@ end and the endings, and recruitment. The 3D renderer and the vehicles' handling
 
 - **No stored map detail.** 2,500 heights and a hash give the whole island at 32 times their resolution, with the
   same ground on every visit. (T)
+- **The terrain is never sorted.** The view lists 150 cells in eight square rings around the camera, in world axes,
+  and draws the outermost ring first; the heading only picks one of eight stored flag rows that prune the half of the
+  square behind the player, 45 degrees at a time. The camera's cell does not change the list. Ring order is not depth
+  order, so some neighbouring cells are drawn nearer-first (inferred from the model; not seen on screen). (G 5a)
 - **The 3D view never simulates the army.** The strategic layer stays a cheap graph walk run between turns, and the
   view only has to animate one unit's vehicles near the player, using simple rules (follow a route, or wander and
   turn with chance 1 in 16). (A 2, A 3)
