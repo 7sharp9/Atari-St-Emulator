@@ -33,3 +33,20 @@ $py "$here/takeoff_proof.py" "$S" 644=00400000:4 648=00300000:4 > "${TMPDIR:-/tm
 grep '^takeoff ticks' "${TMPDIR:-/tmp}/cc_takeoff.$$" | awk '{printf "takeoff carrier turning %d/%d\n", $5, $3}'
 grep '^controls broken' "${TMPDIR:-/tmp}/cc_takeoff.$$" | awk '{printf "takeoff controls %s\n", $3}'
 rm -f "${TMPDIR:-/tmp}/cc_takeoff.$$"
+# Manta airborne autopilot ($1d354 + the shared flight code, flight_proof.py) from m_takeoff.snap: the launch flight,
+# a high cruise speed with a target above the 3500 ceiling, and a low hull with a target below take-off altitude.
+# A constant counts as controlled when nudging it breaks a tick in at least one of the three runs.
+M=$work/manta/m_takeoff.snap
+t=${TMPDIR:-/tmp}/cc_flight.$$
+$py "$here/flight_proof.py" "$M" 300 > "$t.a" 2>&1
+$py "$here/flight_proof.py" "$M" 400 4c2=00c8:2 4ba=00000fa0:4 > "$t.b" 2>&1
+$py "$here/flight_proof.py" "$M" 400 4ac=0100:2 4ba=0000012c:4 > "$t.c" 2>&1
+for k in a:launch b:ceiling c:low-hull; do
+  grep '^flight ticks' "$t.${k%%:*}" | awk -v n="${k#*:}" '{printf "flight %s %d/%d\n", n, $5, $3}'
+done
+cat "$t.a" "$t.b" "$t.c" | awk '$1=="control"{split($5,r,"/"); key=$2; seen[key]=1; if (r[1]<r[2]) br[key]=1}
+  END{n=0; b=0; for (k in seen) {n++; if (k in br) b++; else u=u" "k}; printf "flight controls %d/%d (unexercised:%s)\n", b, n, u}'
+rm -f "$t.a" "$t.b" "$t.c"
+# Manta fuel ($1ce56, every 16th frame by $8fb; fuel_proof.py), full hull and hull 256 (the +$100 branch)
+$py "$here/fuel_proof.py" "$M" 300 | grep '^fuel ticks' | awk '{printf "fuel full hull %d/%d\n", $5, $3}'
+$py "$here/fuel_proof.py" "$M" 300 4ac=0100:2 | grep '^fuel ticks' | awk '{printf "fuel low hull %d/%d\n", $5, $3}'

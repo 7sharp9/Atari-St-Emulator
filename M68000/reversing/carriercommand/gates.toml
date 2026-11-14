@@ -30,9 +30,9 @@ minutes = 1
 name = "units"
 cmd = "bash gate_units.sh"
 cwd = "py/units"
-expect = ["150/150", "600/600", "529/529", "10/10", "12/12", "5/5", "re:takeoff at rest 42/42", "re:takeoff carrier turning 42/42", "re:takeoff controls 11/13"]
+expect = ["150/150", "600/600", "529/529", "10/10", "12/12", "5/5", "re:takeoff at rest 42/42", "re:takeoff carrier turning 42/42", "re:takeoff controls 11/13", "re:flight launch 300/300", "re:flight ceiling 400/400", "re:flight low-hull 400/400", "re:flight controls 22/26", "re:fuel full hull 300/300", "re:fuel low hull 300/300"]
 cite = "vehicles.md (proof table)"
-minutes = 4
+minutes = 9
 
 [[gate]]
 name = "difficulty"
