@@ -1,11 +1,11 @@
 # Carrier Command: handoff
 
-Updated 2026-11-14 by the session that ended at commit `d6d7d69`.
+Updated 2026-11-14 by an overseer session that promoted a subagent's leftovers pass (commit `06754e9`).
 
 ## Resume point
 
-- Last commit of this workstream: `d6d7d69` carriercommand: README cites the cold-boot hits command for the
-  Alt+Help message (work: `f3910d8` deck landing, `201db69` runway, `912de8c` runway take-off and hidden keys,
+- Last commit of this workstream: `06754e9` carriercommand: leftovers settled (before it: `d6d7d69` README cites the
+  cold-boot hits command for the Alt+Help message; work: `f3910d8` deck landing, `201db69` runway, `912de8c` runway take-off and hidden keys,
   `bf45541` hidden gate, `fcd1b5f` Walrus).
 - Working data: `M68000/scratchpad/carrier/` (rebuild recipe: `reversing/carriercommand/README.md` "Running it"
   and "Snapshots"; `tools/recipe.py` rebuilds the c80 -> c_s30 chain; indexed in `scratchpad/ANCHORS.md`). Manta
@@ -17,8 +17,8 @@ Updated 2026-11-14 by the session that ended at commit `d6d7d69`.
 
 ## Proven so far
 
-Gates: `uv run python tools/gates.py run carriercommand`, 6/6 PASS (render, economy, target, units, difficulty,
-hidden) at `cac9388` (the commits after it change docs only).
+Gates: `uv run python tools/gates.py run carriercommand`, 7/7 PASS (render, economy, target, units, difficulty,
+hidden, leftovers) at `06754e9`.
 
 - Enemy target choice, missile-site range, economy, renderer: unchanged (`ai.md`, `economy.md`, `render.md`).
 - Carrier, atan, repair, flares, Manta take-off, flight, fuel: unchanged (`vehicles.md` proof table).
@@ -30,6 +30,14 @@ hidden) at `cac9388` (the commits after it change docs only).
   section 5 "Walrus").
 - Hidden keys (Ctrl+V, Alt+Help, Ctrl+S/Q), cheat keypad 6/7/8, the disabled "Andy's exception handler": 11 trials
   against no-key controls (`py/curio/hidden.py`; README "Hidden keys and leftovers", `ai.md` section 7).
+- Leftovers (`py/curio/leftovers.py`, gate `leftovers`; README "Hidden keys and leftovers"): view 33 `$15978` is the
+  title screen's 3D view (54 arrivals in 3M steps from `c_eng.snap`, main loop `$3a04` 0); with the cheat flag `$1185`
+  poked, keypad + and - step the model type `$64d12` 1 to 2 and 1 to 73 (1/1 each, no-cheat control stays 1).
+  `$118e` counts models drawn per frame, 6/6 windows, broken control 0/6. `$14048` is an economy debug print with no
+  reference in the image, shown by poking view 0's table entry (`debug_dump.png`). Forced calls: `$3dbc` spawns a
+  type-`$21` aircraft at (5000, 500, -10000) against an all-zero control, `$1e462` is a hull-damage helper 2/2.
+  "Unreferenced" rests on static scans plus an idle 16-snapshot census, not a proof. `$1f7e4` and `$1ecb6` are live
+  code behind the inline string "Bomb dropped." and an inline sound word.
 
 ## Running
 
@@ -44,8 +52,11 @@ Nothing running.
 3. An attack run to capture: `ai/atk2.txt` with the time-bomb poke, round by round against `ai.md` section 4.
 4. Drone launcher `$25` and the command centre's missiles: A/B on difficulty.
 5. Production priorities and fuel screens (`$22770`, `$228d2`).
-6. Curiosity leads not proven (agent record): debug dump `$14048`, view 33 (`$15978`), dead-code candidates `$3dbc`,
-   `$1f7e4`, `$1e462`, `$1ecb6`, `$2119e`, `$19e1c` (need a hits census), what `$118e` counts, the save format
+6. Leftovers still open: how the shipped title selects slot 5 (no button record does: `watch` the `$718`/`$722`
+   writers from a cold boot); whether the cheat flag `$1185` survives to the title (set it in play, return to the
+   title, press keypad +); reach `$1f7e4` (Manta bomb release through `$1cc76`) and `$1ecb6` (carrier fire-key exit)
+   by driving a bomb drop and a fire key under `hits` with a control; the forced call of `$2119e` (FDC Read Track into
+   the noise table) sticks at `$201d0`: an unmodelled Read Track or the crack's stale FDC state; the save format
    driven through the save screen.
 
 ## Known traps
@@ -60,6 +71,10 @@ Nothing running.
 - Walrus docking tests with the carrier reversing (`644=00400000 648=00300000` gives speed -32) run the Walrus down
   (2000 hull a bump, `$1bb4e`): use the carrier at rest for docking.
 - `subdivide.py`'s silhouette IoU needs 600 px.
+- A plain `call_resume` of a drawing routine (`$14048`) draws into the back buffer: poke a view-table entry so the
+  game's own flip shows it.
+- The listing decodes inline strings and sound words as code, so a "dead" candidate can be a live branch target
+  (`$1f7e4`, `$1ecb6`): read the bytes first. The idle 100M census runs the main loop but no combat, bombs or sound.
 
 ## Waiting on Dave
 

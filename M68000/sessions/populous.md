@@ -1,10 +1,12 @@
 # Populous: handoff
 
-Updated 2026-10-31 by the session that ended at commit `30cb24f` (hidden hooks run live).
+Updated 2026-11-14 by an overseer session that promoted a subagent's causeway planner (commit `4eb9690`). The rest
+stands as the 2026-10-31 handoff left it (`30cb24f`, hidden hooks run live).
 
 ## Resume point
 
-- Last commits of this workstream: `30cb24f` (hidden hooks live, `py/hooks/`), `e77989a` (fight start / join live, knight cast from `fight1`),
+- Last commits of this workstream: `4eb9690` (cheapest causeway planner, `py/causeway/`), `30cb24f` (hidden hooks
+  live, `py/hooks/`), `e77989a` (fight start / join live, knight cast from `fight1`),
   `564f233`..`c0b9ad7` (the swamp-monster edge measured on real Hatari), `a74f2ae` (docs audit).
 - `bin/` is built from HEAD (`249562d`, 2026-10-25). The emulator changed a lot since `a74f2ae` (MFP
   vector base and pending-clear, bus errors above `$400000`, `hits`/`bpc` count instruction starts,
@@ -63,6 +65,14 @@ Five topic docs, each count in the table at the top of `reversing/populous/READM
   emulator's count. The check was mutation-tested (7 of 8 deliberate bugs caught).
 - The emulator is deterministic across Windows and macOS on the recipe path: `repro` frame 285 and
   late1..4 frames 835/1328/1763/2161, evil mana 7485.
+- Cheapest causeway (`terrain.md` "Causeways", `py/causeway/README.md`): a sea-corner raise always costs 14 mana and
+  one raised corner makes up to four cells walkable (`$c0ee`); the planner (A* over cell and raised corners) is
+  optimal for sea-corner raises, 6/6 gaps against exhaustive search (`py/causeway/opt_check.py`), and never dearer
+  than a straight line or greedy over 31 gaps (`table.py`). Four gaps driven through the mouse UI: per-click 12/12
+  at 14 mana, height map 4225/4225 against the model on the no-click control run, mana -42, -28, -28, -70 as
+  predicted, walkable cells 4096/4096, start and goal connected only with the clicks (`py/causeway/gate.py`; g1 and
+  g4 rerun from the promoted path, g2 from the working copy). The gates poke own walker 7 into the view so the land
+  click acts; no walker was walked across.
 
 ## Running
 
@@ -87,6 +97,11 @@ Nothing running.
    swamp, ruins) has no traced table entry, so the page draws them as plain land.
 4. Lowest: the serial link (`$19652`, needs a second emulated machine; it would also show sub 15
    arriving through `$183b4`); the LORD/MOUTHS speech.
+5. **Causeways** (`py/causeway/`): walk a walker across one (place it at the start with the magnet at the goal and
+   `watch` its cell; the same walker without the clicks drowns); add land-corner raises and lowering to the planner
+   (cascade costs through `Gen.raise_pt`) with a gate on a raised-land gap; gate one flattened site (`flatten.py` is
+   model-only: 3, 4 and 8 clicks on three sites, with a lower bound too weak to judge them). A snapshot with an own
+   settlement within 8 cells of a gap would need no poke.
 
 For the emulator workstream: Timer A is a stub (64 interrupts per frame), so sampled sound plays at
 the wrong rate (`systems.md` 6.2).

@@ -1,17 +1,18 @@
 # Populous II: handoff
 
-Updated 2026-11-14 by an overseer session that promoted a subagent's computer-god pass (commit `ef4cf2a`).
+Updated 2026-11-14 by an overseer session that promoted a subagent's computer-god model (commit `6d78094`).
 
 ## Resume point
 
-- Last commit of this workstream: `ef4cf2a` populous2: the computer god is `$25652`, 9 gates.
+- Last commit of this workstream: `6d78094` populous2: the computer god as a model, 10 gates.
 - Working data: `M68000/scratchpad/populous2/` (`src/WILD29.MSA` from the Dropbox `WILD! #29.zip`, `wild29.st`,
   `files/`, `anchors/`, `pop2_1770.bin` the depacked image, `pop2_all.asm` the whole-image listing). Rebuild:
   `reversing/populous2/README.md` "Provenance" and "Drive recipe".
 - Start from: `scratchpad/populous2/anchors/p2_game_start.snap` (first play frames, conquest battle 0 vs
   Epimetheus; sidecar remounts `wild29.st`), or `p2_game_60m.snap` 60M steps on with no input.
-- Uncommitted work left behind: none. `uv run python tools/gates.py run populous2`: 9/9 PASS at `ef4cf2a`. The
-  subagent's listings and logs are in `scratchpad/populous2/agents/god/` (`report.md`).
+- Uncommitted work left behind: none. `uv run python tools/gates.py run populous2`: 10/10 PASS at `6d78094`. The
+  first god pass's listings are in `scratchpad/populous2/agents/god/`; the model's full-run output is
+  `scratchpad/populous2/god/run_all.out`.
 
 ## Proven so far
 
@@ -42,7 +43,14 @@ Updated 2026-11-14 by an overseer session that promoted a subagent's computer-go
 - The computer god is `ai_run_sides` `$25652`: one command a tick into the mouse's command record, human skipped by
   side record +26 (2 human, 4 computer); computer branch 143 / 0 / 268 over 12M steps unpoked / side 2 human / side 1
   computer, every executed command one of its posts (`py/god_census.sh`, gate `god_census`; README "The computer
-  god"). Its four cascade stages and the mailboxes the entity update fills are read, not modelled.
+  god"). Its cascade is modelled (next line).
+- The god as a literal port, `py/god/god_model.py`: its changed-byte set equals `callcap` of `$25652` on 1424/1424
+  unpoked ticks, 1000/1000 with side 1 switched to computer (one poke, the controller word `$47118`), and 498/498
+  labelled poked stage variants; broken controls 0/400, 211/400, 493/498, 488/498
+  (`bash reversing/populous2/py/god/run_all.sh`, 60 to 70 minutes; the short form is gate `god_model`,
+  `py/god/gate_short.sh`). Side 1's reload word +104 is 0, so its cascade runs every tick; plan lists are built by
+  `$22cde` from the side's +112 power bytes; side 2's is empty on battle 0. Power kinds 2, 4, 6, 8 and the magnet
+  move onto the enemy's oldest settlement have run only in poked states (README "The computer god").
 - Cell codes `$2f`/`$3f` are side 1/side 2 settlement land, not rock: 13/13 settlements on their code, swapped
   0/13, unoccupied ones within 2 cells 28/28 (`py/owned_cells.py`); written by `$25298` in `$25168` (state 6).
 
@@ -52,10 +60,11 @@ Nothing running.
 
 ## Open, in priority order
 
-1. The computer god's unproven half (README "The computer god"): the cascade stages are read, not modelled; the power
-   and magnet stages (`$25a32`, `$25bf4`) ran only under pokes, so reach a later battle whose plan list is not empty;
-   drive controller `$12` from the options screen; read side 1's reload word +104 (the cascade ran on 122 of 134
-   ticks with side 1 poked to computer). Then the entity states beyond 2/4/6 (table `$2311c`) and `$24f3a`
+1. The computer god in a later battle (README "The computer god"): side 2's plan list is empty on battle 0, and
+   poking the battle number `$473a0` to 10, 40 or 100 before the briefing click changed nothing. Read how `$22ec0`
+   fills the +112 power bytes from `$47d3e`/`$47d78`, reach a later battle through the conquest map, and `hits`
+   census `$25a32` and `$25b5e` there; that also runs power kinds 2, 4, 6, 8 and the magnet move unpoked. Drive
+   controller `$12` from the options screen. Then the entity states beyond 2/4/6 (table `$2311c`) and `$24f3a`
    (state 2's test), `$24a92`; drive a walker into a settle or a fight so the other states run under `hits`.
 2. People placement `$22986` (last pass of `build_world`): from `build/c_22986.snap` callcap it and model the
    entity, `$46f9a` and side-record writes (listed by diffing `c_22986` and `d_after`).
@@ -79,6 +88,9 @@ Nothing running.
   `tools/disassemble.py --rom scratchpad/populous2/pop2_1770.bin --base 1770 <lo> <hi>` for handler bodies.
 - The pointer is not visible in every render (drawn into `$392dc` only when the hide count `$2246` is 0); read
   `$393fa`/`$393fc` instead of looking for it.
+- `py/god/god_gate.py --poke` addresses need `0x`: a bare `47118` is decimal and pokes `$b80e`.
+- `stserver`'s `hits` counted `$25bf4` twice when the VBL was taken exactly there (tick 808 of the side-1 arm:
+  `$25bf4`, `$2aa4e`, `$25bf4`; 385 against the model's 384, `py/god/god_hits.py`). The REPL census was not tried.
 
 ## Waiting on Dave
 
@@ -87,6 +99,6 @@ Nothing running.
 
 ## Next session
 
-1. `/resume populous2`; `uv run python tools/gates.py run populous2` should print 9/9 PASS.
+1. `/resume populous2`; `uv run python tools/gates.py run populous2` should print 10/10 PASS.
 2. Open item 2 (`$22986` people placement), which finishes the world build; then item 3 (land claim).
-3. Then open item 1: a model of the computer god's cascade against `callcap` of `$25652`, and a later battle.
+3. Then open item 1: a later battle where side 2's plan list is not empty.

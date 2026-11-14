@@ -1,11 +1,12 @@
 # Midwinter: handoff
 
-Updated 2026-11-14 by an overseer session that promoted a subagent's 3D-pipeline pass (commit `2ae7dfe`).
+Updated 2026-11-14 by an overseer session that promoted a subagent's cell-scan pass (commit `3abbaaf`).
 
 ## Resume point
 
-- Last commit of this workstream: `2ae7dfe` (the 3D view for one frame, `graphics.md`). Only the new `pipeline` gate
-  was run this session (1/1 PASS); the other eight were not re-run.
+- Last commit of this workstream: `3abbaaf` (the terrain cell scan per heading, `graphics.md` 5a). All ten gates were
+  run from their promoted paths this session: 10/10 PASS. The `scan` gate needs the `pipeline` gate run first (it reads
+  `scratchpad/midwinter/pipeline/f1_start.snap`).
 - Working data: `M68000/scratchpad/midwinter/` (indexed in `scratchpad/ANCHORS.md`, which does not list `sabotage/`,
   `shot/` or `recruit/` yet: another session holds uncommitted edits to it). Rebuild: unzip
   `~/Library/CloudStorage/Dropbox/Daves/ST games/Zuul #67.zip`, `tools/msa2st.py ZUUL067.MSA zuul067.st`,
@@ -34,7 +35,14 @@ Updated 2026-11-14 by an overseer session that promoted a subagent's 3D-pipeline
   control. Every `$2b16c` writer listed (18 `lea` sites).
 - The 3D view for one frame at one pose (`graphics.md`): projection 190/190 vertices, edge scan 713/713 rows, span fill
   110/110 fills and 90/90 terrain polygons from the model's own edges (`py/pipeline/run.sh`, gate `pipeline`).
-- All nine gates: `uv run python tools/gates.py run midwinter`. The design digest covers all.
+- The terrain cell scan `$16cf6` (`graphics.md` 5a): eight world-axis rings pruned by one of 8 per-octant flag rows;
+  `py/scan/scan_model.py` reproduces the game's `$18f02` list for 40 headings and 6 camera cells, 6900/6900 cells in
+  order, 46/46 headings identical; broken control (last `$17140` word 2 to 3) 6405/6900, 0/46
+  (`bash reversing/midwinter/py/scan/run.sh`, gate `scan`). Headings and poses are labelled pokes. The model's three
+  tables are literals copied from RAM: the gate proves the control structure and the octant formula.
+- Projection and outcode at headings 100, 300, 640, 899: 190/190 each, from the game's camera-space records (same
+  script). That neighbouring cells are sometimes drawn nearer-first is inferred from the model, not seen on screen.
+- All ten gates: `uv run python tools/gates.py run midwinter`. The design digest covers all.
 
 ## Running
 
@@ -42,10 +50,13 @@ Nothing running.
 
 ## Open, in priority order
 
-1. **3D pipeline** (`graphics.md` section 6): the frame's stages, buffers, projection, edge scan and fill are proven
-   for one frame at heading 0. Next, in order: the cell scan per heading (poke `$12c98`, compare with `$18f02`),
-   vertices at other poses, the clip and polygon builders, the object renderer `$1dd14`, then a whole frame pixel for
-   pixel. The aim pick `$19e76` (the handoff's old `$19ec4`) needs a driven snipe.
+1. **3D pipeline** (`graphics.md` sections 5a and 6): the stages are proven for one frame at heading 0, the cell scan
+   and the projection at other headings. Next, in order: the per-cell record payload (+8, +10, +12), the corner tags
+   `$17160` and what `$17170` is for, from a snapshot at `$1835a` (a model matched N/N); the scan at the map edge
+   (cells 0 and 99: a pose poke plus the `scan` gate); whether the nearer-first inversions show on screen (a pixel
+   frame at an octant boundary against a depth-sorted redraw); the clip and polygon builders; the object renderer
+   `$1dd14`; then a whole frame pixel for pixel. The aim pick `$19e76` (the handoff's old `$19ec4`) needs a driven
+   snipe.
 2. **Combat and sabotage leftovers** (`ai.md` Open): a driven sniping kill ('S' at speed 0, `$131d8`, then Space,
    reusing `drive_kill.py`); an ordinary vehicle's kill; the glider shot `$20be6`; the surrender screen `$1137a`.
 3. **Recruitment leftovers** (`ai.md` Open): drive Kristiansen's radio (poke 12 as current, in the team, inside a
@@ -75,6 +86,10 @@ Nothing running.
   rebuilds it (`py/recruit/dnext.txt`).
 - `$70000` is the game's scratch list (`$fab4`): put a gate's scratch tables elsewhere (`$71000`).
 - The bio's mouse is 1:1 and icon rows are `(3, icon, x, y)` after a count word; the pointer is at `$24fa2`/`$24fa6`.
+- Poking the heading `$12c98` at `$14e00` is overwritten when the position is also poked (`$128b2` reloads it from
+  character record +46; `$13d8e` and `$14060` compute it for other vehicles): poke it at `$18304` for pose runs.
+- A camera poked off the island (cell (20,70)) runs other code; the capture stops at `$788`.
+- A snapshot at `$19ce2` has recycled cell records: use `$1835a` for per-cell data.
 
 ## Waiting on Dave
 
@@ -82,7 +97,7 @@ Nothing.
 
 ## Next session
 
-`/resume midwinter`. Item 1 (the 3D pipeline) is the largest remaining unknown: start with the cell scan per heading
-(`graphics.md` section 6). For a shorter task, item 2's sniping
+`/resume midwinter`. Item 1 (the 3D pipeline) is the largest remaining unknown: start with the per-cell record payload
+from a snapshot at `$1835a` (`graphics.md` sections 5a and 6). For a shorter task, item 2's sniping
 kill reuses `drive_kill.py`, or item 3's radio drive reuses `py/recruit/` (poke Kristiansen into the team and a Radio
 Station on `d_stark.snap`, select him with the bio arrow, then Decisions).

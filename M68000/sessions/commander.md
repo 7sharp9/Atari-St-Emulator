@@ -2,7 +2,9 @@
 
 ## Resume point
 
-- Last commit of this workstream: `52a1013` rollout at the LLM's 20M cadence wins land 2 7/30. Before it: `24cc325` hybrid placebo (`--backend rand`) wins land 2 7/30 against the Haiku
+- Last commit of this workstream: `77254ad` wall following against A* (`bug2/`, promoted from a subagent by an
+  overseer session on 2026-11-14; no emulator arm was run for it beyond one live pair). Before it: `52a1013` rollout
+  at the LLM's 20M cadence wins land 2 7/30. Before that: `24cc325` hybrid placebo (`--backend rand`) wins land 2 7/30 against the Haiku
   hybrid's 8/30; merged build repeats scripted o0..o5 exactly. Earlier this pass: `52ef030` (search arms at 30 starts,
   `outcomes.py`), `ce7cc93` (`--policy hybrid`), `6783242` (evaluation design, Haiku on rand1).
 - Builds: scripted, llm_haiku, hybrid_haiku and rollout o6..o29 (cmd14, last final snapshot 01:29) ran before merge
@@ -46,6 +48,15 @@ All in `reversing/powermonger/commander/README.md`; every gate re-run from its p
 - **The LLM adds nothing over a random proposer** on land 2: its candidates win the rollout's 40M score more often
   (207/712 against 92/633) but the outcomes do not differ (8 against 7 wins).
 - **Land 2's only second-group source** (README "A second side-1 group", `captains.py`): `$041a`, alive in 13 of 30.
+- **Wall following against A*** (README "Wall following against A*", `bug2/`; data `scratchpad/pm_bug2/`): the
+  census's 4230 stuck pairs hold 2417 reachable ones whose line crosses water (2202 distinct pairs, 133 men, six
+  maps: `bug2/extract_pairs.py`). The game-rule movement model calls 3751/3957 census-stuck pairs stuck; a
+  water-blind control 0/3957 (`bug2/control_water_blind.py`). 4-connected land labels agree with the A* triangle
+  graph on 4196/4196 pairs. Bug2 with one hand arrives for 2416 (left) or 2355 (right) of 2417 at a median 3.82x or
+  1.24x A*'s length (worst 335x, 613x); trying both hands is an oracle, 2417 at 1.17x (`bug2/report.py`). Its
+  failures are heading-quantisation loops (`bug2/check_quantisation.py`), and it loops on all 1003 unreachable
+  pairs, so it needs the labels. One pair walked live by poked waypoints against a stuck control
+  (`bug2/live_bug2.py`).
 
 ## Running
 
@@ -70,6 +81,10 @@ Nothing running.
    the RNG seed in play (`watch 2df84 4` from `cmd12/rngtest/start/o1/final.snap`; candidates `$10d22`, `$ffd8`,
    `$a9da`/`$a9e6`, `$718e`); land 3; movement with rollouts; the state-space forecaster (plan step 5), which is what
    makes many-start search arms affordable.
+6. **Movement inside the game** (`bug2/`): a cheap hand selector for the wall follower (a short look-ahead of both
+   coasts), scored by `bug2/report.py`'s ratio table against the both-hands 1.17x; the same scoring on census
+   series from other maps; moving targets, followers (word 28) and group hand-off in the model; more live pairs with
+   an arrival check per waypoint instead of fixed windows.
 
 ## Known traps
 
@@ -125,6 +140,8 @@ The PowerMonger traps in `sessions/powermonger.md` apply.
   longest 39, par 4) took 1h47 against an estimate of 1h. Estimate from the previous arm's measured wall time.
 - Six starts per LLM arm cannot resolve a prompt change: across v1/v2/v3 one start moves by up to 6 lords at 300M
   (paired differences v1 - v2: -2 -4 +5 +2 +6 -2, SD 4.1).
+- A waypoint poke needs about 1M steps per chunk to show: at 250k the man had not left mode `$48` and the poke
+  looked ineffective (`bug2/live_bug2.py`). The bug2 record counts are clustered (2417 records, 2202 pairs, 133 men).
 
 
 ## Waiting on Dave
