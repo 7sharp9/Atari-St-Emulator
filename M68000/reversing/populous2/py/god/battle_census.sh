@@ -9,7 +9,7 @@
 # $25dac mode byte), the plan stage $25a32 and executed commands $292e4.
 # Run from M68000/:  bash reversing/populous2/py/god/battle_census.sh [outdir] [steps] [battle ...]
 set -e
-cd "$(dirname "$0")/../../../.."
+d=$(cd "$(dirname "$0")" && pwd); while [ ! -f "$d/tools/rdis.py" ] && [ "$d" != / ]; do d=$(dirname "$d"); done; cd "$d"
 OUT=${1:-scratchpad/populous2/battle}
 STEPS=${2:-30000000}
 shift 2 2>/dev/null || shift $#

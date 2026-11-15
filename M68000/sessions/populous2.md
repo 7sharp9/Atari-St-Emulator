@@ -1,10 +1,10 @@
 # Populous II: handoff
 
-Updated 2026-11-15 after the land-claim pass (gate `claim_25168`) and the later-battles pass (gate `battle_god`).
+Updated 2026-11-15 by the session that ended at commit `31f1e70` (land claim, later conquest battles).
 
 ## Resume point
 
-- Last commit of this workstream: the land-claim commit after `5de36b7` (`git log --oneline -3 -- M68000/reversing/populous2`).
+- Last commit of this workstream: `31f1e70` populous2: conquest battles from CONQUEST.PAK (the handoff's script fixes follow it).
 - Working data: `M68000/scratchpad/populous2/` (`src/WILD29.MSA` from the Dropbox `WILD! #29.zip`, `wild29.st`,
   `files/`, `anchors/`, `pop2_1770.bin` the depacked image, `pop2_all.asm` the whole-image listing). Rebuild:
   `reversing/populous2/README.md` "Provenance" and "Drive recipe".
@@ -13,10 +13,10 @@ Updated 2026-11-15 after the land-claim pass (gate `claim_25168`) and the later-
 - Later battles: `bash reversing/populous2/py/god/battle_census.sh <out> 1 <N>...` writes `<out>/b<N>_start.snap`
   (battle N's first play frame, by a `$473a0` poke at `p2_title`); this pass's are in `scratchpad/populous2/battle/`
   (0, 10, 40, 100, 260, 285, 485, 635, plus 300M-step `b<N>_end.snap` for 10, 40, 100, 260, 285, 485, 635).
-- Uncommitted work left behind: none. `uv run python tools/gates.py run populous2`: 13/13 PASS at `15a8272` plus this pass (11 at `9a17a74`,
-  `claim_25168` and `battle_god` run singly at this pass's commits; it takes about 7 minutes, rebuilding its corpus in
-  `scratchpad/populous2/claim/`). The god model's full-run output is `scratchpad/populous2/god/run_all.out`;
-  the claim's full run (`claim_gate.py all`, 917 cases, 12 minutes) is `scratchpad/populous2/claim/all.out`.
+- Uncommitted work left behind: none. `uv run python tools/gates.py run populous2`: 13/13 PASS at `15a8272` with this
+  pass's files (about 11 minutes; `claim_25168` takes 7 of them, rebuilding its corpus in `scratchpad/populous2/claim/`).
+  Full-run outputs: the god model `scratchpad/populous2/god/run_all.out`, the claim (`claim_gate.py all`, 917 cases,
+  12 minutes) `scratchpad/populous2/claim/all.out`, the battle runs `scratchpad/populous2/battle/*.out`.
 
 ## Proven so far
 
@@ -53,8 +53,8 @@ Updated 2026-11-15 after the land-claim pass (gate `claim_25168`) and the later-
   labelled poked stage variants; broken controls 0/400, 211/400, 493/498, 488/498
   (`bash reversing/populous2/py/god/run_all.sh`, 60 to 70 minutes; the short form is gate `god_model`,
   `py/god/gate_short.sh`). Side 1's reload word +104 is 0, so its cascade runs every tick; plan lists are built by
-  `$22cde` from the side's +112 power bytes; side 2's is empty on battle 0. Power kinds 2, 4, 6, 8 and the magnet
-  move onto the enemy's oldest settlement have run only in poked states (README "The computer god").
+  `$22cde` from the side's +112 power bytes; side 2's is empty on battle 0; later battles run kinds 0, 2, 4 and the magnet move unpoked (Conquest battles line,
+  below); kinds 6 and `$a` have run only in poked states (README "The computer god").
 - Cell codes `$2f`/`$3f` are side 1/side 2 settlement land, not rock: 13/13 settlements on their code, swapped
   0/13, unoccupied ones within 2 cells 28/28 (`py/owned_cells.py`); written by the land claim (next line).
 - Land claim `claim_tick` `$25168` / `claim_land` `$251d8`: rings counted outward (ring 1 if the centre counts,
@@ -111,22 +111,27 @@ Nothing running.
 - The disk is MSA: `tools/msa2st.py` first; the game reads through its own FDC code, so `ATARI_TRACE_GEMDOS` goes
   silent after `pop2.tos` starts. Use `ATARI_TRACE_FDC=1` plus `py/fdc_files.py`.
 - `mouse down`/`up` need the button (`mouse down l`); a bare `mouse down` is a REPL error and the run goes on.
-- REPL `bt` crashes the emulator (fix `a85441e` on branch `claude/modest-dirac-449d9c`, not merged) (unhandled AddressError in `Backtrace`, `Program.fs:1649`) when A6 is odd, as it is
-  inside `$2436e` (A6 = `$2558b`): read the stack with `m <A7> 40` instead.
-- `pop2_all.asm` is a linear sweep and loses sync after jump tables (`$2311c`): use
-  `tools/disassemble.py --rom scratchpad/populous2/pop2_1770.bin --base 1770 <lo> <hi>` for handler bodies.
+- `pop2_all.asm` is a linear sweep and loses sync after jump tables (`$2311c`, `$22bcc`, `$25b00`): use
+  `tools/disassemble.py --rom scratchpad/populous2/pop2_1770.bin --base 1770 <lo> <hi>` for handler bodies, and
+  resolve a `jmp 2(PC,D0.w)` table from the image words (base = the table address). `disassemble.py` ended the
+  `$251d8` range at `$2526e`, mid-routine; the linear listing read on from there.
 - The pointer is not visible in every render (drawn into `$392dc` only when the hide count `$2246` is 0); read
   `$393fa`/`$393fc` instead of looking for it.
+- A later battle's number is read at the title's CONQUEST GAME click: poke `$473a0` on `p2_title`, never on the
+  briefing (`py/god/battle_census.sh`). The buffer `$47d28` holds `CONQUEST.PAK` at `p2_briefing` but other
+  data by `p2_game_start` (fourteen of the file table's 29 records load there): read battle records from `p2_briefing`.
 - `py/god/god_gate.py --poke` addresses need `0x`: a bare `47118` is decimal and pokes `$b80e`.
 - `stserver`'s `hits` counted `$25bf4` twice when the VBL was taken exactly there (tick 808 of the side-1 arm:
   `$25bf4`, `$2aa4e`, `$25bf4`; 385 against the model's 384, `py/god/god_hits.py`). The REPL census was not tried.
 
 ## Waiting on Dave
 
-- Whether to merge the `bt` fix branch `refs/heads/claude/modest-dirac-449d9c` (session "Fix REPL bt crash on odd A6",
-  cut from `8222db3`; it reports the net and gates passing and was re-running them against master). Not needed here.
+Nothing.
 
 ## Next session
 
-1. `/resume populous2`; `uv run python tools/gates.py run populous2` should print 13/13 PASS.
-2. Open item 2 (people placement on later battles, unpoked), then item 1's world-name entry.
+1. `/resume populous2`; `uv run python tools/gates.py run populous2` should print 13/13 PASS (about 11 minutes).
+2. Open item 2: list the records' `+90`/`+110` with `conquest_records.py`, rebuild a gen-entry snapshot for two or three
+   battles with other values (title poke to the briefing, then `py/gen_entry.sh`'s click and `bp 1ebee`; the script
+   hard-codes `p2_briefing` and its output path, so give it arguments first) and run the people model on them.
+3. Then open item 1's world-name entry (read how keys reach `$1572e`).

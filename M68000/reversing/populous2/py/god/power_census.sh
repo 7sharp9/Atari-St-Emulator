@@ -5,7 +5,7 @@
 # $25b16, kind 4 $25b28, kind 6 $25b36, kind 8 $25b44), the post $25b5e and the executed commands $292e4.
 # Run from M68000/:  bash reversing/populous2/py/god/power_census.sh [dir] [steps] [battle ...]
 set -e
-cd "$(dirname "$0")/../../../.."
+d=$(cd "$(dirname "$0")" && pwd); while [ ! -f "$d/tools/rdis.py" ] && [ "$d" != / ]; do d=$(dirname "$d"); done; cd "$d"
 DIR=${1:-scratchpad/populous2/battle}
 STEPS=${2:-300000000}
 shift 2 2>/dev/null || shift $#

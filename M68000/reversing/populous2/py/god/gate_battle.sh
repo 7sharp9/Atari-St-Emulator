@@ -6,7 +6,7 @@
 # Control: kind 4 with the search radius 3 fails the one kind-4 tick of battle 485.
 # Run from M68000/:  bash reversing/populous2/py/god/gate_battle.sh [outdir]
 set -e
-cd "$(dirname "$0")/../../../.."
+d=$(cd "$(dirname "$0")" && pwd); while [ ! -f "$d/tools/rdis.py" ] && [ "$d" != / ]; do d=$(dirname "$d"); done; cd "$d"
 OUT=${1:-scratchpad/populous2/battle_gate}
 P=reversing/populous2/py/god
 bash $P/battle_census.sh "$OUT" 1 0 10 260 485 > "$OUT.census.out" 2>&1
