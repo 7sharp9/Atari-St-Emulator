@@ -13,6 +13,12 @@ Each game lists its gates in `reversing/<game>/gates.toml`:
                                            # "re:<regex>" for a script that prints no a/b (searched in the output)
     cite = "ai.md section 13"              # where the docs record them
     minutes = 5                            # rough runtime; the timeout is max(10, 4 * minutes) minutes
+    inputs = ["scratchpad/<game>/start.snap"]  # untracked files or dirs the gate reads, relative to
+                                           # the M68000 dir; outputs it rebuilds itself do not belong here
+
+A gate whose declared input is absent is MISSING and is not run, so a lost snapshot is never reported as an ERROR
+that reads like an emulator fault. `--dry-run` checks inputs without running anything and counts the gates that
+declare none: until a gate declares its inputs, nothing says which `scratchpad/` files it needs.
 
 A count goes in `expect` only when a doc records it for exactly this command line: no invented counts. A gate passes
 when every expected `a/b` (or `re:` pattern) appears in its output; otherwise it is CHANGED (with the counts it did print) or ERROR (no
@@ -92,6 +98,10 @@ def run_one(root, game, gate, dry):
     cwd = root / "reversing" / game / gate["cwd"] if "cwd" in gate else root
     venv, python = venv_python()
     cmd = gate["cmd"].format(python=python, root=root)
+    absent = [i for i in gate.get("inputs", []) if not (root / i).exists()]
+    if absent:
+        return dict(game=game, name=gate["name"], status="MISSING", note=f"inputs absent: {', '.join(absent)}",
+                    secs=0, exit=None, cmd=cmd, cwd=str(cwd))
     if dry:
         return dict(game=game, name=gate["name"], status="DRY", cmd=cmd, cwd=str(cwd))
     logdir = root / "scratchpad" / "gates" / game
@@ -179,13 +189,16 @@ def main():
     def go(gx):
         r = run_one(root, gx[0], gx[1], a.dry_run)
         print(f"{r['status']:8} {r['game']}/{r['name']}"
-              + (f"  {r['secs']}s  {r['note']}" if not a.dry_run else f"  [{r['cwd']}] {r['cmd']}"), flush=True)
+              + (f"  {r['secs']}s  {r['note']}" if r["status"] != "DRY" else f"  [{r['cwd']}] {r['cmd']}"), flush=True)
         return r
 
     with ThreadPoolExecutor(max_workers=max(1, a.j)) as ex:
         results = list(ex.map(go, gates))
     if a.dry_run:
-        return
+        undeclared = [f"{g}/{x['name']}" for g, x in gates if "inputs" not in x]
+        miss = [r for r in results if r["status"] == "MISSING"]
+        print(f"# {len(miss)} MISSING; {len(undeclared)}/{len(gates)} gates declare no inputs")
+        sys.exit(1 if miss else 0)
     changed = dll_hashes(root) != dlls
     if changed:
         print(f"# WARNING: a DLL changed during the run ({dlls} -> {dll_hashes(root)}): the gates tested more than one build")
