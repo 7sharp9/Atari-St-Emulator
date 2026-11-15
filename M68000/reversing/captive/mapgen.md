@@ -830,6 +830,14 @@ count:
   (0 of 400 bases). Doors can be opened in dig order.
 - 1,021 locks were abandoned for want of a key cell; the key-object census by kind is under "The object list".
 
+An earlier disassembly and C++ port of the generator, captive.atari.org's "MapGen" pages (work begun in 2007; "The
+Puzzles", "The Root Path"), describes the same dig-order rule and notes that the clipboard can land on the blocking
+cell. Two of its readings differ from this one: it compares the key cell with "the cell in front of the cupboard"
+(the panel), where `$258ac` compares it with the door cell D (the census above: 8,617 of 8,617 against D), and it says
+the blocking cell becomes a fake wall, where here D gets the lock's door kind (Phoopel's is the flame wall, kind 2,
+below; kind 1 does draw as a plain wall). It describes version 1.2; which version this disk is has not been read. It
+does not count sealed keys or ask whether a base can still be finished.
+
 **Sealed keys: the Phoopel case.** A player hint sheet (credited to Lennart Wahl) reports that on "level 14", the
 moon Phoopel, a sign giving a door's code sits on the wrong side of a wall, and that the code is 15099. That is base
 D0 = 13 (mission 2, target 3; reading the sheet's level as D0 + 1 is inferred), D2 = 0, lock 4: door kind 2 at
@@ -847,8 +855,11 @@ A sealed key does not lock the door for good, because the panel never asks for t
 the right switches open it. What the player loses is the setting. The hint sheet's 15099 is the number printed on
 the panel, the lock's label and not something to enter; Phoopel's door opens on segments 5, 8, 10 and 15 (**proven**,
 `panel13.py`). Without the clipboard a kind-2 lock has 256 settings and a kind-3 lock 65,536, each click testing one,
-so a kind-3 sealed door is closed in practice. (The label is two LCG steps of code + base number, an invertible map,
-so the setting can be computed outside the game; inferred from `$12d4e`, not a route the game offers.) Items do not
+so a kind-3 sealed door is closed in practice. The label gives the setting away outside the game: it is two LCG steps
+(× `$5e5` + `$29`, mod `$10000`) of code + base number (`$12d4e`, **proven** 301/301 above), and `$5e5` is odd, so
+each step can be undone. Undoing them for Phoopel's printed 15099 and base number 13 gives `$8520`, the setting
+`panel13.py` opened the door with (the arithmetic is `gen_keys.py`'s assert; no separate run). The game offers no such
+route. Items do not
 open a flame cell: a FLAMBOS (`$5a`) or BATTERY (`$1a`) dropped into the flames (`$c194`, branch `$c1b0`) is
 recharged, its SHOTS byte set to 60, and the tile only gains its objects bit (`$26` to `$27`); the flames stay. ACID
 (`$59`) dropped on tile `$1e` gets 50 shots (`$c1c6`). **Proven** (`py/items/itemdrop.py`, `agents/curios/base30.snap`,
@@ -857,15 +868,36 @@ ACID there and for both on a `$20` cell; the dropped FLAMBOS picked up again rea
 
 **Can such a base be finished?** A base is finished by using EXPLOSIVES on one of its generator tiles and leaving
 by the entrance (`ai.md`, "Finishing a base"). Each base has one 3 × 3 block of generator tiles
-(`$28`; 8 or 9 cells in the 92 bases). With every sealed door of the base closed, no generator cell can be stood
-beside in 27 of the 92 bases with a sealed key in missions 1..100, Phoopel among them, and all of them can in the
-other 65 (`py/phoopel/finish.py 0 100`, model, other locks' doors taken as openable). Of the 27, 9 have only
-kind-2 sealed doors (256 settings) and 18 have a kind-3 one. So in 27 of 1,100 bases the target can be marked
-visited only by finding a panel setting blind. Three of the 27 are final bases (missions 41, 43 and 56, target 11),
-which end the mission through Trill rather than the generators (`ai.md`, "Trill and leaving a base"). The other 24
-are ordinary targets in 23 missions (mission 28 has two: targets 5 and 9). A mission needs all ten of its targets
-finished (`world.md`, "Final target"), so those 23 of 100 missions cannot be completed without the blind panel
-search.
+(`$28`; 8 or 9 cells in the 92 bases). Opening a lock only adds passable cells, so whether a base can be finished is
+a fixpoint, not a search: open every lock whose panel cell, and for key kinds 2 and 3 whose clipboard, is reachable,
+and repeat until nothing changes (`py/mapgen/full/route.py`, `Base.openable`; the panel cell is the open cell in front
+of W on the line back to P, and that direction fixes W's tile on all 32,062 locks: `(dx, dy)` (1,0), (0,1),
+(-1,0), (0,-1) to tile `$11`, `$10`, `$13`, `$12`). Over missions 1..100 (`route.py 0 100`, model) no generator cell
+can be stood beside at the fixpoint in 38 of 1,100 bases, all 38 with a sealed key, Phoopel among them. Closing only
+the sealed doors and taking every other lock as openable (`py/phoopel/finish.py 0 100`) finds 27 of them: in the
+other 11 the generators sit behind ordinary locks whose panel or clipboard lies in the region a sealed door cuts off.
+Of the 38, 11 have only kind-2 sealed doors (256 settings) and 27 have a kind-3 one. So in 38 of 1,100 bases the
+target can be marked visited only by finding a panel setting blind. Three are final bases (missions 41, 43 and 56,
+target 11), which end the mission through Trill rather than the generators (`ai.md`, "Trill and leaving a base").
+The other 35 are ordinary targets in 31 missions (two each in missions 28, 34, 78 and 84). A mission needs all ten
+of its targets finished (`world.md`, "Final target"), so those 31 of 100 missions cannot be completed without the
+blind panel search. With the code read off each panel instead (the label undone, above) all 1,100 bases can be
+finished.
+
+**Routes.** The same script measures how far the party walks to finish a base: entrance to a cell beside a
+generator and back, carrying EXPLOSIVES, a clipboard read by standing on it, clicks free (model; no monsters). A* over
+(cell, locks opened, codes known, generator reached), moving between the entrance, panel cells, clipboards and
+generator sides at the BFS distance under the doors open so far, with the all-doors-open distance as the heuristic,
+is restricted to the locks the route needs: the doors on the shortest path to the nearest generator side, then on
+the paths to each needed lock's panel and clipboard (median 6 of 31 per base). That is optimal over routes that open
+only those locks; a route opening others could be shorter. Over the 1,062 bases finishable from the clipboards (1,057
+solved; 5, of 30-32 locks with 15-19 needed, hit the 100,000-node limit), as medians against the A* walk: opening the
+needed locks in dig order, each clipboard then its panel, walks 1.53 times as far; opening every openable lock in dig
+order 9.68 times; the all-doors-open walk, a lower bound, is 1/1.48 of it. The dig-order plan never stuck and left
+dig order once (mission 12, target 11, where a room loop put a later-dug door on the shortest path to a key). The plan
+equals A* in 228 bases and the lower bound in 104. With codes read from the panels the plan equals A* at the median
+(1.000, worst 1.116): the extra walk comes from fetching clipboards in dig order rather than on the way. Figure:
+`infographic_keys.png` (`py/infographics/gen_keys.py`).
 
 ## Output encoding
 

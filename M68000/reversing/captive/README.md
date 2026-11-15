@@ -163,7 +163,7 @@ called once with D1 = `$ffff` and builds a uniform surface, every cell `$1e`, in
 |---|---|
 | `drive.txt` | REPL drive from cold boot to the mission 1 planet screen |
 | `menu.png`, `intro.png`, `mission1.png`, `landed.png`, `base1.png` | milestone screenshots |
-| `infographic_trail.png`, `infographic_digger.png`, `infographic_universe.png`, `infographic_lock.png` | explanatory figures: creature pursuit along the trail and the dig-order arrows (`ai.md`), the digger and its flow field (`mapgen.md`), the universe from the mission number (`world.md` section 1), the combination lock and the DIE (`ai.md`); made by `py/infographics/` |
+| `infographic_trail.png`, `infographic_digger.png`, `infographic_universe.png`, `infographic_lock.png`, `infographic_keys.png` | explanatory figures: creature pursuit along the trail and the dig-order arrows (`ai.md`), the digger and its flow field (`mapgen.md`), the universe from the mission number (`world.md` section 1), the combination lock and the DIE (`ai.md`), keys placed by dig order, the sealed keys and route lengths (`mapgen.md` "Locks and keys"); made by `py/infographics/` |
 | `ai_*.png` | figures for `ai.md` (the DIE's hint faces, the Trill screens, the state-3 game-over screen) |
 | `py/fedfs.py` | disk decode, directory, extract, depack |
 | `py/hunks.py` | hunk parser and RAM alignment |
