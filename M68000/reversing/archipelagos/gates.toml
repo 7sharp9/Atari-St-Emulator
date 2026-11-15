@@ -11,3 +11,11 @@ cwd = "py"
 expect = ["65536/65536", "9/9", "11792/11792"]
 cite = "README.md, 'The island generator'"
 minutes = 1
+
+[[gate]]
+name = "creature"
+cmd = "bash run_gate.sh"
+cwd = "py/creature"
+expect = ["300/300", "2/2", "40/40"]
+cite = "README.md, 'The creature and its blood'"
+minutes = 1

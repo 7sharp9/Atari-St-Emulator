@@ -3,8 +3,8 @@
 Archipelagos is on The Medway Boys compilation disk #58 as "Archipelagos+", cracked and trained by The Mighty Clog,
 original supplied by Jobil. The game's text credits Paul Carruthers and Ian Downend. This directory reaches the title,
 the archipelago map and first-person play, locates the island generator and proves it: a Python model rebuilds the
-game's 256 x 256 island map cell for cell on five islands (see "The island generator"). The blood and the moving
-creatures are read, not modelled.
+game's 256 x 256 island map cell for cell on five islands (see "The island generator"). One creature's step and its blood
+footprint are modelled and gated (see "The creature and its blood"); the other object kinds are not decoded.
 
 The engine is one hand-written 68000 image (a 50,774-byte PRG, text only, no symbol table, 0 LINK frames) with dead
 instructions interleaved with the live code, so the `disassemble.py --all` listing mis-syncs in places. Trust a live
@@ -144,7 +144,8 @@ read suggested is not established).
 | `$1698c`, `$16a32..$16a36`, `$16a42` | per-iteration range table (four 6-byte entries), range state, the eight neighbour offsets |
 | `$16a58` | special-island table (word keys, six bytes apiece; an island whose number is in it takes a picture path, not modelled) |
 | `$1d566` | island number N |
-| `$1db28`, `$1db3e` | object count and table (the moving creatures, below) |
+| `$1db28..$1db36` | eight object-kind count words; `$1db28` is the kind-8 creature count ("The creature and its blood") |
+| `$1db3e`, `$1db7e`, `$1dbbe` | the creature block, 32 words each: phase, position, envelope output |
 | `$1dbfe` | the visible-cell list the renderer uses |
 | `$1defe` | an island's parameter file as loaded from the disk |
 | `$1e0fe` | the ring queue of the fill (1,024 bytes) |
@@ -223,27 +224,65 @@ with a word (`$1bdda..$1bf1a`); on a pass `$1bf32` writes `1` into `$1d566` and 
 island-number prompt. What it compares against, and whether any text passes, is not established. The screen's text
 renders as noise (see the emulator gap).
 
-## The blood (read, not modelled; inferred)
+## The creature and its blood (modelled and gated; the 300 states are poked)
 
-From `m2` with the game left alone for 60M steps, `watch 3000 65536` logged 8,172 writes: 4,072 and 4,071 render
-toggles (`$1c576`, `$1c2c2`), 5 `$19faa` marks, and three events from `$1a634..$1a6de` at steps 217,748,727,
-233,879,051 and 250,006,081 (16.13M steps apart; whether that is a timer is not checked). Reading `$1a4e0..$1a6be` and
-`$1a6c4`: a loop over `[$1db28]` objects (table `$1db3e`, a position byte pair per object at 64(A2) and 65(A2)) steps each
-toward the player (`$1d696`, `$1d698`) by a shift-and-subtract, trying neighbour cells in the order -257, -256, -255, +1,
-+257, +256, +255, -1 and taking the first whose value passes `(v ^ $80) & $82 == $82` (land with bit 1 set and bit 7
-clear). The old cell becomes `v & 7`, the new cell `(v & $0f) | $80`, and the new cell and its four cardinal
-neighbours each lose 4 when `v & 7 > 4` (land 6, 7 or 5 becomes 2, 3 or 1: the red blood). Each of the three events wrote
-the old cell `3`, the new cell `7 -> $87 -> $83` and four neighbours `2`, and the position moved by `+$101` each time
-(`$a085 -> $a186 -> $a287 -> $a388`): 3 of 3 fit. In the 60M snapshot the map holds 11 cells of 2 and 8 of 3. Not
-established: the direction choice, the timer, and whether these objects are the blood itself or another creature.
+`$1a4e0` (`object_step_loop`, called from the main loop at `$1bf3e`, about every 91,000 to 120,000 steps) is a creature's
+per-call tick. The creature leaves the red ground (the blood) behind it as a footprint; the object itself is not the
+blood. Object block, one word per object (32 slots): `$1db3e+2i` the phase, `$1db7e+2i` the position (high byte y, low
+byte x, cell address `$b000 + sext16(pos)`, so map index `$8000 + pos`), `$1dbbe+2i` an envelope output; `[$1db28]` is the
+count (1 in `m2`), the first of eight count words `$1db28..$1db36` that the eight kind handlers at `$1c99a` fill from the
+level block `$1df3e` (read: the other kinds are not decoded).
+
+- **Phase tick** (`$1a4f8`): the word at `128(A2)` is set to `[$1d2a0 + phase]` (`$1d2a0` is a 168-word envelope, 0 up to
+  `$ffff` and back to 0), the phase advances by 2, and only at `$150` does the object step and the phase return to 0.
+  That is 168 calls per step, about 16.1M steps, and the three events in the earlier 60M idle run (16.13M apart) are
+  that period.
+- **Cell choice** (`$1a50a`): for shift k = 3, 4, 5 the candidate moves toward the player (the bytes `$1d698` y and `$1d696`
+  x) by `-((byte difference) >> k)` per axis, an arithmetic byte shift, so a small positive difference gives no move and a
+  negative one gives 1. The first cell passing `(v ^ $80) & $82 == $82` (bit 1 set, bit 7 clear) is taken: the candidate
+  itself, then its neighbours in the order -257, -256, -255, +1, +257, +256, +255, -1. If all three rounds fail the
+  creature stays. From the second round the x difference register D4 is the cell test's scratch, so the x shift uses
+  `(cell(-1) ^ $80) & $82` of the last cell tested, not the difference.
+- **Move** (`$1a630`): the old cell becomes `v & 7`, the new cell `(v & $0f) | $80`, the position word is stored.
+- **Sound** (`$1a64a`, inferred from the call, not driven): within |dx| + |dy| < 15 of the player it calls `$13b2e` with
+  `[$1b994 + dist]`.
+- **Footprint** (`$1a692`, `$1a6c4`): the new cell and its four cardinal neighbours each lose 4 when `v & 7 > 4`
+  (5, 6, 7 become 1, 2, 3). One step writes 8 bytes (old cell, new cell twice, five footprint writes) to 6 distinct cells.
+
+Proof, both against the emulator and with the model in `py/creature/creature_model.py` (`bash py/creature/run_gate.sh`,
+gate `creature`; each script captures `scratchpad/archipelagos/creature/entry.snap`, `m2` stopped at its first `$1a4e0`
+call):
+
+- `gate_creature.py 300`: 300 of 300 states match. Each state is **poked**: the whole object block (1 to 32 objects, phases
+  mostly `$14e`, random land positions), the player bytes and often random map cells, then `callcap 1a4e0`; the model sees
+  only the poked RAM and the compared bytes are the map and the object block. 2,434 stepping events, 7,351 changed map
+  bytes; every neighbour offset in all three rounds and the stay case occur. Controls (last argument): `order` 184/300,
+  `shift` 58/300, `lim5` 86/300, `nofoot` 12/300, `noclobber` 179/300.
+- `gate_creature_idle.py 40`: ordered 8-write sequences from a `watch 3000 65536` log against the model fed the snapshot
+  at the call entry. **Only 2 natural events** occur in 40M unpoked steps (steps 217,748,727 and 233,879,051), model 2 of
+  2, and the controls also pass those two (they cannot tell a wrong model apart); 40 of 40 events with the phase and the
+  position **poked** before each call (the creature reaches the player after about 5 natural steps and the loop then
+  stops being called: after the 40th poked event the game was in the island builder, cause not investigated). Controls:
+  `order` 38/40, `lim5` 27/40, `shift` 7/40. A poke changes the rate (one step per call against one per 168), not the
+  8-write pattern.
+
+The red ground is the footprint: the `m2` map holds 64,471 cells of 4, 1,045 of 5 to 7 and exactly 10 of 2 or 3 (two
+footprints); poking those 10 back to 6 and 7 removes the red patch from the frame after 1.5M steps (one same-snapshot pair,
+not a counted gate; 120k steps shows no change). A frame diff of `m2`'s first call with and without the poke
+`ww 1db3e 014e` differs only in an 18 x 13 pixel box holding the creature sprite, 136 pixels. Read only: the spawn handler
+`$1c7e8` stores `$1db7e[i]`, sets bit 7 and clears bit 2 on the cell and its four neighbours; `$19532` recomputes bit 7 of
+every cell as `(v & $70) != 0` and then sets it at every object's cell, which is why an occupied cell is refused as a
+target. Not established: that the sprite is drawn from `$1db7e` (poking `$1db7e` replaces it with a black pillar, poking
+the count to 0 changes nothing within 120k steps), what reads the envelope `$1dbbe`, what the other seven kinds are, and
+what happens to the player when the creature arrives.
 
 ## Open
 
 - The garbled text on the code-word and map screens, and what the code word is.
 - The emulator gap: an FDC read that a Force Interrupt ends at status `$80` would remove both pokes.
 - The special-island table at `$16a58` and its picture path; how the map screen sets N in play.
-- A model of one blood step (direction choice, timer), gated by a watch log; then the trees, pods and the necromancer
-  (object table `$1db3e`, per-tick routine `$1a4e0`; their records and kinds are not decoded).
+- The other seven object kinds (counts `$1db2a..$1db36`, handlers `$1c99a`: trees, pods and the necromancer are
+  candidates, not matched), what reads the creature's envelope `$1dbbe`, and the sprite's link to `$1db7e`.
 - The land generator of the 3D view (how the landscape patchwork is drawn from the map).
 
 ## Files
@@ -255,8 +294,10 @@ established: the direction choice, the timer, and whether these objects are the 
 | `py/island_params.py` | the `$16166` parameter model |
 | `py/capture_islands.sh` | fresh entry and exit snapshots and the RNG watch log (pokes: parameter sets, `$1d566`) |
 | `py/gate_islands_only.sh`, `py/gate_params.sh`, `py/gate_rng.py`, `py/run_gate.sh` | the gates; `run_gate.sh` runs all |
+| `py/creature/creature_model.py` | model of the creature tick `$1a4e0` and its footprint, plus `capture_entry()` |
+| `py/creature/gate_creature.py`, `py/creature/gate_creature_idle.py`, `py/creature/run_gate.sh` | the callcap gate (300 poked states) and the watch-log gate (2 natural, 40 poked events); `run_gate.sh` runs both |
 | `py/render_buf.py` | render a 320 x 200 screen at an explicit buffer base |
-| `gates.toml` | the one gate for `tools/gates.py` (PASS 15 s) |
+| `gates.toml` | the gates for `tools/gates.py` (`islands`, `creature`; PASS 11 s and 15 s) |
 | `archipelagos.sym` | names, one per line |
 | `title.png` | the title screen (obelisk, berry trees) |
 | `map_screen.png` | the archipelago map after the code-word screen (text noisy) |

@@ -48,3 +48,16 @@
 0000a79a	menu_crawio_poll
 0000a61e	menu_splash_wait
 0000aad4	menu_pexec
+0001a4f8	creature_phase_tick
+0001a50a	creature_choose_cell
+0001a630	creature_move_mark
+0001a64a	creature_near_sound
+0001a692	creature_footprint_cross
+00019532	map_occupancy_refresh
+0001c7e8	creature_spawn
+0001d2a0	creature_envelope_table
+0001b994	creature_sound_table
+0001db28	creature_count
+0001db3e	creature_phase
+0001db7e	creature_pos
+0001dbbe	creature_envelope_out
