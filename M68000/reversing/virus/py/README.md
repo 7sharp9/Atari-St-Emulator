@@ -20,6 +20,10 @@ Work directory `W` is `scratchpad/virus` (gitignored; `VIRUS_WORK` overrides). E
 | `chain/gate_chain.sh`, `chain/check_chain.py` | the 2-game gate from fresh (about 5 min) | `bash reversing/virus/py/chain/gate_chain.sh` | `equal the six-game run: 2/2`; control (tick + 1) 0/2 |
 | `chain/startdiff.py`, `chain/trend_bytes.py` | RAM diff of successive demo starts (outside stack and screens), and the bytes that grow monotonically | `uv run python reversing/virus/py/chain/startdiff.py W/chain/long/starts main` | per-pair 14,704 to 19,681 bytes |
 | `chain/bench.py`, `chain/par.py` | interleaved timing of ways to run N steps; concurrent-emulator throughput | `uv run python reversing/virus/py/chain/bench.py W/demo/S1b.snap 30000000 3 argv repl_s repl_bp` | table in README "Running long" |
+| `scan/census.sh` | `hits` on every actor behaviour and helper over game 1 of the chain (600M steps) | `bash reversing/virus/py/scan/census.sh` (about 2.5 min) | `$021792      18763`, `$0216d6         42`, `$020fb4          3` (table in `behaviours.md`) |
+| `scan/waveend.sh` | tick, wave and pool count at four wave completions `$20fb4` | `bash reversing/virus/py/scan/waveend.sh` | ticks `04 a6`, `12 b6`, `24 52`, `05 69` |
+| `scan/watch_deep.sh` | writers of one stale draw-list block over game 1 | `bash reversing/virus/py/scan/watch_deep.sh` | 53 `WATCH` lines, PCs `$1fb68`, `$1fb6e`, `$1fb9e`, `$1fba0` |
+| `scan/residue.sh` | game 2 unpoked against the bucket area zeroed and `$ff`-filled | `bash reversing/virus/py/scan/residue.sh` (about 1.5 min) | `zero 500 of 500 identical`, `ff 500 of 500 identical` |
 | `render_heightmaps.py` | draws `heightmaps.png` from the model | `uv run python reversing/virus/py/render_heightmaps.py <out.png>` | `wrote <out.png>` |
 | `capture.sh`, `gate_all.sh`, `vcommon.py` | captures, the gate set, shared paths | | `captured` |
 

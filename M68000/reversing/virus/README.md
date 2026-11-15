@@ -15,7 +15,9 @@ about 5 s). The captures are rebuilt with `bash reversing/virus/drive.sh` then `
 
 | Doc | Covers | Proof |
 |---|---|---|
-| this file | provenance, the drive, memory map, landscape generator, object scatter and RNG, renderer, flight model, particles, landscape selection by wave | terrain 65455/65455 on three landscapes, objects 571/571 and 1774/1774, grid 330/330 on four frames, tiles 132/132, slope table 8064/8064, flight 119/119, particles 447/447 |
+| this file | provenance, the drive, memory map, landscape generator, object scatter and RNG, renderer, flight model, the seeder behaviour, landscape selection by wave | terrain 65455/65455 on three landscapes, objects 571/571 and 1774/1774, grid 330/330 on four frames, tiles 132/132, slope table 8064/8064, flight 119/119, seeder 447/447 |
+| [`demo.md`](demo.md) | the attract mode and its autopilot | see that doc |
+| [`behaviours.md`](behaviours.md) | the actor pool's behaviours (every enemy kind), wave completion and the per-wave spawn table, readers of the demo flag, the draw-list residue | wave ends 4/4 against the rule, residue poke 500/500, census of game 1 |
 
 What stands out: the landscape is a 256x256 byte height map computed once per level from a sum of eight table
 sines, and levels 1 and 2 are the same routine with four instruction words patched; each of the 110 grid vertices
@@ -96,7 +98,9 @@ RNG advance). The remaining emulator-side lever is the mutable `Cpu` listed in `
 | `$270ce` | camera x, y, z (words) | grid gate |
 | `$270d4` | ship orientation matrix (9 words in a 3x3 with stride 6) | flight gate (mouse run) |
 | `$2706e`, `$27072` | the RNG, two longs | scatter gate |
-| `$31d54` | particle pool, up to 128 records of 20 bytes; count at `$32a3e` | particle gate |
+| `$31d54` | actor pool: the wave's enemies and the player's rockets, up to 128 records of 20 bytes; count at `$32a3e` | seeder gate, `behaviours.md` |
+| `$302f6` | object pool: shots, debris, falling infection, bombs, score pop-ups; 18-byte records, count `$32a3c` | (read), `behaviours.md` |
+| `$276fc..$2f6f3` | the ten depth-bucket draw lists, `$ccc` bytes each | `behaviours.md` |
 | `$32a2e`, `$32a32`, `$32a3a` | fuel, smoothed attitude (2 words), gravity | flight gate |
 | `$32a4c`, `$32a4e`, `$32a50` | last built landscape, current landscape (0, 1, 2), wave number | below |
 | `$32a58` | object map: one byte per cell, low 5 bits the object type | scatter gate |
@@ -110,10 +114,11 @@ Names are in `virus.sym`.
 ## Main loop
 
 `$23198` runs once per game frame (about 2.47 VBLs: 81 calls of each frame routine in 200 VBLs, from an
-`ATARI_TRACE_EVENTS` census of the flight snapshot). In order: `$2617a`, `$1fa72` (objects into depth buckets),
-`$255c2` (the ship tick), `$2157c` (particles), `$24098` (the landscape grid and the whole painter), `$23c8c`,
-`$24956`, `$232e6`, `$20f82` (the wave-and-landscape check, below), `$183f2`. The roles of `$2617a`, `$23c8c`,
-`$24956`, `$232e6`, `$20f82`'s other work and `$183f2` are not established (role unknown).
+`ATARI_TRACE_EVENTS` census of the flight snapshot). In order: `$2617a`, `$1fa72` (the object pool, into depth buckets),
+`$255c2` (the ship tick), `$2157c` (the actor pool), `$24098` (the landscape grid and the whole painter), `$23c8c`
+(`Buckets_Reset`: the ten list ends back to their starts), `$24956`, `$232e6` (`InfectionQueue_Advance`, `demo.md`), `$20f82`
+(`Wave_CheckComplete`: the wave ends when only unhatched chasers are left, `behaviours.md`), `$183f2`. The roles of `$2617a`,
+`$24956` and `$183f2` are not established (role unknown).
 
 ## The landscape generator (gated)
 
@@ -217,7 +222,7 @@ understood. The filler uses the table to step an edge's x per scanline without d
 steps two edges with the slope table, and calls a span routine per scanline through `jsr 0(A0,A2.w)`, indexed by span
 width, from the colour's table.
 
-**Depth sorting of objects, shadows and particles (read, not gated).** `$1fa72` (objects) and `$2157c` (particles)
+**Depth sorting of objects, shadows and actors (read, not gated).** `$1fa72` (the object pool `$302f6`) and `$2157c` (the actor pool)
 subtract the camera, take a bucket `D6 = ((z - $900) >> 5) & $fff8` (ten buckets, 8-byte slots at `$23caa`, initial values
 copied from `$23cfa`), project the point with the same two `divs` (`+$a0`, `+$46`) and append an 8-byte record, whose first
 long is a draw routine, to that bucket's list. After each row of tiles the painter (`$243ec..$24474`) draws the list of the
@@ -253,15 +258,15 @@ and attitude 119/119 (the thrust ticks 14/14, the others 105/105); control (thru
 matches 4/119 in this run (119/119 in the mouse run); the cause is not established (inferred: other drawing code rewrites
 `$270d4` between ticks, for example the call at `$23d5c`). This is a poked result, not a played one.
 
-## Particles (gated, one behaviour)
+## The actor pool and the seeder (gated, one behaviour)
 
-The pool `$31d54` holds up to 128 records of 20 bytes, count `$32a3e`: +0 x, y, z; +6 vx, vy, vz; +12 a life and flag word;
+The pool `$31d54` holds the wave's enemies (named in [`behaviours.md`](behaviours.md)). It holds up to 128 records of 20 bytes, count `$32a3e`: +0 x, y, z; +6 vx, vy, vz; +12 a life and flag word;
 +14 a pad word; +16 a behaviour code pointer (long). `$21722` appends a record. Each frame `$2157c` walks the pool: it reads
-the ground height at the particle's x, z (`$24754`); if the ground is at or above the particle's y the flags `$a000` are or-ed
+the ground height at the record's x, z (`$24754`); if the ground is at or above the record's y the flags `$a000` are or-ed
 into the life word, and the record's behaviour is called through its pointer. A flagged record is removed by its behaviour
 (`$21764`: a sound, then the last record is copied into its slot and the count falls by one); there is no bounce.
 
-Stage 1 (`$21792`, the pointer in three of the five records in the run), with word arithmetic:
+The seeder in flight (`$21792`, the pointer in three of the five records in the run: wave 0's three seeders), with word arithmetic:
 
 ```
 pos += vel;  if life != 0: life -= 1   (when life is 0 and ground <= $320 the pointer becomes $21894, not modelled)
@@ -270,20 +275,21 @@ vy -= vy >> 4                            drag on vy only
 vy clamped to [-$60, $60]
 ```
 
-`py/virus_particles.py` reads 150 `bp 2157c` stops from `fl/f1.snap` (pool count constant at 5) and checks the three stage-1
-particles over 149 frames: 447/447 updates with x, y, z, vx, vy, vz all equal; control (drag `>> 3`) 334/447, failing only
-in vy. Not covered: the other behaviours present (`$21ae2`, `$21c42`, `$21c64`, `$21d08`: role unknown), stage 2
-(`$21894`, `$21976`: read, not run), removal and the trail record the behaviour also appends.
+`py/virus_particles.py` reads 150 `bp 2157c` stops from `fl/f1.snap` (pool count constant at 5) and checks the three seeders
+over 149 frames: 447/447 updates with x, y, z, vx, vy, vz all equal; control (drag `>> 3`) 334/447, failing only
+in vy. Not covered: the other behaviours present (`$21ae2`, `$21c42`, `$21c64`, `$21d08`: the waiting chaser and the patrol,
+read in `behaviours.md`), the seeder's descent and landing (`$21894`, `$21976`: read, run in the census only), removal, and the
+infection it drops (`$20702`) and the shadow record it appends.
 
 ## Landscape selection by wave (code read; poked-stub run)
 
 `$32a50` is the wave number: it is incremented at `$20fd0`, passed to the wave-start routine `$20e74` at `$210ee`, and read
-for the HUD at `$24906`; it is 0 at the start of wave 1. `$20e74(n)` spawns the wave's emitters from a table of 16 parameter
-blocks indexed by `n & 15` and then, in its tail at `$20f4a..$20f78`, calls `$2336a(1)` when `n == 4` and `$2336a(2)` when
+for the HUD at `$24906`; it is 0 at the start of wave 1. `$20e74(n)` appends the wave's waiting enemies from a table of 16 parameter
+blocks at `$20e34` indexed by `n & 15` (per kind in `behaviours.md`) and then, in its tail at `$20f4a..$20f78`, calls `$2336a(1)` when `n == 4` and `$2336a(2)` when
 `n == 9`; game start and restart call it with 0 (`$23092`, `$230b4`, `$25bf6`). **Poked stub** (`moveq #n,D0 / jsr $20e74 / rts`
 under `callcap` from `fl/f1.snap`; `capture.sh` writes `cap/cc_n<n>.json`): `$32a4e` and `$32a4c` stay 0 for n = 3, 5, 10, become 1
 for n = 4 and 2 for n = 9. The route by which a played game reaches wave 5 or 10 was not run, and `$32a3a`'s per-wave
-values are read.
+values are read. A wave is completed by destroying every enemy except the unhatched chasers (`$20f82`, `behaviours.md`).
 
 ## Demo mode and the autopilot
 
@@ -304,7 +310,8 @@ the infection target queue at `$27134`, the random state). Its scripts are in `p
 5. Landscapes 1 and 2 and the wave switch are from poked stubs: reach wave 5 played (or drive `$32a50` through the wave
    completion code `$20fd0`) and `watch` `$32a4e`.
 6. The mouse routine `$254aa` and the ground-contact paths of the tick are unmodelled.
-7. The object types 1 to 9, the markers 10 to 12 and the other particle behaviours are unnamed.
+7. The object types 1 to 9 and the markers 10 to 12 are unnamed; the actor behaviours are named from their bodies in
+   `behaviours.md`, gated only for the seeder.
 8. The launch-pad table `$246ba` is not modelled (its 81 colour bytes are read from RAM).
 
 ## Files
@@ -314,6 +321,8 @@ the infection target queue at `$27134`, the random state). Its scripts are in `p
 | `README.md` | this file |
 | `drive.sh` | cold boot to the wave-1 launch pad (writes `scratchpad/virus/drive/`) |
 | `gates.toml` | the gate `tools/gates.py` runs |
+| `behaviours.md` | the actor pool's behaviours, waves, demo-flag readers, draw-list residue |
+| `py/scan/` | that doc's census, wave-end, watch and residue scripts |
 | `virus.sym` | names |
 | `py/README.md` | each script, its command and expected line |
 | `py/capture.sh`, `py/gate_all.sh` | fresh captures; every model with its control |

@@ -15,7 +15,9 @@ no trend in the wave reached (waves 3 3 3 2 3 3 2 3 3 2 3 2 3 4 3 3 2 3 2 3 3 3 
 +0.09, permutation p 0.68; game-over tick +0.16, score -0.04; 24 games detect only a rank correlation of about 0.4 or more).
 What persists across a natural game over is listed under "What persists"; none of it
 is read by the pilot's own routines, and the one carried table that reaches the game (the infection target queue) can
-only change which target a homing enemy steers to. The limits are in "Not tested" at the end.
+only change which target a homing patrol steers to. A wave ends when every enemy but the unhatched chasers is destroyed, and
+no enemy code reads the demo flag or any carried state, so the wave a demo reaches measures how fast that game's pilot killed
+(`behaviours.md`). The limits are in "Not tested" at the end.
 
 Evidence labels: **gated** (a command below with a match count and a control), **poked** (reached through a named
 poke), **read** (from `code.lst` or the disassembly only, not run). Addresses are runtime absolute. Commands run
@@ -77,8 +79,11 @@ button byte at `$1fa4e`. Read. Keys the code tests directly: `$1f9ed` SPACE, `$1
   pool at 1069 of the scans (first at tick 272), so the pilot does target them in 263 of those 1069. The scan reads only
   the pool, so it never picks the queue `$27134`; the chosen record's position equalled a queue entry in 0 of the 1563
   scans (the queue was non-zero in 1543). Gated, `bash reversing/virus/py/pilot/gate_pilot.sh census` (a `bp` on `$253a4`
-  with a 3M step cap per stop, one flight, one RNG seed; 37 further stops gave up after the game over). What the homing
-  records are on screen is not checked.
+  with a 3M step cap per stop, one flight, one RNG seed; 37 further stops gave up after the game over). The homing records
+  are patrols (`$21d08`, `Patrol_HomeOnQueue`), and the fourteen kinds are named in `behaviours.md`. A waiting record
+  (`$21ae2` and the other `_Wait` kinds) can still be returned: `$2529a` starts from record 0 (`lea $31d54,A0`) and replaces
+  it only with a record nearer than `$7fff`, so with no candidate it returns record 0 (read). What the patrols look like on
+  screen is not checked.
 - `$2538c`: while `$62a60` (set to 5 at `$2315c`) is nonzero it decrements it and returns D2 = 2 (thrust), D0 = D1 = 0.
   Otherwise, every eighth tick (`$32a44 & 7 = 0`) it calls `$2529a` and stores the pointer at `$270a6`. It loads the
   record's position and velocity, forms position + 4 x velocity (the record's) minus 4 x the ship's velocity, keeps that
@@ -176,9 +181,10 @@ Named from the code that reads and writes them (read; the first two also from th
 | `$32a50` | wave number; the HUD draws it plus 1 (`$24906`) | `README.md`; 0 in every measured window |
 | `$32a2e` | fuel; `$e00` at `$23118`, `$1000` cap, refilled by `$19` a tick while landed (`$25a9e..$25aae`) | the other analysis's name; falls from 3269 to 2112 over 1000 ticks of flight 1 |
 
-`$25f04`, `$25f3c` and `$260f4` are the only other tests of `$62a5f`: they skip the high-score update, the score line
-and the name entry for a demo. No test of `$62a5f` guards collision or fuel (read: the whole listing has four reads of
-the byte), so the demo is not made immune by that flag, and it does crash (next section).
+`$25f04`, `$25f3c` and `$260f4` are the only other tests of `$62a5f`: they skip the high-score update, the name entry
+and the score-code line for a demo. No test of `$62a5f` guards collision, fuel, the enemies or the waves (a raw scan of
+RAM for the address finds eight references, these four reads and the four writers), so the demo is not made immune by
+that flag, and it does crash (next section).
 
 ## Natural death and game over
 
@@ -190,9 +196,10 @@ the game-start code, which re-initialises the ship, the fuel (`$e00`), `$270a2`,
 `$2310c..$23192`) and keeps the wave, landscape and object map. With no lives left it goes to `$25bc0`, the same routine
 ESC enters, which runs the game over in this order:
 
-1. `$32a52 = $32a50` (the wave reached; no reader found in the routines read), scatter A (`jsr $2336a` with D0 = 0 at
+1. `$32a52 = $32a50` (the wave reached; read only by the human-only score-code line `$260f4`), scatter A (`jsr $2336a` with D0 = 0 at
    `$25be8`, return address `$25bee`), `$32a50 = 0`, the wave start `$20e74(0)`, then the game-over screen at `$25e44`.
-2. `$260f4` (the score line) returns at once for a demo (`$62a5f` test, `$26178`). The score `$2708e` is compared with the
+2. `$260f4` (the score-code line: for a human score of at least 12345 it prints two numbers mixed from the score, the tick
+   counter and `$32a52`, inferred to be a verification code) returns at once for a demo (`$62a5f` test, `$26178`). The score `$2708e` is compared with the
    tenth entry of the high-score table at `$25ccc` (10 entries of 28 bytes: a long score, then a name field), for any game,
    demo included, and inserted by shifting the lower entries down (`$25e60..$25eb8`). A human game then updates `$2709a`
    (`$25f04`) and runs the name entry; a demo copies the stock name at `$25e14` into the entry (`$2607c`).
@@ -297,8 +304,9 @@ the 92 entries at games 2 to 24's starts equals any entry of the previous start 
 are equal in 17 of 23). Bytes that grow monotonically with at least four distinct values (65 of them): the TOS clocks (`$463`, `$467`,
 `$4bb`), `$4e0e`, the high-score table's score columns (`$25cea..$25dca`, 28-byte stride), and blocks in the pool and variables area
 that are 0 at game 1 and then step up a few times (`$27ce9..$27d11`, `$289c2..$28a02`, `$29703..$29769` at an 8-byte stride, `$2b591`,
-`$2ca81..$2cbcb`, `$2e2c3..$2e2d3`). The last group is unidentified (a candidate list from about a million scanned bytes with no
-multiple-comparison correction, not a result); none of it is known to be read by the pilot.
+`$2ca81..$2cbcb`, `$2e2c3..$2e2d3`). The last group is residue in the ten depth-bucket draw lists `$276fc..$2f6f3`: bytes past a
+list's current end, left by the fullest frame so far and never read; a `watch` shows only the bucket appends writing them, and
+zeroing or `$ff`-filling the whole area leaves game 2 identical on 500 of 500 samples (`behaviours.md`, "The blocks that stepped up").
 
 ## The carried-over table
 
@@ -314,11 +322,11 @@ multiple-comparison correction, not a result); none of it is known to be read by
 - `$232e6` (`InfectionQueue_Advance`, once per tick from `$231c4`): looks at the map cell under entry 0. If the cell's low five
   bits are zero, or bit 4 is set, it shifts the queue down (entry 1 to 0, 2 to 1, 3 to 2); otherwise it returns and keeps entry 0.
   So entry 0 is held while an object of types 1 to 15 without bit 4 is still on that cell.
-- `$21d62` is inside a pool-record behaviour that integrates the record's position and velocity (1/32 drag and the gravity word
+- `$21d62` is inside `Patrol_HomeOnQueue` (`$21d08`, `behaviours.md`), a behaviour that integrates the record's position and velocity (1/32 drag and the gravity word
   `$32a3a`). On every fourth frame (`$32a48 & 3 = 0`) it calls the steering routine `$22c1e` with A2 = `$27134`, i.e. it steers the
   record toward entry 0, computes the Manhattan distance to it and calls `$22e38` when that is at most `$a00`; on the other frames it
   calls `$22d04` (read). `$22c1e` is the same routine the autopilot calls with its aim point at `$270aa`. So the table is a target
-  queue for homing pool records: a short list of places a record steers toward. What those records look like on screen was not
+  queue for the homing patrols: a short list of places a patrol steers toward and fires at. What they look like on screen was not
   checked.
 
 **Does the pilot read it?** The pilot's own routines (`$2529a`, `$2538c`, `$22c1e`'s call from `$2538c`) never reference
@@ -341,9 +349,12 @@ measured).
 
 - The high-score table `$25ccc..$25de3`: the game-over screen writes the score into it under the stock name `David`; the table is
   read only by the hall-of-fame display and by the next insertion, so it cannot change how the pilot flies.
-- `$32a52` (the wave reached): written at `$25bdc`; no reader found in the code read, so it cannot change the pilot.
-- The infection target queue `$27134..$2714b`: the last four planted positions; read by homing pool records (`$21d62`), so it can
-  change which place a homing enemy steers to and, through that, the pool the autopilot reacts to, but it is the previous game's
+- `$32a52` (the wave reached): written at `$25bdc`, read only by the human-only score-code line (`$26152`), so it cannot change
+  the pilot or a demo.
+- Stale records in the depth-bucket draw lists: never read past a list's end; poked to zero or `$ff`, no change in 500/500 samples
+  (`behaviours.md`).
+- The infection target queue `$27134..$2714b`: the last four planted positions; read by the homing patrols (`$21d62`), so it can
+  change which place a patrol steers to and, through that, the pool the autopilot reacts to, but it is the previous game's
   geometry, not an experience-dependent parameter.
 - The RNG `$2706e/$27072`: never reseeded after power-up; it sets where the scatter puts the objects and enemies in the next game,
   so it changes the landscape objects and thus the flight, with no relation to how the last game went.
@@ -352,9 +363,8 @@ measured).
 
 - A mouse-flown human game before an attract flight (the attempt did not return to a demo).
 - Anything beyond 24 games in the unpoked chain (100 or more would detect a rank correlation of about 0.2), and a power test of
-  the wave series by simulation. Fuel used and kills per game were not recorded. What the unidentified monotone blocks of "Twenty-four
-  games" are (a `watch` on their writers across one game), and whether skipping the 50M-step game-over wait changes the carried RNG.
-- What the homing records the pilot targets look like on screen, and whether the census holds on other RNG seeds and waves
+  the wave series by simulation. Fuel used and kills per game were not recorded. Whether skipping the 50M-step game-over wait changes the carried RNG.
+- What the patrols the pilot targets look like on screen, and whether the census holds on other RNG seeds and waves
   (one flight, 1563 scans).
 - Whether the stale queue is held through a game in the unpoked chain (measured only in `N1`, where the map equals game 1's; the
   24-game chain shows only that the queue at the next start is a new set of four entries).
@@ -362,8 +372,8 @@ measured).
 - A write-watch across the whole death, game over and attract loop (the regions were diffed at the two start states).
 - The pilot's output branch D0 = `$1000` (height term >= `$c400`, D4 >= `$c00`) and the `$228de` scan skip: not reached in the
   3496-tick corpus, so those two lines of the model are read. The corpus is one landscape (wave 0 to tick 3496).
-- Why `$62a60` reloads at pilot call 1191 of that flight (a second launch countdown; a life loss or restart is inferred, not
-  checked).
+- Why `$62a60` reloads at pilot call 1191 of that flight: wave 0 of the same lineage is cleared at tick 1190 and the wave restart
+  at `$2310c` re-arms the countdown (`behaviours.md`, "When a wave ends"); the reload itself was not stopped on.
 - The hardware phase offset that makes the PC at a cap-stop differ although the game fields agree (N1z against flight 1).
 - Equality of flights beyond 100 samples of 200,000 steps (about 20M steps, a few hundred ticks), and any measure other
   than the printed ones (kills are only visible as score awards).

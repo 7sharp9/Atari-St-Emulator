@@ -1,5 +1,5 @@
 """Reads census_scan.py's log: per scan, which behaviour the chosen record has, and whether homing records were present.
-Behaviour = the long at +16 of a record.  Homing = $21d08 (Pool_Behaviour_Homing; its body switches the record to $21c64 after a
+Behaviour = the long at +16 of a record.  Homing = $21d08 (Patrol_HomeOnQueue; its body switches the record to $21c64 after a
 countdown, so $21c64 is reported separately).  Usage: uv run python <this> <census.log>"""
 import re, struct, sys
 from collections import Counter
