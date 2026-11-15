@@ -19,7 +19,9 @@ from a `hits` census line: `count first last`).  Run from M68000/:
 --disk is drive A; without it the snapshot's provenance sidecar remounts the
 disk it was made with (a snapshot with no sidecar falls back to
 scratchpad/powermonger.st).  --pre adds REPL commands before the first bpc (a poke, `watch`, ...).  The
-REPL log is kept as <out>/<name>.log.  A hit that is not reached within
+REPL log is kept as <out>/<name>.log; <out> also holds each snapshot's
+<name>_<n>.snap.prov.json sidecar, so a reader globbing <out>/*.json gets those too:
+open <out>/<name>.json by name.  A hit that is not reached within
 --max steps of the previous one is reported and skipped.
 """
 import argparse
