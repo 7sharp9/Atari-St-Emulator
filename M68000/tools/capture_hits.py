@@ -16,7 +16,9 @@ from a `hits` census line: `count first last`).  Run from M68000/:
     uv run python tools/capture_hits.py scratchpad/pm121/run/k25_s3.snap 2776 1,2 scratchpad/x --name k25_s4
     uv run python tools/capture_hits.py <snap> <addr> <n,...> <out> [--name N] [--max STEPS] [--disk IMG] [--pre CMD]...
 
---pre adds REPL commands before the first bpc (a poke, `watch`, ...).  The
+--disk is drive A; without it the snapshot's provenance sidecar remounts the
+disk it was made with (a snapshot with no sidecar falls back to
+scratchpad/powermonger.st).  --pre adds REPL commands before the first bpc (a poke, `watch`, ...).  The
 REPL log is kept as <out>/<name>.log.  A hit that is not reached within
 --max steps of the previous one is reported and skipped.
 """
@@ -42,7 +44,9 @@ def main():
     ap.add_argument("out")
     ap.add_argument("--name", default=None)
     ap.add_argument("--max", type=int, default=50_000_000, help="step cap per bpc")
-    ap.add_argument("--disk", default="scratchpad/powermonger.st")
+    ap.add_argument("--disk", default=None,
+                    help="drive A image; default: the snapshot's provenance sidecar remounts its own disk, "
+                         "and a snapshot without one gets scratchpad/powermonger.st (the tool's first corpora)")
     ap.add_argument("--pre", action="append", default=[])
     a = ap.parse_args()
 
@@ -59,8 +63,11 @@ def main():
         prev = n
     cmds.append("q")
     env = dict(os.environ, ATARI_NOTRACE="1")
-    p = subprocess.run(["dotnet", "exec", "bin/Debug/net8.0/M68000.dll", "resume", a.snap, "repl",
-                        "--disk-a", a.disk], input="\n".join(cmds) + "\n", capture_output=True,
+    disk = a.disk
+    if disk is None and not os.path.exists(os.path.join(M68, a.snap) + ".prov.json"):
+        disk = "scratchpad/powermonger.st"
+    p = subprocess.run(["dotnet", "exec", "bin/Debug/net8.0/M68000.dll", "resume", a.snap, "repl"]
+                       + (["--disk-a", disk] if disk else []), input="\n".join(cmds) + "\n", capture_output=True,
                        text=True, cwd=M68, env=env)
     log = p.stdout + p.stderr
     (M68 / out / f"{name}.log").write_text(log)
