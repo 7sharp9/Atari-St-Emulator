@@ -76,3 +76,5 @@ $00021d08	Pool_Behaviour_Homing
 $00025ccc	HighScoreTable
 $00025e44	GameOver_Screen
 $00032a52	WaveReached
+$00025372	Autopilot_LaunchCountdownTick
+$00025430	Autopilot_OutputRules

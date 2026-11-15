@@ -11,3 +11,30 @@ cwd = "."
 expect = ["re:level 0: match 65455/65455", "re:level 1: match 65455/65455", "re:level 2: match 65455/65455", "re:level 1: model object cells 571, RAM object cells 571, identical type at the same cell: 571", "re:level 2: model object cells 1775, RAM object cells 1774, identical type at the same cell: 1774", "re:camera x,y,z = 1604,-6724,3047  level 0: grid words .* match 330/330", "re:camera x,y,z = 2332,-17310,9356  level 0: grid words .* match 330/330", "re:camera x,y,z = 3112,-23858,15057  level 0: grid words .* match 330/330", "re:camera x,y,z = 3970,-25424,19302  level 0: grid words .* match 330/330", "re:tile calls 132: colour index == type word 132/132;  8 vertex words == rows at A6 and A6.52: 132/132", "re:slope table entries .* 8064/8064", "re:pos 119/119, vel 119/119, att 119/119, mat 119/119", "re:pos 119/119, vel 119/119, att 119/119, mat 4/119", "re:stage-1 particle updates modelled 447; all six fields equal 447/447"]
 cite = "README.md (the sections for each model)"
 minutes = 1
+
+# The pilot gates run the emulator (callcap and bp from the demo-flight start snapshot scratchpad/virus/demo/S1b.snap, built by
+# `bash reversing/virus/py/demo/capture.sh`); each captures afresh into scratchpad/virus/pilot/ before it reads.
+[[gate]]
+name = "pilot_tick"
+cmd = "bash py/pilot/gate_pilot.sh"
+cwd = "."
+expect = ["3496/3496", "re:(?m)^model == callcap: 3496/3496   control=none$", "re:(?m)^  A countdown +10$", "re:(?m)^  B scan tick +436$", "re:(?m)^  D fire \\(D4 < \\$900\\) +311$", "re:(?m)^  D ground-avoid reflex +109$", "re:(?m)^  scan_skip_y_f100 +853$"]
+cite = "demo.md, \"The pilot\""
+minutes = 2
+
+[[gate]]
+name = "pilot_scan_census"
+cmd = "bash py/pilot/gate_pilot.sh census"
+cwd = "."
+expect = ["263/1069", "re:scans \\(bp \\$253a4 stops\\) read: 1563 ", "re:PRECONDITION .*: 1069 of 1563", "re:(?m)^RESULT .*: 263$", "re:chosen record at a queue position: 0\\n"]
+cite = "demo.md, \"The pilot\""
+minutes = 4
+
+# A 2-game natural attract chain from demo/S1b.snap (one REPL lineage, nothing poked), from a fresh run into scratchpad/virus/chain/gate/.
+[[gate]]
+name = "chain2"
+cmd = "bash py/chain/gate_chain.sh"
+cwd = "."
+expect = ["re:(?m)^over tick, score, wave equal the six-game run: 2/2 \\(2 games run\\)$", "re:(?m)^game 1 start queue zero: True; \\$32a52 at game 2 start == game 1 wave: True \\(3 vs 3\\)$"]
+cite = "demo.md, \"Twenty-four games\""
+minutes = 6

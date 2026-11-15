@@ -10,9 +10,10 @@ start, and `$270a6` is rewritten from the live pool every eighth tick. No state 
 attract flight better than an earlier one. Two flights differ only through the RNG state at the scatter that builds
 the map and through stale buffer bytes; with the seed restored and four stale bytes cleared, a second game after a
 natural game over repeats the first (lives, wave, tick, score and fuel at nine checks, five life losses). The demo
-was run to its natural end: it loses its lives by itself, and a chain of six complete games with no pokes shows no trend
-in survival or score (game-over tick 12088, 12894, 15018, 7106, 8178, 13052; rank correlation with the game number
--0.03; six games is a weak test). What persists across a natural game over is listed under "What persists"; none of it
+was run to its natural end: it loses its lives by itself, and one continuous chain of 24 complete games with no pokes shows
+no trend in the wave reached (waves 3 3 3 2 3 3 2 3 3 2 3 2 3 4 3 3 2 3 2 3 3 3 3 3; rank correlation with the game number
++0.09, permutation p 0.68; game-over tick +0.16, score -0.04; 24 games detect only a rank correlation of about 0.4 or more).
+What persists across a natural game over is listed under "What persists"; none of it
 is read by the pilot's own routines, and the one carried table that reaches the game (the infection target queue) can
 only change which target a homing enemy steers to. The limits are in "Not tested" at the end.
 
@@ -68,18 +69,28 @@ button byte at `$1fa4e`. Read. Keys the code tests directly: `$1f9ed` SPACE, `$1
 
 - `$2529a` (`Target_FindNearest`): scans the 20-byte records of the pool `$31d54` (count `$32a3e`) and returns the
   one with the smallest Manhattan distance to the ship (`$270b0`: x, y, z words, then vx, vy, vz at +6, +8, +10), skipping
-  a record whose y word is `$f100` or whose long at +16 is `$228de`. Which kinds of record it picks (enemy, particle,
-  emitter) is not established; the wave-start routine `$20e74` creates its records with y = `$f100`, so those are
-  skipped.
+  a record whose y word is `$f100` or whose long at +16 is `$228de`. The distance is word arithmetic that saturates to
+  `$7fff`, and the comparison is `cmp.w D3,D5 / blt`, so a tie goes to the later record (the wave-start routine `$20e74`
+  creates its records with y = `$f100`, so those are skipped). It picks every kind of record that is not so filtered: in
+  1563 scans of demo flight 1 the chosen record's behaviour pointer (+16) was one of fourteen (`$21792` 455 scans, homing
+  `$21d08` 263, `$22316` 202, `$21f00` 186, `$21df6` 136, `$21afe` 127, and eight rarer), and homing records were in the
+  pool at 1069 of the scans (first at tick 272), so the pilot does target them in 263 of those 1069. The scan reads only
+  the pool, so it never picks the queue `$27134`; the chosen record's position equalled a queue entry in 0 of the 1563
+  scans (the queue was non-zero in 1543). Gated, `bash reversing/virus/py/pilot/gate_pilot.sh census` (a `bp` on `$253a4`
+  with a 3M step cap per stop, one flight, one RNG seed; 37 further stops gave up after the game over). What the homing
+  records are on screen is not checked.
 - `$2538c`: while `$62a60` (set to 5 at `$2315c`) is nonzero it decrements it and returns D2 = 2 (thrust), D0 = D1 = 0.
   Otherwise, every eighth tick (`$32a44 & 7 = 0`) it calls `$2529a` and stores the pointer at `$270a6`. It loads the
   record's position and velocity, forms position + 4 x velocity (the record's) minus 4 x the ship's velocity, keeps that
   aim point at `$270aa`, takes the ground height under the ship with `$24754` (`byte[$42a58 + (z & $ff00) + (x >> 8)] * 8
-  - $298`, so `Landscape_HeightAt`), and calls `$22c1e` to update the controller word at `$270a2`.
+  - $298`, so `Landscape_HeightAt`; `$420` when the ship's x and z words are both below `$900`, the launch pad), and calls
+  `$22c1e` to update the controller word at `$270a2`.
 - `$22c1e` (`Autopilot_Steer`): builds the attitude matrix for the angles held in `$270a2` (`$1f646`) and, from the sign of
-  two dot products of the relative vector with matrix rows, moves a turn byte by plus or minus 2 per tick (capped at
-  `$3f`, floored at 0) and a second field by plus or minus `$700` per tick; bits 10 to 12 of the low word record the
-  signs, and bits 10 and 11 are forced on when the ship's y word is below `$c900`.
+  two dot products of the relative vector with matrix rows, moves a turn byte (bits 16 to 23 of the controller word) by plus
+  or minus 2 per tick (signed compare against `$3f`, floored at 0) and the byte above it (bits 24 to 31) by plus or minus 7
+  (the code adds `$700` to the whole high word; no carry reaches the turn byte); bits 10 to 12 of the low word record the
+  signs, and bits 10 and 11 are forced on when the ship's y word, signed, is below `$c900`. The angles it gives `$1f646` are
+  the high word shifted left by 8 and the high word itself, and `D0` returned by `$2538c` is the turn byte shifted by 8.
 - Output rules at `$25430..$254a6` (D4 = |dx| + |dy| + |dz| from the ship to the aim point, saturating to `$7fff`):
   thrust is the default; it is cleared when D4 >= `$3200` and the height term is at least `$600`, and when
   `$270a2` bit 11 is set; fire (bit 0) is set when D4 < `$900`; D0 comes from the controller word, forced to `$2000` at
@@ -89,8 +100,16 @@ button byte at `$1fa4e`. Read. Keys the code tests directly: `$1f9ed` SPACE, `$1
   Which sign of y is up was not worked out.
 
 **Gated:** `callcap 2538c` from the first demo tick (the `$62a60` countdown branch): D2 `$7e9c` to 2, D0 and D1 to 0,
-`$62a60` 5 to 4, 10 steps (one capture; not a model gate). The branch rules above are read, and there is no Python
-model of a pilot tick gated against `callcap`. Poked, from `README.md`: with `wb 62a5f ff` on `fl/f1.snap`, 300,000 steps
+`$62a60` 5 to 4, 10 steps. **Gated model of the whole routine** (`py/pilot/pilot_model.py`, written from `$2538c`,
+`$2529a`, `$24754`, `$22c1e` and `$1f646` and fed only the pre-call dump, the sine table and the height map): against
+`callcap 2538c` at 3496 natural entries of demo flight 1 from `S1b.snap` (ticks 1 to 3496, unpoked), model == callcap 3496/3496
+on D0..D7, A0..A3, the pilot words `$270a2..$270af`, the matrix `$270d4` and `$62a60`, with no write outside them and the
+stack frame. Branches taken (model view): countdown 10, scan tick 436, hold tick 3050, row-1 dot negative 1322, row-2 dot
+negative 1762, y below `$c900` 452, thrust cut by D4 >= `$3200` with height >= `$600` 959, by bit 11 1641, fire 311, D0 =
+`$2000` 1505, D0 = `$3500` 236, ground-avoid reflex 109, near-ground steer 14; the `$1000` branch and the `$228de` skip were
+not reached (read only). Controls: ties to the earlier record 3494/3496, `$3200` to `$3400` 3484/3496, turn step 3 1033/3496,
+aim offset not halved 11/3496, fire range `$a00` 3410/3496. Command: `bash reversing/virus/py/pilot/gate_pilot.sh` (about
+70 s, fresh capture). The map and sine table did not change over the capture. Poked, from `README.md`: with `wb 62a5f ff` on `fl/f1.snap`, 300,000 steps
 call `$2538c` 10 times and `$254aa` 0 times, and the flight model matches 119/119.
 
 Nothing the pilot reads is stored from an earlier run: `$270a2`, `$270a6`, `$62a60` and `$270aa` are initialised at
@@ -231,7 +250,9 @@ only; a write-watch across the whole death and game over was not run.
 
 `py/demo/chain.py` runs one REPL session from `S1b`: the demo flies with nothing poked or injected, each life loss is a stop on
 `$25ba0`, the last life ends the game, and `bp 230c0` runs the game over and the attract loop to the next demo start; six
-complete games (about 18 minutes, 3.3 billion steps), `py/demo/chain_table.py` prints the table:
+complete games (about 18 minutes, 3.3 billion steps), `py/demo/chain_table.py` prints the table. `py/chain/chain.py` runs the same
+chain for any number of games in one emulator lineage (every game starts from the previous game's actual end, no ESC, no poke),
+saves a snapshot at each game start, and reproduces these six games exactly (over-tick and score on 6 of 6). Games 1 to 6:
 
 | game | start RNG `$2706e` | life-loss ticks | over tick | over score | wave | losses | high-score table's top four at the start |
 |---|---|---|---|---|---|---|---|
@@ -242,12 +263,42 @@ complete games (about 18 minutes, 3.3 billion steps), `py/demo/chain_table.py` p
 | 5 | `3203c31d9cfe70a6` | 4590, 5723, 7134, 7936, 8178 | 8178 | 13302 | 3 | 5 | 20000, 19770, 17526, 16984 |
 | 6 | `d85fac8d5c8af760` | 4752, 8111, 10768, 11715, 12044, 13052 | 13052 | 19369 | 3 | 6 | 20000, 19770, 17526, 16984 |
 
-The `$27134` table at each game's start (`chain.jsonl`) is all zero for game 1 and the previous game's last queue for games 2 to 6.
-Fuel used per game was not recorded (the crash code zeroes the fuel, so the value at a life loss says nothing). Rank correlation
-with the game number: first life-loss tick 0.37 (4186, 4580, 4880, 3266, 4590, 4752), game-over tick -0.03, game-over score -0.26,
-life losses 0.09. Game 4 is the shortest and game 3 the longest. With six games and this spread none of these is a trend: the
-test could only have detected a very large effect, and a rank correlation of 0.37 or -0.26 on six points is well inside chance.
-It shows no improvement with experience; it cannot exclude a small one.
+The `$27134` table at each game's start (`chain.jsonl`) is all zero for game 1 and a different set of four entries for each later
+game. Fuel used per game was not recorded (the crash code zeroes the fuel, so the value at a life loss says nothing).
+
+### Twenty-four games
+
+`bash reversing/virus/py/chain/gate_chain.sh long 24` (about 55 minutes, 14.8 billion steps; one lineage from `S1b`, nothing poked;
+`py/chain/table.py` prints the table, written to `scratchpad/virus/chain/long/`). Wave is `$32a50` at the stop on the last life's
+`$25ba0` decrement. It is incremented by `addi.w #1,$32a50` at `$20fd0` (read from the disassembly), and `$25bdc` copies it to `$32a52` and
+zeroes it at the game over (read), so `$32a52` at a game's start is the previous game's wave (observed: equal in all 23 pairs).
+`$32a4e` is the landscape selector (`cmpi.w #1,$32a4e` at `$21034`, 0 in every game's last wave but game 14's, which reached wave 4 on
+landscape 1), not a wave counter. Per game, wave, game-over tick, score:
+
+| games | wave | over tick | score |
+|---|---|---|---|
+| 1 to 6 | 3 3 3 2 3 3 | 12088 12894 15018 7106 8178 13052 | 17526 19770 16984 9763 13302 19369 |
+| 7 to 12 | 2 3 3 2 3 2 | 6332 9589 10633 11051 15729 7269 | 6613 12771 14876 10918 19488 8475 |
+| 13 to 18 | 3 4 3 3 2 3 | 13939 16712 14164 13720 8060 9607 | 13203 22644 18165 19330 9196 18948 |
+| 19 to 24 | 2 3 3 3 3 3 | 7005 10410 16552 13211 17174 8854 | 9785 12111 11661 18162 17769 13545 |
+
+Wave 2: 6 games, wave 3:
+17, wave 4: 1 (game 14, tick 16712, seven life losses). Rank correlation with the game number (`table.py`, 20,000
+permutations, n = 24): wave +0.09 (p 0.68), game-over score -0.04 (p 0.85), game-over tick +0.16 (p 0.46), flight steps +0.16 (p 0.47);
+medians of the first and second twelve games: wave 3 and 3, score 14089 and 15657, tick 10842 and 13466. The wave is nearly constant, so
+the test has little to rank; it could detect a monotone rise of about 0.4 in rank correlation, not a small drift, and says nothing
+about 100 games. Each game spends 50.0M steps (49.4M to 56.9M) between the last decrement and the next `$230c0` (game-over screens and
+the title idle), 8.2% of all steps.
+
+What carries from game to game, from `startdiff.py` and `trend_bytes.py` over the 24 start snapshots (RAM outside the stack,
+screens and buffers `$52a58..$6ffff`): 14,704 to 19,681 bytes differ between consecutive starts, mostly the object map and the variables
+block, and the RNG, score block and part of the pilot and ship state differ in every pair. The queue is replaced each game: none of
+the 92 entries at games 2 to 24's starts equals any entry of the previous start (the entries repeat within a queue: positions 0 and 1
+are equal in 17 of 23). Bytes that grow monotonically with at least four distinct values (65 of them): the TOS clocks (`$463`, `$467`,
+`$4bb`), `$4e0e`, the high-score table's score columns (`$25cea..$25dca`, 28-byte stride), and blocks in the pool and variables area
+that are 0 at game 1 and then step up a few times (`$27ce9..$27d11`, `$289c2..$28a02`, `$29703..$29769` at an 8-byte stride, `$2b591`,
+`$2ca81..$2cbcb`, `$2e2c3..$2e2d3`). The last group is unidentified (a candidate list from about a million scanned bytes with no
+multiple-comparison correction, not a result); none of it is known to be read by the pilot.
 
 ## The carried-over table
 
@@ -271,8 +322,8 @@ It shows no improvement with experience; it cannot exclude a small one.
   checked.
 
 **Does the pilot read it?** The pilot's own routines (`$2529a`, `$2538c`, `$22c1e`'s call from `$2538c`) never reference
-`$27134`; it reaches the pilot only through the positions of the records that use it, which `$2529a` can pick as a target. Whether
-it does was not measured.
+`$27134`; it reaches the pilot only through the positions of the records that use it, which `$2529a` can pick as a target, and
+it does: 263 of 1069 scans with a homing record present chose one (census in "The pilot", `py/pilot/gate_pilot.sh census`).
 
 **Why it carries over.** Nothing clears it: no store to `$27134..$2714b` exists outside the two writers above, and the game-start
 code `$230c0..$23192` does not touch it, for a demo or a human game (read). Game 1 sees zeros because the machine started
@@ -300,23 +351,28 @@ measured).
 ## Not tested
 
 - A mouse-flown human game before an attract flight (the attempt did not return to a demo).
-- Anything beyond six games in the unpoked chain, and a power test: six games cannot show a small trend. Fuel used and kills per
-  game were not recorded.
-- Whether the pilot picks the homing records that read `$27134` as its target, and what those records are on screen.
-- Whether the stale queue is held through a game in the unpoked chain (measured only in `N1`, where the map equals game 1's).
+- Anything beyond 24 games in the unpoked chain (100 or more would detect a rank correlation of about 0.2), and a power test of
+  the wave series by simulation. Fuel used and kills per game were not recorded. What the unidentified monotone blocks of "Twenty-four
+  games" are (a `watch` on their writers across one game), and whether skipping the 50M-step game-over wait changes the carried RNG.
+- What the homing records the pilot targets look like on screen, and whether the census holds on other RNG seeds and waves
+  (one flight, 1563 scans).
+- Whether the stale queue is held through a game in the unpoked chain (measured only in `N1`, where the map equals game 1's; the
+  24-game chain shows only that the queue at the next start is a new set of four entries).
 - The cause of the life losses after the first (the fuel exhaustion reading is inferred for the first only).
 - A write-watch across the whole death, game over and attract loop (the regions were diffed at the two start states).
-- A Python model of one pilot tick gated against `callcap` (only the launch branch was captured). The rules above are
-  read.
+- The pilot's output branch D0 = `$1000` (height term >= `$c400`, D4 >= `$c00`) and the `$228de` scan skip: not reached in the
+  3496-tick corpus, so those two lines of the model are read. The corpus is one landscape (wave 0 to tick 3496).
+- Why `$62a60` reloads at pilot call 1191 of that flight (a second launch countdown; a life loss or restart is inferred, not
+  checked).
 - The hardware phase offset that makes the PC at a cap-stop differ although the game fields agree (N1z against flight 1).
 - Equality of flights beyond 100 samples of 200,000 steps (about 20M steps, a few hundred ticks), and any measure other
   than the printed ones (kills are only visible as score awards).
-- What the pool records the autopilot targets are (`$2529a` skips y = `$f100` and pointer `$228de`).
 
 ## Gates
 
 `bash reversing/virus/py/demo/gate_demo.sh` after `bash reversing/virus/py/demo/capture.sh` (timer, scatter bisection, flights
 2 to 4, human game in between), and `bash reversing/virus/py/demo/gate_death.sh` after `bash reversing/virus/py/demo/capture_death.sh`
-(natural death and game over, about 14 minutes), `chain.py` with `chain_table.py` (the unpoked chain, about 18 minutes) and
+(natural death and game over, about 14 minutes), `chain.py` with `chain_table.py` (the unpoked chain, about 18 minutes),
+`bash reversing/virus/py/chain/gate_chain.sh` (a two-game chain, in `gates.toml` as `chain2`) and
 `queue_check.sh` (the target queue); the raw lines are in `py/demo/README.md`. The gates read snapshots and run the
 emulator, so they are not in `gates.toml`. The `.sym` names for this doc are appended to `virus.sym`.

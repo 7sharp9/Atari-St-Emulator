@@ -71,6 +71,19 @@ thrust, which launches it. `capture.sh` holds the button and takes `fl/m_fire.sn
 `fl/f1..f4.snap` 900,000 steps apart (`flight.png` is `f1`). The game polls the keyboard and mouse through the ACIA
 like any ST program; the only inputs used are the ones in the tables here.
 
+### Running long (a chain of attract games)
+
+A natural attract game is about 640M steps (flight about 560M, then 50M of game-over screens and title idle), 127 s wall at 4.8M steps/s with
+the REPL and `bp 25ba0` (24 games in 51 minutes); `bash reversing/virus/py/chain/gate_chain.sh long 24` runs a chain.
+A lineage is serial (game k+1 starts from game k's end), so it runs at one emulator's speed. Measured from `demo/S1b.snap`, 30M steps,
+three interleaved rounds (`py/chain/bench.py`; load average 5 to 10 from other sessions), steps/s median: argv `N resume` 4.19M, REPL `s N` 4.27M,
+`s 1000000` chunks 4.29M, `bp <unreached> N` 3.97M (about 7% slower: it runs `CensusStep`), `stserver` `run` 3.84M. Nothing in the CLI skips work:
+headless, `Step()` renders nothing unless `ATARI_FRAME_DIR` is set, and the GC and tiering knobs are already rejected in `DEVELOPING.md`
+"Performance". Independent emulators scale (`py/chain/par.py`, `s 30M` each, median aggregate): 1 process 4.32M steps/s, 2 8.50M, 4 14.5M,
+8 22.95M (8 physical cores, shared with other sessions). That helps only for independent lineages, which need different start states (a poked
+RNG seed at game 1, not tested). Skipping the 50M-step wait after a game over would save at most 8.9% and was not tried (it may change the carried
+RNG advance). The remaining emulator-side lever is the mutable `Cpu` listed in `DEVELOPING.md` (hypothesis, about 15%).
+
 ## Memory map (RAM, 1 MB)
 
 | range | contents | how known |
