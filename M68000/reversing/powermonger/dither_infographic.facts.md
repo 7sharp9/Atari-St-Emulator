@@ -43,3 +43,14 @@ Docs: `reversing/powermonger/graphics.md` (G), `README.md` (R), `strategy.md` (S
   `probe.fsx`). Different captures and tools; neither number was changed.
 - Section 5 says "16 steps per tick" and keeps "8191 steps, about 512 ticks"; P counts the wrap step too (8192 steps).
   Number not changed.
+
+## Clarity pass
+
+| text added or changed | source |
+|---|---|
+| key line under the lede: `$` numbers are citations; proven / observed / inferred | reversing/GLOSSARY.md "Evidence labels" |
+| glossary: "colour plane" (two parallel 8 KB arrays, offsets 0 and -8257 from `$438ee`; not a bit plane) | this file, rows "two colour planes, 8 KB each, offsets 0 and -8257 from `$438ee`" and the Notes on plane naming; the page's own step 2 |
+| the "colour plane" wording is kept, not renamed | the facts above use the sources' own term; only a glossary line separates it from the ST's bit planes |
+| glossary: observed / inferred; "word", "longword (32-bit values)" | GLOSSARY.md "Notation", "Evidence labels" |
+| scene notes and the season check say "a saved game state"; file names and the reference-renderer path moved to the footer | presentation; names unchanged |
+| rule panel: colourByte spelled out (water tick, forced), "checked against the game" heading | the page's section 2 steps 2 and 3 |

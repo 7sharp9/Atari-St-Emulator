@@ -54,6 +54,14 @@ Each pokes a state through the REPL (owners, link bits as `$21f9e` would set the
 | "one sweep is not enough, because a row can only copy distances its neighbours' rows already hold" | generic property of in-place Bellman-Ford relaxation; the call counts are the port's, checked by `fill_late` |
 | a packet stores node, timer, item, quantity, destination | economy.md 4 (pool 2 layout) |
 | proven / inferred labels | ai.md opening "Proof labels", which economy.md follows |
+| title: how goods find their way across the islands without carrying a route; the game is an Atari ST game, figure from reverse-engineering it in an emulator | lead; README.md opening |
+| panel A "ownership set up by hand, not played" replaces "hypothetical ownership"; "poked" becomes "set by hand" / "placed by hand" throughout | table above ("choice made for the figure; labelled in panel A") |
+| `$21e8a` named "the update routine" (Bellman-Ford step, also called relaxation); `$21e16` the table-reset routine; `$21f9e` the link-enable routine; `$22192` the next-hop routine; `$122f` the "busy" flag | economy.md 3, 4; the "busy" gloss is already in the prose table above |
+| A_TAKE lesson: routes mend themselves because the table is rebuilt and nothing else stores a route | the lead's "no packet carries a route" and panel A's detour numbers |
+| B_TAKE lesson: shortest paths need repeated sweeps | the old takeaway sentence, reordered |
+| "Bellman-Ford = the standard shortest-path update, also called relaxation" | general knowledge, generic (already in the "distance-vector" row above) |
+| the stray write described as "into the distance table at row 63, column 4, instead of an enemy island's own field" | Flags below and the "stray 500" row above (`8(A0)` with A0 = `$69ac0`); unchanged claim |
+| "How we know" and one Sources line name files; the figure's prose names none | clarity-pass convention |
 
 ## Flags
 

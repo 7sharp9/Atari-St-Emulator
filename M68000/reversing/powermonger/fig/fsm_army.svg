@@ -1,37 +1,44 @@
-<svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" viewBox="0 0 987 1615" width="987" height="1615">
-<rect x="0" y="0" width="987" height="1615" fill="#ffffff"/>
-<text x="16.0" y="28.0" font-family='Helvetica, Arial, sans-serif' font-size="19" font-weight="bold" fill="#212121">PowerMonger entity modes: groups, orders and combat</text>
-<text x="16.0" y="47.0" font-family='Helvetica, Arial, sans-serif' font-size="12" font-weight="normal" fill="#424242">the lead and his men; the walk $10/$12 ends in the previous mode (byte 30); edges extracted from the code</text>
-<text x="16.0" y="71.0" font-family='Helvetica, Arial, sans-serif' font-size="12.5" font-weight="normal" fill="#212121">PowerMonger (Bullfrog / Electronic Arts, 1990) is a war game on a land of settlements. Every man and boat on the map is a 50-byte record, and what it is</text>
-<text x="16.0" y="88.0" font-family='Helvetica, Arial, sans-serif' font-size="12.5" font-weight="normal" fill="#212121">doing is one byte, its mode (byte 31). Once per tick, the game's simulation step, the loop $14b62 runs the handler for each record's mode, and the</text>
-<text x="16.0" y="105.0" font-family='Helvetica, Arial, sans-serif' font-size="12.5" font-weight="normal" fill="#212121">handler usually writes the next mode. There is no other per-unit AI: these mode graphs are the behaviour.</text>
-<text x="16.0" y="127.0" font-family='Helvetica, Arial, sans-serif' font-size="12.5" font-weight="normal" fill="#212121">This figure draws the army side: what a captain's lead and his men do once an order arrives. The top lane holds the order executors, routines that walk</text>
-<text x="16.0" y="144.0" font-family='Helvetica, Arial, sans-serif' font-size="12.5" font-weight="normal" fill="#212121">the lead to the target with the arrival mode stored as his previous mode. Below are the arrival modes (take food, get men, trade, spy and the rest),</text>
-<text x="16.0" y="161.0" font-family='Helvetica, Arial, sans-serif' font-size="12.5" font-weight="normal" fill="#212121">recruiting and camp, movement and keeping rank behind the lead, and combat. The civilian job cycles are in the companion figure.</text>
-<text x="16.0" y="1280.0" font-family='Helvetica, Arial, sans-serif' font-size="13.5" font-weight="bold" fill="#212121">How to read it</text>
-<text x="16.0" y="1299.0" font-family='Helvetica, Arial, sans-serif' font-size="12" font-weight="normal" fill="#212121">A rounded box is a mode: its number and a short name. A square box is a routine several modes call, named by its address. A dashed grey box is a copy of a node</text>
-<text x="16.0" y="1315.0" font-family='Helvetica, Arial, sans-serif' font-size="12" font-weight="normal" fill="#212121">that lives in another lane or in the other figure, drawn there so that no arrow crosses the whole figure. Lane titles name the job or the part of the cycle.</text>
-<text x="16.0" y="1336.0" font-family='Helvetica, Arial, sans-serif' font-size="12" font-weight="normal" fill="#212121">Arrows. Solid black: the handler sets the mode directly. Blue dashed: a walk. Most moves are made in two steps: the handler stores the mode to arrive in as the</text>
-<text x="16.0" y="1352.0" font-family='Helvetica, Arial, sans-serif' font-size="12" font-weight="normal" fill="#212121">previous mode (byte 30) and sets mode $10; the walk $10 and its legs $12 move the man, and on arrival ($14fdc) the game copies byte 30 into byte 31. The blue</text>
-<text x="16.0" y="1368.0" font-family='Helvetica, Arial, sans-serif' font-size="12" font-weight="normal" fill="#212121">arrow is drawn straight from the mode that started the walk to the mode it arrives in. Purple dashed: only the previous mode is set, so it takes effect at the</text>
-<text x="16.0" y="1384.0" font-family='Helvetica, Arial, sans-serif' font-size="12" font-weight="normal" fill="#212121">man's next arrival. Grey dotted: a call to a shared routine.</text>
-<text x="16.0" y="1405.0" font-family='Helvetica, Arial, sans-serif' font-size="12" font-weight="normal" fill="#212121">Evidence. Every edge is code read: py/fsm/mode_edges.py lists each write of bytes 30 and 31 in the disassembly of the game, and build_fsm.py draws them; no</text>
-<text x="16.0" y="1421.0" font-family='Helvetica, Arial, sans-serif' font-size="12" font-weight="normal" fill="#212121">edge is typed by hand. The node fill is the evidence for the handler itself: green means proven, a Python rewrite of the handler matched the game's own 68000</text>
-<text x="16.0" y="1437.0" font-family='Helvetica, Arial, sans-serif' font-size="12" font-weight="normal" fill="#212121">code on every changed byte over many saved states (for example 18452/18452 bytes over 1889 states for the 45 modes of the $15000 page, 1043/1043 for the</text>
-<text x="16.0" y="1453.0" font-family='Helvetica, Arial, sans-serif' font-size="12" font-weight="normal" fill="#212121">shepherd modes); white means code read only.</text>
-<text x="16.0" y="1480.0" font-family='Helvetica, Arial, sans-serif' font-size="13.5" font-weight="bold" fill="#212121">What to take from it</text>
-<text x="16.0" y="1499.0" font-family='Helvetica, Arial, sans-serif' font-size="12" font-weight="normal" fill="#1b5e20">Most order arrows are blue: an order does not change what the lead does at once, it sets a walk whose arrival mode is the order's real work. The followers</text>
-<text x="16.0" y="1515.0" font-family='Helvetica, Arial, sans-serif' font-size="12" font-weight="normal" fill="#1b5e20">mostly keep rank: $06 marches with the lead and $08 walks back to a lost rank slot.</text>
-<text x="16.0" y="1536.0" font-family='Helvetica, Arial, sans-serif' font-size="12" font-weight="normal" fill="#1b5e20">Combat is a handful of modes, not a separate system. $2C picks a target through $4F68, whose arms share one tail ($34 shoot, or a $10 chase ending in $2E);</text>
-<text x="16.0" y="1552.0" font-family='Helvetica, Arial, sans-serif' font-size="12" font-weight="normal" fill="#1b5e20">$56A6 engages and $32 is the melee; at zero health $5590 rolls kill or rout, and on a rout stamps the loser's previous mode $3C, run away. The dashed "water</text>
-<text x="16.0" y="1568.0" font-family='Helvetica, Arial, sans-serif' font-size="12" font-weight="normal" fill="#1b5e20">veto" edge $36 to $66 is the one path into $66: a chase step onto water resets the mode to $00, keeps the previous mode, and the next walk arrives in it (seen</text>
-<text x="16.0" y="1584.0" font-family='Helvetica, Arial, sans-serif' font-size="12" font-weight="normal" fill="#1b5e20">live only with a one-byte poke of the previous mode).</text>
-<g transform="translate(0,183)">
-<svg width="987" height="1077"
- viewBox="0.00 0.00 987.00 1077.00" xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink">
+<svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" viewBox="0 0 989 1737.5" width="989" height="1737.5">
+<rect x="0" y="0" width="989" height="1737.5" fill="#ffffff"/>
+<text x="16.0" y="28.0" font-family='Helvetica, Arial, sans-serif' font-size="19" font-weight="bold" fill="#212121">PowerMonger captains and their men: what happens after an order arrives</text>
+<text x="16.0" y="47.0" font-family='Helvetica, Arial, sans-serif' font-size="12" font-weight="normal" fill="#424242">Each box is one behaviour (a "mode"); each arrow is a way the game switches from one to the next, read from the code</text>
+<text x="16.0" y="71.0" font-family='Helvetica, Arial, sans-serif' font-size="12.5" font-weight="normal" fill="#212121">PowerMonger (Bullfrog / Electronic Arts, 1990, here the Atari ST version) is a war game on a land of settlements. This figure comes from</text>
+<text x="16.0" y="88.0" font-family='Helvetica, Arial, sans-serif' font-size="12.5" font-weight="normal" fill="#212121">reverse-engineering the game's 68000 machine code (the ST's CPU) and running it in an emulator. Every man and boat on the map is a 50-byte record, and</text>
+<text x="16.0" y="105.0" font-family='Helvetica, Arial, sans-serif' font-size="12.5" font-weight="normal" fill="#212121">what it is doing is one byte, its mode (byte 31). Once per tick, the game's simulation step, the loop $14b62 runs the handler for each record's mode, and</text>
+<text x="16.0" y="122.0" font-family='Helvetica, Arial, sans-serif' font-size="12.5" font-weight="normal" fill="#212121">the handler usually writes the next mode. There is no other per-unit AI: these mode graphs are the behaviour.</text>
+<text x="16.0" y="144.0" font-family='Helvetica, Arial, sans-serif' font-size="12.5" font-weight="normal" fill="#212121">This figure draws the army side: what a captain's own unit (the "lead") and his men do once an order arrives. An order does not make the lead do the work</text>
+<text x="16.0" y="161.0" font-family='Helvetica, Arial, sans-serif' font-size="12.5" font-weight="normal" fill="#212121">at once: the order executors, in the top lane, walk the lead to the target with the arrival mode stored as his previous mode, and on arrival the game</text>
+<text x="16.0" y="178.0" font-family='Helvetica, Arial, sans-serif' font-size="12.5" font-weight="normal" fill="#212121">switches to it. Below are the arrival modes (take food, get men, trade, spy and the rest), recruiting and camp, movement and keeping rank behind the</text>
+<text x="16.0" y="195.0" font-family='Helvetica, Arial, sans-serif' font-size="12.5" font-weight="normal" fill="#212121">lead, and combat. The civilian job cycles are in the companion figure.</text>
+<text x="16.0" y="217.0" font-family='Helvetica, Arial, sans-serif' font-size="11" font-weight="normal" fill="#424242">$ numbers are addresses in the game's memory, given as citations; the text says what each one is. Evidence: proven = checked against the game's own code with a match count;</text>
+<text x="16.0" y="231.5" font-family='Helvetica, Arial, sans-serif' font-size="11" font-weight="normal" fill="#424242">observed = seen in the running game; inferred = read from the code or reasoned, not run.</text>
+<text x="16.0" y="1348.0" font-family='Helvetica, Arial, sans-serif' font-size="13.5" font-weight="bold" fill="#212121">How to read it</text>
+<text x="16.0" y="1367.0" font-family='Helvetica, Arial, sans-serif' font-size="12" font-weight="normal" fill="#212121">A rounded box is a mode: its number and a short name. A square box is a routine several modes call, named by its address. A dashed grey box is a copy of a node</text>
+<text x="16.0" y="1383.0" font-family='Helvetica, Arial, sans-serif' font-size="12" font-weight="normal" fill="#212121">that lives in another lane or in the other figure, drawn there so that no arrow crosses the whole figure. Lane titles name the job or the part of the cycle.</text>
+<text x="16.0" y="1404.0" font-family='Helvetica, Arial, sans-serif' font-size="12" font-weight="normal" fill="#212121">Lanes, top to bottom. Orders: the executor routines that walk the lead to the target. Order arrivals: what each order does when the walk ends (take food, get</text>
+<text x="16.0" y="1420.0" font-family='Helvetica, Arial, sans-serif' font-size="12" font-weight="normal" fill="#212121">men, trade, spy and the rest). Recruiting and camp. Movement and ranks: advancing and keeping rank behind the lead. Combat.</text>
+<text x="16.0" y="1441.0" font-family='Helvetica, Arial, sans-serif' font-size="12" font-weight="normal" fill="#212121">Arrows. Solid black: the handler sets the mode directly. Blue dashed: a walk. Most moves are made in two steps: the handler stores the mode to arrive in as the</text>
+<text x="16.0" y="1457.0" font-family='Helvetica, Arial, sans-serif' font-size="12" font-weight="normal" fill="#212121">previous mode (byte 30) and sets mode $10; the walk $10 and its legs $12 move the man, and on arrival ($14fdc) the game copies byte 30 into byte 31. The blue</text>
+<text x="16.0" y="1473.0" font-family='Helvetica, Arial, sans-serif' font-size="12" font-weight="normal" fill="#212121">arrow is drawn straight from the mode that started the walk to the mode it arrives in. Purple dashed: only the previous mode is set, so it takes effect at the</text>
+<text x="16.0" y="1489.0" font-family='Helvetica, Arial, sans-serif' font-size="12" font-weight="normal" fill="#212121">man's next arrival. Grey dotted: a call to a shared routine.</text>
+<text x="16.0" y="1510.0" font-family='Helvetica, Arial, sans-serif' font-size="12" font-weight="normal" fill="#212121">Evidence. Every edge is read from the game's code: a script lists each write of bytes 30 and 31 in the disassembly of the game, and a second script draws them;</text>
+<text x="16.0" y="1526.0" font-family='Helvetica, Arial, sans-serif' font-size="12" font-weight="normal" fill="#212121">no edge is typed by hand. The node fill is the evidence for the handler itself: green means proven, a Python rewrite of the handler matched the game's own</text>
+<text x="16.0" y="1542.0" font-family='Helvetica, Arial, sans-serif' font-size="12" font-weight="normal" fill="#212121">68000 code on every changed byte over many saved game states (for example 18452/18452 bytes over 1889 states for the 45 modes of the $15000 page, 1043/1043 for</text>
+<text x="16.0" y="1558.0" font-family='Helvetica, Arial, sans-serif' font-size="12" font-weight="normal" fill="#212121">the shepherd modes); white means inferred, read from the code only.</text>
+<text x="16.0" y="1585.0" font-family='Helvetica, Arial, sans-serif' font-size="13.5" font-weight="bold" fill="#212121">What to take from it</text>
+<text x="16.0" y="1604.0" font-family='Helvetica, Arial, sans-serif' font-size="12" font-weight="normal" fill="#1b5e20">Most order arrows are blue: an order does not change what the lead does at once, it sets a walk whose arrival mode is the order's real work. The followers</text>
+<text x="16.0" y="1620.0" font-family='Helvetica, Arial, sans-serif' font-size="12" font-weight="normal" fill="#1b5e20">mostly keep rank: $06 marches with the lead and $08 walks back to a lost rank slot.</text>
+<text x="16.0" y="1641.0" font-family='Helvetica, Arial, sans-serif' font-size="12" font-weight="normal" fill="#1b5e20">Combat is a handful of modes, not a separate system. $2C picks a target through $4F68, whose arms share one tail ($34 shoot, or a $10 chase ending in $2E);</text>
+<text x="16.0" y="1657.0" font-family='Helvetica, Arial, sans-serif' font-size="12" font-weight="normal" fill="#1b5e20">$56A6 engages and $32 is the melee; at zero health $5590 rolls kill or rout, and on a rout stamps the loser's previous mode $3C, run away. The dashed "water</text>
+<text x="16.0" y="1673.0" font-family='Helvetica, Arial, sans-serif' font-size="12" font-weight="normal" fill="#1b5e20">veto" edge $36 to $66 is the one path into $66: a chase step onto water resets the mode to $00, keeps the previous mode, and the next walk arrives in it (seen</text>
+<text x="16.0" y="1689.0" font-family='Helvetica, Arial, sans-serif' font-size="12" font-weight="normal" fill="#1b5e20">live only after setting the previous mode by hand).</text>
+<text x="16.0" y="1710.0" font-family='Helvetica, Arial, sans-serif' font-size="9.5" font-weight="normal" fill="#57606a">Sources: ai.md "What the loop actually is", "The entity FSM", "Evidence taxonomy"; scripts py/fsm/mode_edges.py (edges) and py/fsm/build_fsm.py (drawing); line-by-line sources in fsm.facts.md.</text>
+<g transform="translate(0,251)">
+<svg width="989" height="1077"
+ viewBox="0.00 0.00 989.00 1077.00" xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink">
 <g id="graph0" class="graph" transform="scale(1 1) rotate(0) translate(14.4 1062.82)">
 <title>G</title>
-<polygon fill="white" stroke="none" points="-14.4,14.4 -14.4,-1062.82 972.4,-1062.82 972.4,14.4 -14.4,14.4"/>
+<polygon fill="white" stroke="none" points="-14.4,14.4 -14.4,-1062.82 974.4,-1062.82 974.4,14.4 -14.4,14.4"/>
 <g id="clust1" class="cluster">
 <title>cluster_0</title>
 <path fill="white" stroke="#9e9e9e" d="M52,-912.25C52,-912.25 831,-912.25 831,-912.25 837,-912.25 843,-918.25 843,-924.25 843,-924.25 843,-1028.42 843,-1028.42 843,-1034.42 837,-1040.42 831,-1040.42 831,-1040.42 52,-1040.42 52,-1040.42 46,-1040.42 40,-1034.42 40,-1028.42 40,-1028.42 40,-924.25 40,-924.25 40,-918.25 46,-912.25 52,-912.25"/>
@@ -59,8 +66,8 @@
 </g>
 <g id="clust20" class="cluster">
 <title>cluster_legend</title>
-<path fill="white" stroke="#9e9e9e" d="M67,-8C67,-8 822,-8 822,-8 828,-8 834,-14 834,-20 834,-20 834,-53.6 834,-53.6 834,-59.6 828,-65.6 822,-65.6 822,-65.6 67,-65.6 67,-65.6 61,-65.6 55,-59.6 55,-53.6 55,-53.6 55,-20 55,-20 55,-14 61,-8 67,-8"/>
-<text xml:space="preserve" text-anchor="middle" x="334.5" y="-51.15" font-family="Helvetica,sans-Serif" font-size="11.00">Legend (node fill = evidence for the handler; every edge is code read from a mode&#45;byte write, py/mode_edges.py)</text>
+<path fill="white" stroke="#9e9e9e" d="M35,-8C35,-8 940,-8 940,-8 946,-8 952,-14 952,-20 952,-20 952,-53.6 952,-53.6 952,-59.6 946,-65.6 940,-65.6 940,-65.6 35,-65.6 35,-65.6 29,-65.6 23,-59.6 23,-53.6 23,-53.6 23,-20 23,-20 23,-14 29,-8 35,-8"/>
+<text xml:space="preserve" text-anchor="middle" x="268.75" y="-51.15" font-family="Helvetica,sans-Serif" font-size="11.00">Legend (node fill = evidence for the handler; every edge is read from a mode&#45;byte write in the code)</text>
 </g>
 <!-- g0_m1c -->
 <g id="node1" class="node">
@@ -895,8 +902,8 @@
 <!-- lg1 -->
 <g id="node70" class="node">
 <title>lg1</title>
-<path fill="#d9f0d3" stroke="#2e7d32" d="M196.12,-37.6C196.12,-37.6 69.88,-37.6 69.88,-37.6 66.28,-37.6 62.68,-34 62.68,-30.4 62.68,-30.4 62.68,-23.2 62.68,-23.2 62.68,-19.6 66.28,-16 69.88,-16 69.88,-16 196.12,-16 196.12,-16 199.72,-16 203.32,-19.6 203.32,-23.2 203.32,-23.2 203.32,-30.4 203.32,-30.4 203.32,-34 199.72,-37.6 196.12,-37.6"/>
-<text xml:space="preserve" text-anchor="middle" x="133" y="-22.92" font-family="Helvetica,sans-Serif" font-size="10.00">proven: gate vs the real 68000</text>
+<path fill="#d9f0d3" stroke="#2e7d32" d="M228,-37.6C228,-37.6 38,-37.6 38,-37.6 34.41,-37.6 30.8,-34 30.8,-30.4 30.8,-30.4 30.8,-23.2 30.8,-23.2 30.8,-19.6 34.4,-16 38,-16 38,-16 228,-16 228,-16 231.59,-16 235.19,-19.6 235.19,-23.2 235.19,-23.2 235.19,-30.4 235.19,-30.4 235.19,-34 231.59,-37.6 228,-37.6"/>
+<text xml:space="preserve" text-anchor="middle" x="133" y="-22.92" font-family="Helvetica,sans-Serif" font-size="10.00">proven (checked against the real game code)</text>
 </g>
 <!-- g4_h35f4&#45;&gt;lg1 -->
 <!-- g4_s_home -->
@@ -1148,88 +1155,88 @@
 <!-- lg2 -->
 <g id="node71" class="node">
 <title>lg2</title>
-<path fill="#ffffff" stroke="#757575" d="M296,-37.6C296,-37.6 238,-37.6 238,-37.6 234.41,-37.6 230.81,-34 230.81,-30.4 230.81,-30.4 230.81,-23.2 230.81,-23.2 230.81,-19.6 234.41,-16 238,-16 238,-16 296,-16 296,-16 299.6,-16 303.19,-19.6 303.19,-23.2 303.19,-23.2 303.19,-30.4 303.19,-30.4 303.19,-34 299.59,-37.6 296,-37.6"/>
-<text xml:space="preserve" text-anchor="middle" x="267" y="-22.92" font-family="Helvetica,sans-Serif" font-size="10.00">code read only</text>
+<path fill="#ffffff" stroke="#757575" d="M408.12,-37.6C408.12,-37.6 269.88,-37.6 269.88,-37.6 266.28,-37.6 262.68,-34 262.68,-30.4 262.68,-30.4 262.68,-23.2 262.68,-23.2 262.68,-19.6 266.28,-16 269.88,-16 269.88,-16 408.12,-16 408.12,-16 411.72,-16 415.32,-19.6 415.32,-23.2 415.32,-23.2 415.32,-30.4 415.32,-30.4 415.32,-34 411.72,-37.6 408.12,-37.6"/>
+<text xml:space="preserve" text-anchor="middle" x="339" y="-22.92" font-family="Helvetica,sans-Serif" font-size="10.00">inferred (read from the code only)</text>
 </g>
 <!-- lg1&#45;&gt;lg2 -->
 <!-- lg3 -->
 <g id="node72" class="node">
 <title>lg3</title>
-<polygon fill="#ffffff" stroke="#757575" points="395.44,-37.6 330.56,-37.6 330.56,-16 395.44,-16 395.44,-37.6"/>
-<text xml:space="preserve" text-anchor="middle" x="363" y="-22.92" font-family="Helvetica,sans-Serif" font-size="10.00">$addr routine</text>
+<polygon fill="#ffffff" stroke="#757575" points="513.45,-37.6 442.56,-37.6 442.56,-16 513.45,-16 513.45,-37.6"/>
+<text xml:space="preserve" text-anchor="middle" x="478" y="-22.92" font-family="Helvetica,sans-Serif" font-size="10.00">routine ($addr)</text>
 </g>
 <!-- lg2&#45;&gt;lg3 -->
 <!-- lgA -->
 <g id="node73" class="node">
 <title>lgA</title>
-<ellipse fill="#ffffff" stroke="#ffffff" cx="424" cy="-26.8" rx="1.44" ry="1.44"/>
+<ellipse fill="#ffffff" stroke="#ffffff" cx="542" cy="-26.8" rx="1.44" ry="1.44"/>
 </g>
 <!-- lg3&#45;&gt;lgA -->
 <!-- lgB -->
 <g id="node74" class="node">
 <title>lgB</title>
-<ellipse fill="#ffffff" stroke="#ffffff" cx="482" cy="-26.8" rx="1.44" ry="1.44"/>
+<ellipse fill="#ffffff" stroke="#ffffff" cx="600" cy="-26.8" rx="1.44" ry="1.44"/>
 </g>
 <!-- lgA&#45;&gt;lgB -->
 <g id="edge168" class="edge">
 <title>lgA&#45;&gt;lgB</title>
-<path fill="none" stroke="#212121" d="M425.93,-26.8C433.21,-26.8 459.32,-26.8 473.19,-26.8"/>
-<polygon fill="#212121" stroke="#212121" points="472.94,-28.9 478.94,-26.8 472.94,-24.7 472.94,-28.9"/>
-<text xml:space="preserve" text-anchor="middle" x="453" y="-31" font-family="Helvetica,sans-Serif" font-size="9.00">mode := Y</text>
+<path fill="none" stroke="#212121" d="M543.93,-26.8C551.21,-26.8 577.32,-26.8 591.19,-26.8"/>
+<polygon fill="#212121" stroke="#212121" points="590.94,-28.9 596.94,-26.8 590.94,-24.7 590.94,-28.9"/>
+<text xml:space="preserve" text-anchor="middle" x="571" y="-31" font-family="Helvetica,sans-Serif" font-size="9.00">mode := Y</text>
 </g>
 <!-- lgC -->
 <g id="node75" class="node">
 <title>lgC</title>
-<ellipse fill="#ffffff" stroke="#ffffff" cx="512" cy="-26.8" rx="1.44" ry="1.44"/>
+<ellipse fill="#ffffff" stroke="#ffffff" cx="630" cy="-26.8" rx="1.44" ry="1.44"/>
 </g>
 <!-- lgB&#45;&gt;lgC -->
 <!-- lgD -->
 <g id="node76" class="node">
 <title>lgD</title>
-<ellipse fill="#ffffff" stroke="#ffffff" cx="635" cy="-26.8" rx="1.44" ry="1.44"/>
+<ellipse fill="#ffffff" stroke="#ffffff" cx="753" cy="-26.8" rx="1.44" ry="1.44"/>
 </g>
 <!-- lgC&#45;&gt;lgD -->
 <g id="edge169" class="edge">
 <title>lgC&#45;&gt;lgD</title>
-<path fill="none" stroke="#1565c0" stroke-dasharray="5,2" d="M513.74,-26.8C526.01,-26.8 599.88,-26.8 625.92,-26.8"/>
-<polygon fill="#1565c0" stroke="#1565c0" points="625.63,-28.9 631.63,-26.8 625.63,-24.7 625.63,-28.9"/>
-<text xml:space="preserve" text-anchor="middle" x="573.5" y="-31" font-family="Helvetica,sans-Serif" font-size="9.00">walk $10/$12, arrives as Y</text>
+<path fill="none" stroke="#1565c0" stroke-dasharray="5,2" d="M631.74,-26.8C644.01,-26.8 717.88,-26.8 743.92,-26.8"/>
+<polygon fill="#1565c0" stroke="#1565c0" points="743.63,-28.9 749.63,-26.8 743.63,-24.7 743.63,-28.9"/>
+<text xml:space="preserve" text-anchor="middle" x="691.5" y="-31" font-family="Helvetica,sans-Serif" font-size="9.00">walk $10/$12, arrives as Y</text>
 </g>
 <!-- lgE -->
 <g id="node77" class="node">
 <title>lgE</title>
-<ellipse fill="#ffffff" stroke="#ffffff" cx="665" cy="-26.8" rx="1.44" ry="1.44"/>
+<ellipse fill="#ffffff" stroke="#ffffff" cx="783" cy="-26.8" rx="1.44" ry="1.44"/>
 </g>
 <!-- lgD&#45;&gt;lgE -->
 <!-- lgF -->
 <g id="node78" class="node">
 <title>lgF</title>
-<ellipse fill="#ffffff" stroke="#ffffff" cx="737" cy="-26.8" rx="1.44" ry="1.44"/>
+<ellipse fill="#ffffff" stroke="#ffffff" cx="855" cy="-26.8" rx="1.44" ry="1.44"/>
 </g>
 <!-- lgE&#45;&gt;lgF -->
 <g id="edge170" class="edge">
 <title>lgE&#45;&gt;lgF</title>
-<path fill="none" stroke="#6a1b9a" stroke-dasharray="5,2" d="M666.78,-26.8C675.18,-26.8 711.2,-26.8 728.13,-26.8"/>
-<polygon fill="#6a1b9a" stroke="#6a1b9a" points="727.77,-28.9 733.77,-26.8 727.77,-24.7 727.77,-28.9"/>
-<text xml:space="preserve" text-anchor="middle" x="701" y="-31" font-family="Helvetica,sans-Serif" font-size="9.00">prev := Y only</text>
+<path fill="none" stroke="#6a1b9a" stroke-dasharray="5,2" d="M784.78,-26.8C793.18,-26.8 829.2,-26.8 846.13,-26.8"/>
+<polygon fill="#6a1b9a" stroke="#6a1b9a" points="845.77,-28.9 851.77,-26.8 845.77,-24.7 845.77,-28.9"/>
+<text xml:space="preserve" text-anchor="middle" x="819" y="-31" font-family="Helvetica,sans-Serif" font-size="9.00">prev := Y only</text>
 </g>
 <!-- lgG -->
 <g id="node79" class="node">
 <title>lgG</title>
-<ellipse fill="#ffffff" stroke="#ffffff" cx="767" cy="-26.8" rx="1.44" ry="1.44"/>
+<ellipse fill="#ffffff" stroke="#ffffff" cx="885" cy="-26.8" rx="1.44" ry="1.44"/>
 </g>
 <!-- lgF&#45;&gt;lgG -->
 <!-- lgH -->
 <g id="node80" class="node">
 <title>lgH</title>
-<ellipse fill="#ffffff" stroke="#ffffff" cx="825" cy="-26.8" rx="1.44" ry="1.44"/>
+<ellipse fill="#ffffff" stroke="#ffffff" cx="943" cy="-26.8" rx="1.44" ry="1.44"/>
 </g>
 <!-- lgG&#45;&gt;lgH -->
 <g id="edge171" class="edge">
 <title>lgG&#45;&gt;lgH</title>
-<path fill="none" stroke="#616161" stroke-dasharray="1,5" d="M768.93,-26.8C776.28,-26.8 802.82,-26.8 816.58,-26.8"/>
-<polygon fill="#616161" stroke="#616161" points="822.24,-26.8 816.24,-29.5 820.46,-26.8 816.24,-26.8 816.24,-26.8 816.24,-26.8 820.46,-26.8 816.24,-24.1 822.24,-26.8"/>
-<text xml:space="preserve" text-anchor="middle" x="796" y="-31" font-family="Helvetica,sans-Serif" font-size="9.00">calls</text>
+<path fill="none" stroke="#616161" stroke-dasharray="1,5" d="M886.93,-26.8C894.28,-26.8 920.82,-26.8 934.58,-26.8"/>
+<polygon fill="#616161" stroke="#616161" points="940.24,-26.8 934.24,-29.5 938.46,-26.8 934.24,-26.8 934.24,-26.8 934.24,-26.8 938.46,-26.8 934.24,-24.1 940.24,-26.8"/>
+<text xml:space="preserve" text-anchor="middle" x="914" y="-31" font-family="Helvetica,sans-Serif" font-size="9.00">calls</text>
 </g>
 </g>
 </svg>

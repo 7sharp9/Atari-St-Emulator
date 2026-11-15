@@ -96,3 +96,8 @@ def height(text, width, size=12, lh=None, parskip=None):
     for ln in lines(text, width, size):
         h += parskip if ln is None else lh
     return h
+
+
+KEY = ('$hex numbers are addresses in the game\'s memory, given as citations; the text says what each one is. '
+       'Evidence: **proven** = checked against the game\'s own code with a match count; **observed** = seen in the '
+       'running game; **inferred** = read from the code or reasoned, not run.')

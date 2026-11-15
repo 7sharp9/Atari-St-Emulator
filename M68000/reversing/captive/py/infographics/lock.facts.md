@@ -79,3 +79,25 @@ States: `agents/ai/req4.snap` (D0 = 1 base, three kind-2 coded doors), `base1/ou
 | for the compound door the die gives no hint and the RATT note is the only clue | ai.md "Door hints" (kind 4, 1200/1200 random); panel D's existing note text |
 | stserver, labelled pokes, census, control, re-run scripts | `DEVELOPING.md` "Memory hooks and the `stserver` process"; this file's header and rows |
 | req4 = mission 1's base after the request-word poke to 4; outside.snap = the compound, the surface level where the party lands, in front of the base door | ai.md opening paragraph and "Getting into a base" (compound = mode 1 level after landing, door `$44` at (22,21)) |
+
+## Clarity pass: sources for the added or reworded sentences
+
+Wording only; no number changed (the script's printed numbers are identical before and after).
+
+| sentence in the figure | source |
+|---|---|
+| new title "A combination lock, and the item that gives it away" | the lead's own content (lock, DIE) |
+| "(top-left TL, top-right TR, bottom-left BL, bottom-right BR)" in the lead | the old panel A "How to read" |
+| "Each door stores only a combination number from 0 to 23, its code." | the old panel A takeaway |
+| "(another item)"; "the compound door on the surface" | the old footer ("item $66 is an item type"; "outside.snap is the compound, the surface level where the party lands") |
+| key line | clarity-pass conventions |
+| panel A title "A door stores a number 0 to 23; a table maps it to a corner order"; tag "inferred: read from the lock code ($e270)" | the old title and tag "read: $e358 in req4 and outside.snap; lock $e270 disassembled" |
+| "a door's 16-bit state word (list $1bee8)" | the old line "door state word (list $1bee8, one per coded door)"; fact row "state word" above |
+| "test" labels, "the base used for the die tests" | the old "req4" labels and the line about the die runs' base |
+| "(every code 0..23 occurs across 80 generated bases)" | the old "every code 0..23 occurs in its 80-base census" |
+| panel B tag "all 6144 sequences (24576 clicks) match our model"; "(nothing pressed)" | the old tag; `$0080` = code 8 with no corner lit (state word = code << 4, fact row "lock census") |
+| "run through the lock routine ($e270) in the emulator" | the old "run through $e270 under stserver" |
+| panel C title "facing a coded door"; "linear congruential generator (state at 15218(A6))"; "party set by hand"; "A second run" | the old title, the old "LCG at 15218(A6)", "party poked", "This census" |
+| panel D tag "costs reasoned from the proven model; RATT text proven, its delivery inferred" | the old tag "computed; RATT text proven, its delivery inferred"; fact row "cost" above (arithmetic on the proven lock model) |
+| "(an item, $66)"; "compound-door seeds" | the old "item $66"; fact row "code 8 in 3 of 40 compound seeds" |
+| How we know rewording; Sources line | the old Labels / Checks / States paragraphs and the two bottom lines |

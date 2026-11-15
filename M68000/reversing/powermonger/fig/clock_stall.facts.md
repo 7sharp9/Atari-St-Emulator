@@ -51,3 +51,22 @@ figures are the doc's. The chunk-to-step mapping (chunk n covers 2G + (n-1) x 25
 | `bgt` is the 68000's signed "branch if greater" | general 68000 knowledge |
 | k80, k108 are Play Random Land builds | strategy.md "Natural coverage" (75 unpoked Play Random Land lands; `py/arms/`) |
 | panel C is proven by prediction | strategy.md Status ("proven in the emulator by the poke table") |
+
+## Clarity pass (title, key line, plain boxes)
+
+| text added or changed | source |
+|---|---|
+| key line under the lead: `$` numbers are citations; proven / observed / inferred | repo evidence taxonomy: reversing/GLOSSARY.md "Evidence labels" (proven = checked against the game; observed = seen running; inferred = read only); ai.md "Evidence taxonomy" |
+| legend words proven / observed / inferred replace "callcap gate", "live", "code read" | same; the box fills are unchanged |
+| "here the Atari ST version"; "reverse-engineering the game's 68000 machine code (the ST's CPU) and running it in an emulator" | README.md title line; GLOSSARY.md "The Atari ST", "68000" |
+| script, file and saved-game names moved from panels into the final "Sources:" line | presentation only; every name is unchanged |
+| title "A 16-bit clock bug stops the computer's idle armies deciding for about 34,800 ticks" | this figure's lead and panel B (both numbers 16-bit words, signed compare, wait about 34,800 ticks); strategy.md "The signed-clock stall" |
+| camp = "the state it waits in for its next order" | strategy.md ("A group that has been in camp (state 6) for `$14` ticks gets its next order from `$6762`"; `$51538` table row 256) |
+| the 32-bit clock whose low word is `$2df72`; "pieces of code" for the three instructions | strategy.md "Where it runs" (`addq.l #1,$2df70` is a long add); unchanged claim |
+| "(the game map)" for land | strategy.md "Natural coverage" (Play Random Land builds a land); README title line |
+| "land A" = W5G_k108, "land B" = W5G_k80 | strategy.md "The signed-clock stall" (k108 collapses between 4.5G and 4.75G, k80 between 5.5G and 5.75G); the figure's panel D values |
+| "two lands tested" for k143, k44 | strategy.md "The signed-clock stall" ("k143, k44: stamps within 20 ticks of the clock") |
+| "steps" = emulated 68000 instructions, at first use in panel B | GLOSSARY.md "How the work is done" (step) |
+| "set the clock by hand" for "clock poked" | GLOSSARY.md (poke) |
+| LOAD box: "keeps the running game's clock" for "keeps the destination's clock" | strategy.md "A LOAD is a second way into the stall" |
+| "a behaviour" for "an arm" in the Consequence line | same meaning; "arm" is defined only in the commander-AI figure |

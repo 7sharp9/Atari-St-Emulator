@@ -87,13 +87,14 @@ footer{margin-top:3em;color:var(--muted);font-size:.85rem}
 <p class="lede">PowerMonger (Bullfrog and Electronic Arts, 1990; this is the Atari ST version) is a war strategy game. You command a captain and his men across an island seen from above at an angle, and you give orders (go here, attack that town, fetch food) rather than steering units. The island is a height map, drawn in perspective by the game's own software renderer as two flat triangles per square of ground, and it can be turned and zoomed.</p>
 <p>The ST can show only 16 colours at once. Shading hills by their slope needs more tones than that, and the game also wants grass that changes with the seasons and sea that moves. Its answer is a table of 16 by 16 pixel stipple tiles. Every triangle carries one number, its <b>colour byte</b>. That number picks a tile, and the pixel's screen position picks the pixel inside the tile. A darker or lighter shade is just a tile with a few more pixels of the next colour, so a slope fades from one colour to another by dithering, without the palette ever changing. Seasons are done by rewriting some of the tiles; the moving sea by stepping the colour byte through four tiles.</p>
 <p>This page is built from the game's own memory, captured while it ran in an emulator: the tile table is the real one, the triangles are the ones the game drew, and every picture below is rebuilt from those two alone and compared with the screen the game itself produced. Section 1 lets you follow any pixel through the rule; sections 2 to 5 explain the steps, the tiles, how the tiles are built and how the seasons change them.</p>
+<p class="note">$ numbers are addresses in the game's memory, given as citations; the text says what each one is. Evidence: <b>proven</b> = checked against the game's own code with a match count; <b>observed</b> = seen in the running game; <b>inferred</b> = read from the code or reasoned, not run.</p>
 
 <div class="panel">
 <dl class="kv">
 <dt>The rule</dt><dd>pixel(x, y) = tile[colourByte][(y + phase/8) mod 16][x mod 16]</dd>
-<dt>colourByte</dt><dd>the triangle's byte from one of the cell's two colour planes (offset 0 or -8257 from $438ee; both are slope shades baked from the altitudes when the island is built), +tick if below 12 (water), or 0x1c if forced</dd>
+<dt>colourByte</dt><dd>the triangle's byte (the colour byte, see Terms below) from one of the cell's two colour planes (at offset 0 or -8257 from $438ee; both hold slope shades baked from the altitudes when the island is built), plus the water tick (0 to 3, see Terms) if the byte is below 12 (water), or 0x1c if the triangle is forced (section 2, step 3)</dd>
 <dt>table</dt><dd>16 KB at $2e000: 128 bytes per colour byte = 16 rows of 8 bytes = one 16x16 tile of 4-bit pixels</dd>
-<dt>checked</dt><dd id="proofline">loading</dd>
+<dt>checked against the game</dt><dd id="proofline">checking...</dd>
 </dl>
 </div>
 <p class="note">The panel above is the whole method in three lines; the rest of the page unpacks it. <i>x</i> and <i>y</i> are screen coordinates, <i>mod</i> is the remainder, and a number written <code>0x1c</code> or <code>$2e000</code> is hexadecimal.</p>
@@ -105,14 +106,16 @@ footer{margin-top:3em;color:var(--muted);font-size:.85rem}
 <dt>colour byte</dt><dd>the number a triangle is filled with. It does not name a colour: it names a tile.</dd>
 <dt>tile, slot</dt><dd>a 16 by 16 pattern of palette colours. The table holds them one after another in 128-byte slots, slot n for colour byte n.</dd>
 <dt>palette index</dt><dd>a pixel's value, 0 to 15: which of the 16 screen colours it shows.</dd>
-<dt>bit plane</dt><dd>the ST stores 16 pixels as four 16-bit words; each word holds one bit of each pixel's palette index, and the four bits together make the index.</dd>
+<dt>colour plane</dt><dd>one of the two parallel 8 KB arrays that hold a colour byte for each half-cell, at offset 0 and offset -8257 from $438ee. Not the same thing as a bit plane.</dd>
+<dt>bit plane</dt><dd>the ST stores 16 pixels as four 16-bit words (a word is 16 bits); each word holds one bit of each pixel's palette index, and the four bits together make the index.</dd>
 <dt>scanline</dt><dd>one row of screen pixels; <i>y</i> counts them from the top.</dd>
 <dt>phase</dt><dd>a shift of 0 or 8 rows applied to every tile read, which flips whenever the camera moves (section 2, step 5).</dd>
 <dt>tick</dt><dd>one step of the game's simulation. The view is redrawn once per tick at normal speed. The <i>water tick</i> is that counter's lowest two bits, 0 to 3.</dd>
 <dt><code>$</code> addresses</dt><dd>where a routine or table sits in the running game's memory. They are citations into the reverse-engineering notes; the text says what each one does.</dd>
-<dt>RAM image, scene</dt><dd>a copy of the game's memory saved from the emulator. Names like <code>pm78_settle.ram</code> are labels for those files. Each scene below is one of them.</dd>
-<dt>reference renderer</dt><dd>a Python rewrite of the game's terrain drawing (<code>tools/pm_render_ref.py</code>), checked against the game's own frames.</dd>
-<dt>proven</dt><dd>reproduced exactly by a rewrite, compared byte for byte with the real routine run in the emulator (<code>callcap</code>: run one routine from a saved state and record every byte it changes). A count such as 125219/125219 is bytes matched out of bytes compared.</dd>
+<dt>RAM image, scene</dt><dd>a copy of the game's memory saved from the emulator (a saved game state). Each scene below is one of them; the file names are in the footer.</dd>
+<dt>reference renderer</dt><dd>a Python rewrite of the game's terrain drawing, checked against the game's own frames.</dd>
+<dt>proven</dt><dd>checked against the game's own code: reproduced exactly by a rewrite, compared byte for byte with the real routine run in the emulator (<code>callcap</code>: run one routine from a saved state and record every byte it changes). A count such as 125219/125219 is bytes matched out of bytes compared.</dd>
+<dt>observed, inferred</dt><dd>observed: seen in the running game; inferred: read from the code or reasoned, not run.</dd>
 </dl>
 </div>
 
@@ -158,7 +161,7 @@ footer{margin-top:3em;color:var(--muted);font-size:.85rem}
   <li><b>The forced colour.</b> Before filling, the game orders the triangle's vertices by screen height. If the middle one is on the left, the triangle is wound the other way round. The game then ignores the terrain byte and uses <code>0x1c</code> <span class="chip f">forced</span>. Where this was measured (the mission 1 start view) the forced triangles were mostly ones facing away from the eye, so almost all of their pixels are later covered by nearer ground and only a few dark pixels survive along the island's outline. Other camera angles have not been measured. <span id="forcedStat"></span></li>
   <li><b>The slot.</b> The table starts at <code>$2e000</code>. A colour byte owns <code>128</code> bytes from there. No terrain cell ever holds byte 0x1c itself, so that slot exists only for the forced rule.</li>
   <li><b>The row.</b> The 128 bytes are 16 rows of 8 bytes. Scanline y reads row <code>(y + phase/8) mod 16</code>. The game advances its read pointer by 8 bytes per scanline and lets the low byte wrap, which is where the mod comes from. The phase is 0 or 64 bytes; it flips every time the camera moves and the grid is re-projected.</li>
-  <li><b>The 16 pixels.</b> The 8 bytes are two longwords. The first holds bit planes 0 and 1, the second planes 2 and 3. Pixel column <code>x mod 16</code> is bit <code>15 - (x mod 16)</code> of each of the four 16-bit words, and those four bits form a palette index 0 to 15. The fill loop repeats the same 16 pixels along the whole span of the scanline.</li>
+  <li><b>The 16 pixels.</b> The 8 bytes are two longwords (32-bit values). The first holds bit planes 0 and 1, the second planes 2 and 3. Pixel column <code>x mod 16</code> is bit <code>15 - (x mod 16)</code> of each of the four 16-bit words, and those four bits form a palette index 0 to 15. The fill loop repeats the same 16 pixels along the whole span of the scanline.</li>
 </ol>
 <p><b>Why this is cheap.</b> The tile row for a scanline is two longwords already laid out in the ST's own screen format, so the fill loop just copies the same 8 bytes across the span, 16 pixels at a time; only the two ends of the span need masking. Because the row depends on the absolute scanline and the column on the absolute screen x, the pattern is fixed to the screen, not to the ground, so neighbouring triangles with the same byte join without a seam. There is no texture map, no lighting step and no palette change anywhere in the terrain path.</p>
 
@@ -200,7 +203,7 @@ footer{margin-top:3em;color:var(--muted);font-size:.85rem}
 <h2>5. The four seasons rewrite part of the table</h2>
 <p>Slots 0x1d to 0x2e are a working copy. The table also stores three finished versions of those 18 slots. When the season changes, the game takes 16 steps per tick towards the new version, each step copying at most one pixel into the live slots, visiting them in the order of a 13-bit linear congruential sequence. A full change takes 8191 steps, about 512 ticks. Drag the slider to freeze the change part-way.</p>
 <p>The trick is in the visiting order. A linear congruential generator (here <code>x = (x * $24a1 + $24df) &amp; $1fff</code>) with a full period steps through every 13-bit value exactly once before repeating, in an order that looks random. The game reads each value as a pixel address: the top 9 bits pick an 8-byte tile row, the low 4 bits a pixel in it. So one pass of the generator copies every pixel of the live slots but one exactly once, scattered over the whole table, and the grass changes colour as a fine, even dissolve instead of a wipe. Values that point past the 18 live slots (about 44 in every 100) copy nothing, so the 16 steps per tick copy about 9 pixels on average. The only pixel never visited is the one at value 0, where the pass ends; it is colour 2 in every season's table, so the gap cannot be seen. When a pass ends, the season advances and the next pass begins.</p>
-<p class="note"><b>How to use it.</b> <i>From</i> and <i>To</i> pick the two seasons; <i>LCG steps</i> is how far through the pass to stop (0 is all <i>From</i>, 8191 all <i>To</i>). The picture redraws the scene from section 1 with that table, and every other picture on the page follows it. The strips show the 18 live tiles at that moment, then the three stored tables for comparison. <i>Use the captured table</i> goes back to the tiles as they were in the saved game. The check beside the slider runs the same model from winter to spring for the number of steps recorded in <code>pm74_late.ram</code>, a RAM image saved part-way through a season change, and compares the result with the live tiles in that image.</p>
+<p class="note"><b>How to use it.</b> <i>From</i> and <i>To</i> pick the two seasons; <i>LCG steps</i> is how far through the pass to stop (0 is all <i>From</i>, 8191 all <i>To</i>). The picture redraws the scene from section 1 with that table, and every other picture on the page follows it. The strips show the 18 live tiles at that moment, then the three stored tables for comparison. <i>Use the captured table</i> goes back to the tiles as they were in the saved game. The check beside the slider runs the same model from winter to spring for the number of steps recorded in a saved game state captured part-way through a season change, and compares the result with the live tiles in that image.</p>
 <div class="bar">
   <label>From <select id="selFrom"></select></label>
   <label>To <select id="selTo"></select></label>
@@ -215,7 +218,7 @@ footer{margin-top:3em;color:var(--muted);font-size:.85rem}
 <p class="note">The autumn table is the spring table: the game uses the same source for both. Bytes 0x2f and above are not replaced, so high ground keeps the same colours in every season; its slots are also the stored summer table.</p>
 
 <h2>6. Reference</h2>
-<p class="note">Every range of colour bytes, the palette colours its tiles use (palette indices, 0 to 15), and where the byte comes from. "No map checked" refers to seven RAM images from five different islands.</p>
+<p class="note">Every range of colour bytes, the palette colours its tiles use (palette indices, 0 to 15), and where the byte comes from. "No map checked" refers to seven saved game states from five different islands.</p>
 <table>
 <thead><tr><th>Colour byte</th><th>Palette colours</th><th>Where it comes from</th></tr></thead>
 <tbody>
@@ -273,7 +276,7 @@ function fadeState(from, to, steps){
   const want = decodeBlock(unb64(D.fade.live)), got = fadeState("winter","spring",D.fade.steps);
   let bad=0; for(let i=0;i<want.length;i++) if(want[i]!==got[i]) bad++;
   $("#fadeCheck").innerHTML = bad===0
-    ? `<span class="ok">Model check passed</span>: winter to spring after ${D.fade.steps} steps equals ${D.fade.ram}'s live slots, ${want.length} pixels.`
+    ? `<span class="ok">Model check passed</span>: winter to spring after ${D.fade.steps} steps equals the live slots of a saved game captured part-way through a season change, ${want.length} pixels.`
     : `<span class="bad">Model check failed: ${bad} pixels differ</span>`;
 }
 
@@ -359,7 +362,7 @@ function drawMain(){
   cvOver.width=b.w*k; cvOver.height=b.h*k; cvOver.style.width=cvOver.width+"px"; cvOver.style.height=cvOver.height+"px";
   S.k=k; drawOver();
   const pct = (100*r.exact/r.tot).toFixed(1);
-  $("#sceneNote").innerHTML = `${sc.title}: captured from <code>${sc.source}</code>, camera cell (${sc.cam}), ${sc.tris.length} triangles. Water tick ${tickNow()}${S.tick==null&&sc.ram_tick!==sc.tick?` (the frame buffer was finished one tick before the counter read ${sc.ram_tick})`:""}, phase ${phaseNow()}. `
+  $("#sceneNote").innerHTML = `${sc.title}: captured from a saved game state, camera cell (${sc.cam}), ${sc.tris.length} triangles. Water tick ${tickNow()}${S.tick==null&&sc.ram_tick!==sc.tick?` (the frame buffer was finished one tick before the counter read ${sc.ram_tick})`:""}, phase ${phaseNow()}. `
     + `<b>${pct}%</b> of the ${r.tot} terrain pixels equal the game's own frame at these settings; the rest are unit sprites, markers and any setting you changed.`;
   drawLegend();
   { const f=sc.tris.filter(t=>t.forced); $("#forcedStat").textContent=`In the scene above, ${f.length} of ${sc.tris.length} triangles are forced and ${f.reduce((q,t)=>q+t.px,0)} of their pixels survive nearer land.`; }
@@ -543,7 +546,7 @@ addEventListener("resize",()=>drawMain());
 {
   const ts=D.tick_series.map(c=>`tick ${c.tick}: ${(100*c.exact/c.drawn).toFixed(1)}%`).join(", ");
   $("#proofline").innerHTML=`every scene's pixels rebuilt from (triangle, table) alone equal the reference renderer exactly; against the game's own frame buffer they agree on ${scenes.map(s=>{let e=0,t=0;for(let y=0;y<H;y++)for(let x=0;x<W;x++){const v=pixelAt(s,x,y,s.tick,s.phase);if(v<0)continue;t++;if(v===s.ref[y*W+x])e++;}return `${s.title} ${(100*e/t).toFixed(1)}%`;}).join(", ")} (the rest are sprites); four consecutive water ticks of one coast view: ${ts}.`;
-  $("#foot").innerHTML=`Generated by <code>py/dither_atlas.py</code> from <code>${scenes.map(s=>s.source).join(", ")}</code>. Frame tick = the $4bb3e counter minus one for the coast captures, because the compose buffer is finished one tick before the counter is read. Details: <code>graphics.md</code> "The pattern fill".`;
+  $("#foot").innerHTML=`Generated by <code>py/dither_atlas.py</code> from <code>${scenes.map(s=>s.source).join(", ")}</code>; season check against <code>${D.fade.ram}</code>; reference renderer <code>tools/pm_render_ref.py</code>. Frame tick = the $4bb3e counter minus one for the coast captures, because the compose buffer is finished one tick before the counter is read. Details: <code>graphics.md</code> "The pattern fill".`;
 }
 </script>
 </body>

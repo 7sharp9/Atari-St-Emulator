@@ -235,7 +235,7 @@ FIN = fin_series[-1]
 print('late: %d calls, last change at call %d, finite entries %d' % (CALLS, last_change, FIN))
 
 # ---- svg ----------------------------------------------------------------------------------------
-from igtext import para, height
+from igtext import para, height, KEY
 W = 900
 s = []
 a = s.append
@@ -249,9 +249,9 @@ def caption(x, y, w, read, take):
 def caption_h(w, read, take):
     return height('**How to read.** ' + read, w, 11.5) + 4 + height('**Takeaway.** ' + take, w, 11.5)
 
-LEAD = ('Carrier Command (Realtime Games, 1988) is a real-time strategy and vehicle game: the player\'s aircraft '
-        'carrier and the computer\'s compete for a 64-island archipelago, and the islands each side holds form its '
-        'supply network. Islands make goods, and the goods travel as packets, island to island along the links, '
+LEAD = ('Carrier Command (Realtime Games, 1988) is a real-time strategy and vehicle game for the Atari ST: the '
+        'player\'s aircraft carrier and the computer\'s compete for a 64-island archipelago, and the islands each '
+        'side holds form its supply network. This figure comes from reverse-engineering the game in an emulator. Islands make goods, and the goods travel as packets, island to island along the links, '
         'until they reach their destination. No packet carries a route. Instead the game keeps one table of the '
         'shortest distance between every pair of islands and improves a few rows of it on each pass of its main '
         'loop; at every island a packet simply steps to the neighbour that is closest to where it is going. This '
@@ -262,43 +262,48 @@ A_READ = (f'Dots are islands at their positions on the game\'s map; lines are th
           'blue line is the route a goods packet takes from OBSIDIAN 46 to VULCAN 0, the player\'s base. The '
           'small numbers on it are edge costs, which double as travel time: at each hop the packet waits that '
           'many economy ticks (the production and transport code runs every 4th main frame). The ownership '
-          'is hypothetical. In the saved game c_s30 the player holds only VULCAN, so to get a network worth '
-          'drawing every free island is given to the player; red islands are the enemy\'s, as in c_s30, and '
+          'is a what-if we set up by hand. In the saved game the player holds only VULCAN, so to get a network worth '
+          'drawing every free island is given to the player; red islands are the enemy\'s, as in the saved game, and '
           'dashed grey links join islands of different owners, so they are off.')
-A_TAKE = (f'Make STAVROS 28 free and its links go off; once the table is rebuilt the same packet detours along '
+A_TAKE = (f'Routes mend themselves when ownership changes, because the table is rebuilt and nothing else stores '
+          f'a route. Make STAVROS 28 free and its links go off; once the table is rebuilt the same packet detours along '
           f'the dashed gold line, {len(PATH_CUT)-1} hops at cost {COST_CUT} instead of {COST}. Free DUESSA 5 '
           f'instead and {iso5} player islands lose every route to VULCAN. The packet itself never needed to '
           f'know any of this.')
 B_READ = ('Each square is the whole 64 x 64 distance table at one moment, with the same ownership as A, starting '
-          'from a reset in which every entry is $ffff (no route) except 0 on the diagonal. Row i, column k is '
+          'from a reset in which every entry is "no route" ($ffff) except 0 on the diagonal. Row i, column k is '
           'the distance from island i to island k: darker blue is further, blank is no route yet. One call of '
-          'the relaxation routine updates 8 rows, and the game makes one call per main-loop pass, so a full '
+          'the update routine ($21e8a) updates 8 rows, and the game makes one call per main-loop pass, so a full '
           'sweep of the 64 rows takes 8 calls. The curve counts, after each call, the entries that have some '
           'route (dashed) and the entries already at their final value (blue); the black vertical line is the '
           'last call that changed anything.')
-B_TAKE = (f'One sweep is not enough, because a row can only copy distances that its neighbours\' rows already '
-          f'hold. Here the last entry changes at call {last_change}, and the sweep after it changes nothing and '
-          f'clears the "busy" flag $122f at call {CALLS}; packets wait (timer held at 1) until then. The final '
+B_TAKE = (f'Shortest paths need repeated sweeps, because a row can only copy distances that its neighbours\' rows '
+          f'already hold. Here the last entry changes at call {last_change}, and the sweep after it changes nothing '
+          f'and clears the "busy" flag ($122f) at call {CALLS}; packets wait (timer held at 1) until then. The final '
           f'{FIN} entries are 55 x 55 for VULCAN\'s connected group, 1 for TREASURE 51 (which no link reaches), '
           f'8 x 8 for the enemy\'s islands, and 8 more in column 4 from the stray write described in C.')
 C_READ = ('Pseudocode transcribed from the 68000 disassembly of the two routines. M is the distance table, '
           'links(i) is island i\'s list of (cost c, neighbour j) pairs, and "on" is the link\'s enabled bit. '
           'An entry of $8000 or more means no route.')
-C_TAKE = ('The relaxation is the Bellman-Ford update: a route to k through neighbour j costs j\'s own distance '
-          'plus the link. The next-hop rule needs only the table, so a packet stores just where it is, where it '
-          'is going, what it carries and how long to wait.')
-KNOW = ('**How we know.** **Proven** means observed in an emulator running the game\'s own code, with a count of '
-        'matches (N/N = matches out of cases). The routing code was ported to Python from the disassembly. The '
-        'emulator then ran the real game from c_s30, a saved Strategy game with the player\'s carrier at '
-        'Vulcan, after writing ("poking") the ownership and a packet into memory. Four runs: two recorded the '
-        'whole table before every relaxation call and compared it with the port; two followed one packet hop '
-        'by hop. Figures A and B are drawn from the port; the counts on them are those runs. **Inferred** means '
-        'read from the code only: the stray write is seen happening, but calling it a bug, and what it was meant '
-        'to do, are inferences. $hex numbers are addresses in the game\'s memory, given as citations.')
+C_TAKE = ('The table update is the Bellman-Ford step (the standard shortest-path update, also called '
+          'relaxation): a route to k through neighbour j costs j\'s own distance plus the link. Because the '
+          'next-hop rule needs only the table, a packet stores just where it is, where it is going, what it '
+          'carries and how long to wait.')
+KNOW = ('**How we know.** **Proven** means checked against the game\'s own code with a count of matches '
+        '(N/N = matches out of cases). We wrote Python code for the routing from the disassembly. The emulator '
+        'then ran the real game from a saved Strategy game with the player\'s carrier at Vulcan, after we wrote '
+        'the ownership and a packet into the game\'s memory by hand. Four runs: two recorded the whole table '
+        'before every update call and compared it with our model; two followed one packet hop by hop. Figures A '
+        'and B are drawn from the model; the counts on them are those runs. **Inferred** means read from the '
+        'code only: the stray write is seen happening, but calling it a bug, and what it was meant to do, are '
+        'inferences.')
+SRCLINE = ('Sources: reversing/carriercommand/economy.md sections 1, 3, 4; saved state c_s30; run logs in '
+       'scratchpad/carrier/infographics/routing_drive/.')
 lead_h = height(LEAD, 852, 13)
+key_y0 = 64 + lead_h + 2
 INK, MUTE, ACC, BAD, GRID, ENEMY, ALT = '#1f2328', '#656d76', '#0969da', '#cf222e', '#d0d7de', '#cf222e', '#bf8700'
 a('<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 900 __H__" width="900" height="__H__" role="img" aria-labelledby="t d">')
-a('<title id="t">Packets that route themselves</title>')
+a('<title id="t">How goods find their way across the islands without carrying a route</title>')
 a('<desc id="d">Carrier Command (1988) keeps a 64 x 64 all-pairs distance matrix over its island graph, relaxed 8 rows '
   'per main-loop pass; each goods packet takes its next hop from it. Source: reversing/carriercommand/economy.md '
   'sections 1, 3 and 4 and the code at $21e16, $21e8a, $21f9e, $22192; graph from c_s30.snap; computed by '
@@ -307,19 +312,21 @@ a('<style>text{font-family:Helvetica,Arial,sans-serif;fill:%s;font-size:12px}.t{
   '.h{font-size:14px;font-weight:bold}.m{fill:%s}.c{font-family:Menlo,monospace;font-size:11.5px}'
   '.s{font-size:11px;fill:%s}.n{font-size:9px;fill:%s}</style>' % (INK, MUTE, MUTE, MUTE))
 a('<rect width="900" height="__H__" fill="#ffffff"/>')
-a('<text x="24" y="38" class="t">Packets that route themselves</text>')
+a('<text x="24" y="38" class="t">How goods find their way across the islands without carrying a route</text>')
 para(a, LEAD, 24, 64, 852, size=13, color=INK)
+para(a, KEY, 24, key_y0 + 11, 852, size=10.5, color=MUTE)
 
 def panel(x, y, w, h, title):
     a(f'<rect x="{x}" y="{y}" width="{w}" height="{h}" rx="6" fill="none" stroke="{GRID}"/>')
     a(f'<text x="{x+14}" y="{y+24}" class="h">{title}</text>')
 
 # A: the map -------------------------------------------------------------------------------------
-PA_Y = int(64 + lead_h + 2)
+PA_Y = int(key_y0 + height(KEY, 852, 10.5) + 8)
 PA_H = 524 + caption_h(CAPW, A_READ, A_TAKE) - 2
-panel(24, PA_Y, 852, PA_H, 'A. The island graph and one packet\'s route (hypothetical ownership)')
-a(f'<text x="38" y="{PA_Y+42}" class="s">c_s30\'s 64 islands and 84 links; every island that is free in c_s30 given to the player. '
-  'Link labels are the edge cost, which is also the hop\'s time in economy ticks.</text>')
+panel(24, PA_Y, 852, PA_H, 'A. The islands and one packet\'s route (ownership set up by hand, not played)')
+a(f'<text x="38" y="{PA_Y+42}" class="s">The 64 islands and 84 links of a saved game; every island that is free there is given to the player. '
+  'Link labels are the edge cost,</text>')
+a(f'<text x="38" y="{PA_Y+56}" class="s">which is also the hop\'s time in economy ticks (the production and transport code runs every 4th main frame).</text>')
 xs = [i[0] for i in ISL]; ys = [i[1] for i in ISL]
 mx0, my0, mw, mh = 70, PA_Y + 66, 600, 380
 sc = min(mw / (max(xs) - min(xs)), mh / (max(ys) - min(ys)))
@@ -370,31 +377,31 @@ leg_line(ly, ACC, '', 'the route')
 leg_line(ly + 18, ALT, ' stroke-dasharray="6 4"', f'with {NAMES[CUT]} free', 2.4)
 leg_line(ly + 36, GRID, '', 'link on', 1.2)
 leg_line(ly + 54, GRID, ' stroke-dasharray="3 3"', 'link off (owners differ)', 1)
-a(f'<circle cx="{lx+11}" cy="{ly+68}" r="4.5" fill="{ENEMY}"/><text x="{lx+30}" y="{ly+72}" class="s">enemy (as in c_s30)</text>')
+a(f'<circle cx="{lx+11}" cy="{ly+68}" r="4.5" fill="{ENEMY}"/><text x="{lx+30}" y="{ly+72}" class="s">enemy (as in the saved game)</text>')
 a(f'<circle cx="{lx+11}" cy="{ly+86}" r="3.2" fill="#8c959f"/><text x="{lx+30}" y="{ly+90}" class="s">player</text>')
 ty = ly + 126
 for line in (f'{NAMES[SRC]} to {NAMES[DST]}:', f'{len(PATH)-1} hops, cost {COST}.', '',
-             f'Free {NAMES[CUT]} and its links', 'go off; after the matrix is', 'rebuilt the packet detours',
+             f'Free {NAMES[CUT]} and its links', 'go off; after the table is', 'rebuilt the packet detours',
              f'by the dashed line: {len(PATH_CUT)-1} hops,', f'cost {COST_CUT}.', '',
              'Free DUESSA 5 instead and', f'{iso5} player islands lose', 'every route to VULCAN.'):
     a(f'<text x="{lx}" y="{ty}" class="s">{line}</text>'); ty += 15
 if RL and RC:
-    chk = (f'Emulator, packet poked at {NAMES[SRC]}: hop by hop it took the port\'s route, {RL["match"]}/{RL["n"]} hops, '
-           f'and the detour, {RC["match"]}/{RC["n"]}; each hop\'s timer was the edge cost and the packet landed.')
+    chk = (f'Emulator check: a packet placed at {NAMES[SRC]} by hand took our model\'s route, {RL["match"]}/{RL["n"]} hops, '
+           f'and the detour, {RC["match"]}/{RC["n"]}; each hop\'s timer was the edge cost; it landed.')
 else:
-    chk = 'Routes computed by the port (emulator drive not run).'
+    chk = 'Routes computed by our model (emulator check not run).'
 a(f'<text x="38" y="{PA_Y+484}" class="s">{chk}</text>')
-a(f'<text x="38" y="{PA_Y+500}" class="s">Ownership is poked, not played: in c_s30 the player holds only VULCAN, '
-  'whose row of the matrix is then just its own 0.</text>')
+a(f'<text x="38" y="{PA_Y+500}" class="s">Ownership is set by hand, not played: in the saved game the player holds only VULCAN, '
+  'whose row of the table is then just its own 0.</text>')
 caption(38, PA_Y + 524, CAPW, A_READ, A_TAKE)
 
 # B: the matrix filling --------------------------------------------------------------------------
 PB_Y = PA_Y + PA_H + 14
 PB_H = 402 + caption_h(CAPW, B_READ, B_TAKE) - 2
-panel(24, PB_Y, 852, PB_H, 'B. The 64 x 64 matrix at $67b40 filling in, 8 rows per main-loop pass')
+panel(24, PB_Y, 852, PB_H, 'B. The distance table (64 x 64, at $67b40) filling in, 8 rows at a time')
 gap_med = statistics.median(FL['gaps']) if FL else None
 a(f'<text x="38" y="{PB_Y+42}" class="s">Same ownership as A, from the reset. Row i, column k: distance from island i to k; '
-  'blank is $ffff, no route yet.</text>')
+  'blank = no route yet.</text>')
 show = [0, 1, 8, 16, 48, last_change]
 cell = 1.75; side = 64 * cell; gx = 52; step = (852 - 56 - 6 * side) / 5
 def colr(v):
@@ -429,7 +436,7 @@ for c in range(0, CALLS + 1, 8):
     a(f'<line x1="{CXp(c):.1f}" y1="{cy0}" x2="{CXp(c):.1f}" y2="{cy0+ch}" stroke="{GRID}" stroke-width="0.5"/>')
 for c in range(0, CALLS + 1, 32):
     a(f'<text x="{CXp(c):.1f}" y="{cy0+ch+14}" text-anchor="middle" class="s">{c}</text>')
-a(f'<text x="{cx0+cw/2}" y="{cy0+ch+28}" text-anchor="middle" class="s">calls of $21e8a (one per main-loop pass; a grey line every 8 calls = one sweep of 64 rows)</text>')
+a(f'<text x="{cx0+cw/2}" y="{cy0+ch+28}" text-anchor="middle" class="s">calls of the update routine (one per main-loop pass; a grey line every 8 calls = one sweep)</text>')
 for v in (0, FIN):
     a(f'<text x="{cx0-8}" y="{CYp(v)+4:.1f}" text-anchor="end" class="s">{v}</text>')
 a(f'<line x1="{cx0}" y1="{cy0+ch}" x2="{cx0+cw}" y2="{cy0+ch}" stroke="{MUTE}"/>')
@@ -444,23 +451,23 @@ a(f'<line x1="{tx}" y1="{cy0+18}" x2="{tx+18}" y2="{cy0+18}" stroke="{ACC}" stro
   f'<text x="{tx+24}" y="{cy0+22}" class="s">entries at their final value</text>')
 a(f'<text x="{tx}" y="{cy0+44}" class="s">Last change at call {last_change}; the</text>')
 a(f'<text x="{tx}" y="{cy0+58}" class="s">sweep after it changes nothing and</text>')
-a(f'<text x="{tx}" y="{cy0+72}" class="s">clears $122f at call {CALLS}. Packets</text>')
-a(f'<text x="{tx}" y="{cy0+86}" class="s">wait (timer 1) until then.</text>')
+a(f'<text x="{tx}" y="{cy0+72}" class="s">clears the "busy" flag ($122f) at call {CALLS}.</text>')
+a(f'<text x="{tx}" y="{cy0+86}" class="s">Packets wait (timer 1) until then.</text>')
 caption(38, PB_Y + 402, CAPW, B_READ, B_TAKE)
 
 # C: the code ------------------------------------------------------------------------------------
 PC_Y = PB_Y + PB_H + 14
 C_TOP = len(s)
 code = [
-    ('$21e8a  relax, 8 rows per call', [
+    ('Update the distance table, 8 rows per call ($21e8a)', [
         'for i in row .. row+7:',
         '  for (c, j) in links(i) if on:',
         '    for k in 0 .. 63:',
         '      if M[j][k] < $8000:',
         '        M[i][k] = min(M[i][k], M[j][k] + c)',
         'after 8 calls (64 rows): sweep again if',
-        'anything changed, else clear $122f']),
-    ('$22192  next hop from u towards t', [
+        'anything changed, else clear the busy flag ($122f)']),
+    ('Choose a packet\'s next hop, from u towards t ($22192)', [
         'best = $ffff',
         'for (c, j) in links(u) if on:',
         '  if M[j][t] < M[u][t]:      # strictly closer',
@@ -476,35 +483,31 @@ for n, (head, body) in enumerate(code):
     for m, l in enumerate(body):
         a(f'<text x="{x0}" y="{cy+20+m*15}" class="c" xml:space="preserve">{l.replace("<", "&lt;")}</text>')
 by = cy + 20 + 7 * 15 + 14
-notes = [
-    'Ownership: $21f9e turns a link on only when both ends have the same owner (a free island\'s links are all off). Every "is now a',
-    'free / friendly / enemy island" event calls $21e16, which redoes the links, refills the matrix with $ffff (diagonal 0) and restarts',
-    'the relaxation. This is distance-vector routing (RIP\'s Bellman-Ford), run in place, with routers that are islands.',
-]
-for m, l in enumerate(notes):
-    a(f'<text x="38" y="{by+m*15}" class="s">{l}</text>')
-by += 3 * 15 + 8
+notes = ('Ownership: the link-enable routine ($21f9e) turns a link on only when both ends have the same owner (a free '
+         'island\'s links are all off). Every "is now a free / friendly / enemy island" event calls the table-reset '
+         'routine ($21e16), which redoes the links, refills the table with $ffff (diagonal 0) and restarts the update. '
+         'This is distance-vector routing (the Bellman-Ford update that RIP uses), run in place, with routers that are islands.')
+by = para(a, notes, 38, by, 820, size=11, color=MUTE) + 8
 if F0 and FL:
-    ev = [f'Checked: the matrix before each call and after the last, {F0["calls"]} calls with c_s30\'s own owners and {FL["calls"]} with A\'s, equals the port in all',
-          f'4096 entries each time ({F0["all_equal"] + FL["all_equal"]}/{F0["dumps"] + FL["dumps"]} dumps), with $122e and $122f matching; c_s30\'s converged matrix is the port\'s, {snap_eq}/4096.']
+    ev = [f'Checked: the table before each call and after the last, {F0["calls"]} calls with the saved game\'s own owners and {FL["calls"]} with A\'s, equals our model\'s in all',
+          f'4096 entries each time ({F0["all_equal"] + FL["all_equal"]}/{F0["dumps"] + FL["dumps"]} comparisons), with the busy flag and the sweep flag ($122e) matching; the saved game\'s converged table is the model\'s, {snap_eq}/4096.']
 else:
-    ev = [f'c_s30\'s converged matrix equals the port\'s, {snap_eq}/4096 (emulator drive not run).']
+    ev = [f'The saved game\'s converged table equals our model\'s, {snap_eq}/4096 (emulator check not run).']
 for m, l in enumerate(ev):
     a(f'<text x="38" y="{by+m*15}" class="s" style="fill:{INK}">{l}</text>')
 by += len(ev) * 15 + 8
-bug = ['Inferred bug: the island tick writes 500 at $1817e with A0 reloaded to row 63 ($69ac0), so instead of an enemy island\'s',
-       'field it sets M[63][4] = 500 and the relaxation spreads a 500-cost "route" to CHARISSA 4 through the enemy block.']
-for m, l in enumerate(bug):
-    a(f'<text x="38" y="{by+m*15}" class="s" style="fill:{BAD}">{l}</text>')
-by += len(bug) * 15 + 12
+bug = ('Inferred bug: the island tick (code at $1817e) writes 500 into the distance table, at row 63, column 4, instead '
+       'of into an enemy island\'s own field, so the update spreads a 500-cost "route" to CHARISSA 4 through the enemy block.')
+by = para(a, bug, 38, by, 820, size=11, color=BAD) + 12
 by = caption(38, by, CAPW, C_READ, C_TAKE)
 PC_H = by - PC_Y - 2
 s.insert(C_TOP, f'<rect x="24" y="{PC_Y}" width="852" height="{PC_H:.1f}" rx="6" fill="none" stroke="{GRID}"/>'
-         f'<text x="38" y="{PC_Y+24}" class="h">C. The code, from the disassembly, checked against the emulator</text>')
+         f'<text x="38" y="{PC_Y+24}" class="h">C. The two routines, from the disassembly, checked against the emulator</text>')
 KY = PC_Y + PC_H + 14
-kh = height(KNOW, CAPW, 11.5)
+kh = height(KNOW, CAPW, 11.5) + 6 + height(SRCLINE, CAPW, 9)
 a(f'<rect x="24" y="{KY:.1f}" width="852" height="{kh+16:.1f}" rx="6" fill="{NOTE}" stroke="{GRID}"/>')
-para(a, KNOW, 38, KY + 20, CAPW, size=11.5, color=INK)
+yk = para(a, KNOW, 38, KY + 20, CAPW, size=11.5, color=INK)
+para(a, SRCLINE, 38, yk + 6, CAPW, size=9, color=MUTE)
 H = int(KY + kh + 30)
 a('</svg>')
 (OUT / 'routing.svg').write_text('\n'.join(s).replace('__H__', str(H)))

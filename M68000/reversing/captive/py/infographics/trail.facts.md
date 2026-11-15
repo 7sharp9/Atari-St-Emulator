@@ -83,3 +83,23 @@ natural base `base1/in.snap`.
   table (computed from the cached track) has group 16 at (14,3) for both the turn at sample 58 and the step at
   sample 76, so the party is 2 away at both; the step at 76 brings it to (14,4), 1 away. The figure's numbers are
   unchanged; the doc's "1" describes the distance after the step, not the one the decision read.
+
+## Clarity pass: sources for the added or reworded sentences
+
+Wording only; no number changed (the script's printed numbers are identical before and after).
+
+| sentence in the figure | source |
+|---|---|
+| "for the Atari ST"; "This figure comes from reverse-engineering the game while it ran in an emulator." | GLOSSARY.md "Atari ST", "How the work is done" (emulator, snapshot); the figure's own "How we know" |
+| "A base has several floors, laid side by side in one grid and joined by lifts." | the figure's panel A caption ("Floors are blocks of one 64 x 32 grid"; "take the lift"); `mapgen.md` "Floors and lifts" |
+| "The footprints are written as the party walks; no chase has yet been seen reading one." | the figure's panel B takeaway ("No observed chase has yet read a footprint itself") and the Flags section above |
+| key line ($ addresses; proven / observed / inferred) | `.claude` conventions for the clarity pass; the figure's old "Labels" paragraph (computed becomes observed) |
+| panel A "the party has just entered the base"; tag "observed: counted in a saved game state" | the old title "state req4, before the party moves" and "computed: field.py on req4" |
+| panel B tag "proven: 5/5 moves match" | the old tag "proven: walk.py; track.py 5/5 moves"; fact row "reason per move" above |
+| "Group 16 (aware, hostile), nothing set by hand"; "acts on every 18th update" | the old "(type $e, aware, hostile), no pokes" and "its period, 16, plus 2" (16 + 2 = 18); fact row "group 16" above |
+| "The creatures need no path search because the generator's own record of its digging already is a route map" | the lead's "without searching for a path" and the old panel A takeaway |
+| panel C tag "proven: 630/630 match"; "Test cases decided by sight" | the old "proven: gate" and the line "Gate trials decided by sight: 630 ... all match" |
+| panel D title "How a group chooses its move"; tag "proven: 3000/3000 match"; "once per turn" dropped from the title | the old title "The decision, one per think"; "A turn is one decision by one group (group 16 takes a turn every 18th creature update)" from the old "A think is one turn of a group, taken every period + 2 creature updates" |
+| "cell has a special action (bit 5)?" | the old box "bit 5 (cell action)?" |
+| "Outcomes the game produced"; "A base reached by ordinary play"; "Control (a model deliberately changed ...)" | the old "Labels from the emulator", "Natural base", "Control (range 5, < $31e0)" |
+| "How we know" Labels / Checks / States rewording; Sources line | the old Labels / Gates / States paragraphs; req4, p14, p2, base1 now named only in the Sources line |

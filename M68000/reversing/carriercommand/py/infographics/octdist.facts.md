@@ -36,6 +36,12 @@ The error curve is computed from the game's integer formula; the heat map is `py
 | e2..e12: consecutive arrivals from c_s30, each forced with countdown 1, which `$2337a` does not read | ai.md 2; Flags below |
 | 3 of 11 picks change; that the game would play differently is inferred | table above |
 | gate: 21 snapshots, 1344/1344 words, 21/21 targets | ai.md 2 |
+| title: a cheap distance up to 11.8% too long, and what it does to the enemy; the game is an Atari ST game, figure from reverse-engineering in an emulator | lead; README.md opening; table above |
+| panel D columns renamed decisions 1 to 11 (were states e2 to e12 of `ai/nat2`); row labels "carrier at / game picks / true picks"; the repeat of `d1`/`d2` as `e2`/`e3` is dropped from the figure ("all 11 are distinct decisions") and stays in Flags | table above; Flags |
+| "farther scores lower; the owner adds a bonus or penalty" | score = -distance/2048 plus the owner terms, as in the row above |
+| takeaways lead with a lesson (a cheap formula's error is predictable; accuracy traded for speed; a 10% error can change a decision; small errors seldom matter but sometimes do) | the numbers in the table above |
+| registers D0 and D1 glossed as the 68000's working storage | GLOSSARY.md ("D0-D7") |
+| "How we know" and one Sources line name the files; the prose names none; `$11ba` is cited as "the island the game stores as its choice" | table above |
 
 ## Flags
 

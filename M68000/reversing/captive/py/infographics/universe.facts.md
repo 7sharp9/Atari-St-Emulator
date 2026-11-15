@@ -62,3 +62,25 @@ for N = 1, 7, and the same without the poke for `cc_m0.json`. The script asserts
 | layout rules stay: dots in squares, moons at the eight compass points around the planet | world.md 1 (table, map units row: "the 8 compass points at ±160 units") |
 | LCG definition; ror.w; registers D0/D1; A6 base register | standard definitions; A6 = `$1b5ce` is the base of federation's variables (ai.md header) |
 | universe.py models every step; model = RAM; snapshots; callcap; poke | world.md 1 ("Proven"); this file's header (callcap command) |
+
+## Clarity pass: sources for the added or reworded sentences
+
+Wording only; no number changed (the script's printed numbers are identical before and after).
+
+| sentence in the figure | source |
+|---|---|
+| "for the Atari ST"; "reverse-engineering the game while it ran in an emulator" | GLOSSARY.md "Atari ST"; the figure's "How we know" |
+| "seeded with the mission index (the mission number minus one)" | panel A box "mission index 14776(A6) = 0" and panel E "The seed is the mission index, the mission number minus one" |
+| key line | clarity-pass conventions; the old Labels line (computed becomes observed) |
+| panel A title "One random-number generator, one pass"; tag "proven: 51/51, 100/100, 150/150 match the game" | the old title "One generator, one pass" and tag "model = RAM 51/51, ..."; "final D0 = callcap D0" remains in the footer line "the D0 the game returns" |
+| "Each value is the last times $5e5, plus $29, keeping 16 bits (a linear congruential generator, LCG). The dots use it rotated right 2 bits (D1); D0 is the raw value ($3049c)." | the old line "$3049c: mulu, addi.w; the output D1 = ror.w #2 of D0" and the old Terms line for LCG |
+| "which is enough for a full period (the Hull-Dobell conditions for modulus 2^16)" | the old line "1509 = 4 x 377 + 1 (a - 1 divisible by 4) and 41 is odd: the Hull-Dobell conditions" (the conditions are the standard criterion for a full period; same sentence reworded) |
+| "150 landing sites" | `world.md` 1, table row for object bytes 0, 1: "They are the landing site on the body" |
+| "Landing-site bytes use the raw value D0" | the old "Site bytes use raw D0" |
+| panel B tag "50/51 dots land on white pixels"; caption "The game's own mission 1 map screen" | the old tag and caption ("mission1.snap") |
+| panel C "value 0 is rejected ($30446)"; "Each dot's 5-bit value is looked up in a 32-byte table" | the old "index 0 is rejected (beq $30446)" and "The 5-bit field indexes the 32-byte table" |
+| panel D title "A name for every planet and moon"; "object 1 to 150" | the old title "every body"; the old line "Objects 1..50 print PLANET-, 51..150 MOON-" |
+| "byte swap (ror.w #8)"; "LCG step" | the old row labels "ror.w #8 / byte swap" and "LCG" |
+| "a saved game screen" | the old "star.snap" |
+| panel E tag; captions "as saved" / "set by hand, re-run"; "generator ($302c6) re-run in the emulator; our model matches every table" | the old tag, "the snapshot as it stands", "poked, re-run by callcap", "$302c6 re-run under callcap, model = every table" |
+| How we know: Terms / Checks / Labels | the old paragraphs reworded; callcap kept with its one-clause definition |

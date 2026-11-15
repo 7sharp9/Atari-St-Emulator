@@ -333,10 +333,10 @@ def write_graph(name, title, lanes, edges, stubs, shared=(), roles=True, adjacen
         L.append('%s -> %s [style=invis, weight=20];' % (b_, c_))
     L += lines
     # legend: one row under the last lane
-    L.append('subgraph cluster_legend { label="Legend (node fill = evidence for the handler; every edge is code read from a mode-byte write, py/mode_edges.py)"; fontsize=11; style="rounded"; color="#9e9e9e";')
-    L.append('  lg1 [label="proven: gate vs the real 68000", shape=box, style="rounded,filled", fillcolor="%s", color="%s", fontsize=10];' % COL['proven'])
-    L.append('  lg2 [label="code read only", shape=box, style="rounded,filled", fillcolor="%s", color="%s", fontsize=10];' % COL['code'])
-    L.append('  lg3 [label="$addr routine", shape=box, style=filled, fillcolor="#ffffff", color="#757575", fontsize=10];')
+    L.append('subgraph cluster_legend { label="Legend (node fill = evidence for the handler; every edge is read from a mode-byte write in the code)"; fontsize=11; style="rounded"; color="#9e9e9e";')
+    L.append('  lg1 [label="proven (checked against the real game code)", shape=box, style="rounded,filled", fillcolor="%s", color="%s", fontsize=10];' % COL['proven'])
+    L.append('  lg2 [label="inferred (read from the code only)", shape=box, style="rounded,filled", fillcolor="%s", color="%s", fontsize=10];' % COL['code'])
+    L.append('  lg3 [label="routine ($addr)", shape=box, style=filled, fillcolor="#ffffff", color="#757575", fontsize=10];')
     pts = ' '.join('lg%s [shape=point, width=0.04, color="#ffffff"];' % c for c in 'ABCDEFGH')
     L.append('  ' + pts)
     L.append('  { rank=same; lg1 lg2 lg3 lgA lgB lgC lgD lgE lgF lgG lgH }')
@@ -384,6 +384,12 @@ def compose(graph, dst, head, lead, notes):
     put(16, y, head[1], 12, color='#424242')
     y += 24
     for kind, t in lead:
+        if kind == 'key':
+            for r in Svg.wrap(t, W - 32, 11):
+                put(16, y, r, 11, color='#424242')
+                y += 14.5
+            y += 5
+            continue
         for r in Svg.wrap(t, W - 32, 12.5):
             put(16, y, r, 12.5)
             y += 17
@@ -395,6 +401,12 @@ def compose(graph, dst, head, lead, notes):
             y += 6
             put(16, y, t, 13.5, 'bold')
             y += 19
+            continue
+        if kind == 'src':
+            for r in Svg.wrap(t, W - 32, 9.5):
+                put(16, y, r, 9.5, color='#57606a')
+                y += 12.5
+            y += 5
             continue
         col = '#1b5e20' if kind == 'take' else '#212121'
         for r in Svg.wrap(t, W - 32, 12):
@@ -426,10 +438,14 @@ def H(*vs):
 # lead and reading notes shared by both figures: ai.md "What the loop actually is", "The entity FSM", "Evidence
 # taxonomy"; fsm.facts.md "Lead and captions"
 LEAD_COMMON = [('lead',
-    'PowerMonger (Bullfrog / Electronic Arts, 1990) is a war game on a land of settlements. Every man and boat on the '
-    'map is a 50-byte record, and what it is doing is one byte, its mode (byte 31). Once per tick, the game\'s '
-    'simulation step, the loop $14b62 runs the handler for each record\'s mode, and the handler usually writes the '
-    'next mode. There is no other per-unit AI: these mode graphs are the behaviour.')]
+    'PowerMonger (Bullfrog / Electronic Arts, 1990, here the Atari ST version) is a war game on a land of settlements. '
+    'This figure comes from reverse-engineering the game\'s 68000 machine code (the ST\'s CPU) and running it in an '
+    'emulator. Every man and boat on the map is a 50-byte record, and what it is doing is one byte, its mode (byte 31). '
+    'Once per tick, the game\'s simulation step, the loop $14b62 runs the handler for each record\'s mode, and the '
+    'handler usually writes the next mode. There is no other per-unit AI: these mode graphs are the behaviour.')]
+KEY_TEXT = ('$ numbers are addresses in the game\'s memory, given as citations; the text says what each one is. Evidence: '
+            'proven = checked against the game\'s own code with a match count; observed = seen in the running game; '
+            'inferred = read from the code or reasoned, not run.')
 NOTES_COMMON = [
     ('h', 'How to read it'),
     ('how', 'A rounded box is a mode: its number and a short name. A square box is a routine several modes call, '
@@ -440,12 +456,26 @@ NOTES_COMMON = [
      'and its legs $12 move the man, and on arrival ($14fdc) the game copies byte 30 into byte 31. The blue arrow is '
      'drawn straight from the mode that started the walk to the mode it arrives in. Purple dashed: only the previous '
      'mode is set, so it takes effect at the man\'s next arrival. Grey dotted: a call to a shared routine.'),
-    ('how', 'Evidence. Every edge is code read: py/fsm/mode_edges.py lists each write of bytes 30 and 31 in the '
-     'disassembly of the game, and build_fsm.py draws them; no edge is typed by hand. The node fill is the evidence for '
-     'the handler itself: green means proven, a Python rewrite of the handler matched the game\'s own 68000 code on '
-     'every changed byte over many saved states (for example 18452/18452 bytes over 1889 states for the 45 modes of '
-     'the $15000 page, 1043/1043 for the shepherd modes); white means code read only.'),
+    ('how', 'Evidence. Every edge is read from the game\'s code: a script lists each write of bytes 30 and 31 in the '
+     'disassembly of the game, and a second script draws them; no edge is typed by hand. The node fill is the evidence '
+     'for the handler itself: green means proven, a Python rewrite of the handler matched the game\'s own 68000 code on '
+     'every changed byte over many saved game states (for example 18452/18452 bytes over 1889 states for the 45 modes '
+     'of the $15000 page, 1043/1043 for the shepherd modes); white means inferred, read from the code only.'),
 ]
+def notes_common(lanekey):
+    n = list(NOTES_COMMON)
+    n.insert(2, ('how', lanekey))
+    return n
+
+
+LANEKEY_JOBS = ('Lanes. One lane per job (farmer, merchant, fisher, shepherd), then the lord\'s work order (fell timber, '
+                'build, make pots) and the home and winter modes the jobs return through. $3C08 send home appears as a grey '
+                'dashed copy in several lanes: it puts a man back into a job lane according to his flag bits.')
+LANEKEY_ARMY = ('Lanes, top to bottom. Orders: the executor routines that walk the lead to the target. Order arrivals: '
+                'what each order does when the walk ends (take food, get men, trade, spy and the rest). Recruiting and '
+                'camp. Movement and ranks: advancing and keeping rank behind the lead. Combat.')
+SRC_TEXT = ('Sources: ai.md "What the loop actually is", "The entity FSM", "Evidence taxonomy"; scripts py/fsm/mode_edges.py '
+            '(edges) and py/fsm/build_fsm.py (drawing); line-by-line sources in fsm.facts.md.')
 
 
 def main():
@@ -453,10 +483,10 @@ def main():
     json.dump(sorted([list(e) for e in E], key=str), open(os.path.join(out, 'fsm_edges.json'), 'w'), indent=0)
     # ------------------------------------------------ figure 1: the civilian job cycles
     lanes1 = [
-        ('Farmer (byte 7 bit 0)', [M(0x18, 0x0c, 0x0e, 0x24, 0x16)]),
-        ('Merchant (bit 1)', [M(0x54, 0x50, 0x52, 0x4e)]),
-        ('Fisher (bit 2)', [M(0x5e, 0x56, 0x58, 0x5a), M(0x5c, 0x60, 0x62)]),
-        ('Shepherd (bit 3)', [M(0x80, 0x84, 0x86, 0x88, 0x82)]),
+        ('Farmer', [M(0x18, 0x0c, 0x0e, 0x24, 0x16)]),
+        ('Merchant', [M(0x54, 0x50, 0x52, 0x4e)]),
+        ('Fisher', [M(0x5e, 0x56, 0x58, 0x5a), M(0x5c, 0x60, 0x62)]),
+        ('Shepherd', [M(0x80, 0x84, 0x86, 0x88, 0x82)]),
         ("The lord's work order: timber, building, pots", [H(0x5cde) + M(0x40, 0x3e, 0x44, 0x6a), M(0x46, 0x42) + H(0x600a)]),
         ('Home, winter and regroup', [M(0x7c, 0x7e) + H(0x16892) + M(0x90, 0x8e), H(0x3c08) + M(0x4c, 0x8a)]),
     ]
@@ -469,26 +499,27 @@ def main():
     write_graph('fsm_jobs', '<b>PowerMonger entity modes: the civilian job cycles</b><br/><font point-size="11">mode byte 31 of the 50-byte record, '
                 'dispatched by the iterator $14b62 through the table $14bb4; edges extracted from the code</font>',
                 lanes1, E, stubs1, shared=(4, 5), roles=False, adjacent=(),
-                head=('PowerMonger entity modes: the civilian job cycles',
-                      'mode byte 31 of the 50-byte record, dispatched by the iterator $14b62 through the table $14bb4; '
-                      'edges extracted from the code'),
+                head=('PowerMonger villagers: each job is a small loop of behaviours',
+                      'Each box is one behaviour a man can be in (a "mode"); each arrow is a way the game switches him to the next, read from the code'),
                 lead=LEAD_COMMON + [('lead',
                       'This figure draws the civilian side. A man\'s job (farmer, merchant, fisher or shepherd) is a bit '
                       'in byte 7 of his record, and each job is a short cycle of modes, one lane each. Below them are '
                       'the lord\'s work order, which sends men of any job to fell timber, build or make pots, and the '
                       'home and winter modes the jobs return through. Orders, camps and fighting are in the companion '
-                      'figure "groups, orders and combat".')],
-                notes=NOTES_COMMON + [
+                      'figure "captains and their men".'), ('key', KEY_TEXT)],
+                notes=notes_common(LANEKEY_JOBS) + [
                     ('h', 'What to take from it'),
                     ('take', 'Each job is a small closed loop. A farmer goes to his field, walks a fixed path home and '
                      'delivers food; a fisher goes to a fishing cell, looks for a catch and brings home food +4; a '
                      'merchant starts a trip and comes back to his home lord; a shepherd takes the herd out through '
                      'the gate and rounds it up again. Farmers, merchants and fishers park in $7C in winter, where '
                      'the settlement heartbeat runs, and $3C08 send home re-enters a lane by the man\'s flag bits.'),
-                    ('take', 'Three cycles show only on the whole graph: the pot maker\'s loop closes through the '
+                    ('take', 'Three cycles show only on the whole graph, because they close through shared routines, so reading '
+                     'the handlers one at a time would miss them: the pot maker\'s loop closes through the '
                      'delivery dispatch $600A ($46, the pots path, $6A, $46 again, $42); the fisher\'s loop closes '
                      'through $3C08, whose bit-2 case sends him home to $5E; and the target picker $4F68 in the army '
                      'figure.'),
+                    ('src', SRC_TEXT),
                 ])
     # ------------------------------------------------ figure 2: groups, orders, combat
     lanes2 = [
@@ -508,16 +539,16 @@ def main():
     write_graph('fsm_army', '<b>PowerMonger entity modes: groups, orders and combat</b><br/><font point-size="11">the lead and his men; '
                 'the walk $10/$12 ends in the previous mode (byte 30); edges extracted from the code</font>',
                 lanes2, E, stubs2, shared=(2, 3, 4),
-                head=('PowerMonger entity modes: groups, orders and combat',
-                      'the lead and his men; the walk $10/$12 ends in the previous mode (byte 30); edges extracted '
-                      'from the code'),
+                head=('PowerMonger captains and their men: what happens after an order arrives',
+                      'Each box is one behaviour (a "mode"); each arrow is a way the game switches from one to the next, read from the code'),
                 lead=LEAD_COMMON + [('lead',
-                      'This figure draws the army side: what a captain\'s lead and his men do once an order arrives. '
-                      'The top lane holds the order executors, routines that walk the lead to the target with the '
-                      'arrival mode stored as his previous mode. Below are the arrival modes (take food, get men, '
+                      'This figure draws the army side: what a captain\'s own unit (the "lead") and his men do once an order '
+                      'arrives. An order does not make the lead do the work at once: the order executors, in the top lane, walk '
+                      'the lead to the target with the arrival mode stored as his previous mode, and on arrival the game '
+                      'switches to it. Below are the arrival modes (take food, get men, '
                       'trade, spy and the rest), recruiting and camp, movement and keeping rank behind the lead, and '
-                      'combat. The civilian job cycles are in the companion figure.')],
-                notes=NOTES_COMMON + [
+                      'combat. The civilian job cycles are in the companion figure.'), ('key', KEY_TEXT)],
+                notes=notes_common(LANEKEY_ARMY) + [
                     ('h', 'What to take from it'),
                     ('take', 'Most order arrows are blue: an order does not change what the lead does at once, it sets '
                      'a walk whose arrival mode is the order\'s real work. The followers mostly keep rank: $06 marches '
@@ -526,8 +557,9 @@ def main():
                      'whose arms share one tail ($34 shoot, or a $10 chase ending in $2E); $56A6 engages and $32 is '
                      'the melee; at zero health $5590 rolls kill or rout, and on a rout stamps the loser\'s previous mode $3C, '
                      'run away. The dashed "water veto" edge $36 to $66 is the one path into $66: a chase step onto '
-                     'water resets the mode to $00, keeps the previous mode, and the next walk arrives in it (seen live only with '
-                     'a one-byte poke of the previous mode).'),
+                     'water resets the mode to $00, keeps the previous mode, and the next walk arrives in it (seen live only after '
+                     'setting the previous mode by hand).'),
+                    ('src', SRC_TEXT),
                 ])
 
 

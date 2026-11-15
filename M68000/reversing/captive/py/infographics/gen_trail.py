@@ -328,14 +328,19 @@ def para(x, y, w, txt, cls='s', lh=15, lead=None, cpx=5.3):
     return y
 
 a('<text x="24" y="38" class="t">Follow the footprints</text>')
-LEAD = ('Captive (Antony Crowther, Mindscape, 1990) is a real-time dungeon crawler: the player steers four droids '
-        'through procedurally generated bases on a series of planets. Inside a base the creatures move in groups of up '
+LEAD = ('Captive (Antony Crowther, Mindscape, 1990) is a real-time dungeon crawler for the Atari ST: the player steers '
+        'four droids (the party) through procedurally generated bases on a series of planets. A base has several floors, '
+        'laid side by side in one grid and joined by lifts. Inside a base the creatures move in groups of up '
         'to nine sharing one map cell. A group that has noticed the party has to reach it, yet it sees only along a '
-        'straight line. The game does this without searching for a path. Beside the tile map it keeps a second map, '
+        'straight line. The game does this without searching for a path. Beside the tile map it keeps a second map layer, '
         '"plane 2", holding one direction per cell. The level generator fills it with the route its digger took '
         '(panel A); the party overwrites it with footprints as it walks (B); a group that cannot see the party (C) '
-        'steps the way its own cell points (D).')
+        'steps the way its own cell points (D). The footprints are written as the party walks; no chase has yet been '
+        'seen reading one. This figure comes from reverse-engineering the game while it ran in an emulator.')
 ly_ = para(24, 62, 852, LEAD, 'l', 17, cpx=6.0)
+ly_ = para(24, ly_ + 2, 852, '$ numbers are addresses in the game\'s memory, given as citations; the text says what each one is. '
+           'proven = checked against the game\'s own code with a match count; observed = seen in the running game; '
+           'inferred = read from the code or reasoned, not run.', 'k', 14, cpx=5.6)
 
 def panel(x, y, w, h, title, label):
     """Draw a panel's title; its frame is sized later by close(), so the panel grows with its text."""
@@ -377,8 +382,8 @@ def floor_borders(x0, y0, cs, xs, ys):
 
 # A: the dig tree over the whole base -------------------------------------------------------------
 AY = ly_ + 8
-pA = panel(24, AY, 852, 318, 'A. The generator\'s dig tree, as the creatures inherit it (state req4, before the party moves)',
-      'computed: field.py on req4')
+pA = panel(24, AY, 852, 318, 'A. The generator\'s dig tree, as the creatures inherit it (the party has just entered the base)',
+      'observed: counted in a saved game state')
 cs, x0, y0 = 13, 34, AY + 40
 xs, ys = list(range(64)), list(range(ROWS))
 for y in ys:
@@ -425,15 +430,15 @@ y = para(34, ly + 72, 830, f'One square per map cell of the game\'s 64 x 32 grid
          'stores 4 or 5 instead of a direction. The digger is the level generator\'s carving routine: it moves cell by cell '
          'from the entrance and numbers each cell it carves, and each arrow points to the open neighbour that was dug '
          'earliest.', lead='How to read.')
-y = para(34, y + 4, 830, 'Before the party moves, every open cell already holds a route back along the digger\'s path. The '
+y = para(34, y + 4, 830, 'The creatures need no path search because the generator\'s own record of its digging already is a route map: before the party moves, every open cell holds a route back along the digger\'s path. The '
          'creatures reuse this map as it stands. Cells that lead to the entrance lead to the party, which arrives there; '
          'cells that lead to a lift lead to the place where a chasing group gives up (panel D).', lead='Takeaway.')
 close(pA, y + 4)
 
 # B: footprints and the chase ---------------------------------------------------------------------
 BY = y + 18
-pB = panel(24, BY, 852, 352, 'B. The party\'s footprints overwrite it, and group 16 follows (state p2, then 200 samples of play)',
-      f'proven: walk.py; track.py {len(moves)}/{len(moves)} moves')
+pB = panel(24, BY, 852, 352, 'B. The party\'s footprints overwrite it, and group 16 follows',
+      f'proven: {len(moves)}/{len(moves)} moves match')
 cs, x0, y0 = 28, 40, BY + 42
 xs, ys = list(range(16)), list(range(8))
 for y in ys:
@@ -481,9 +486,9 @@ story = [
     (MUTE, 's', f'arrows led to the party at the entrance still lead to it:'),
     (MUTE, 's', f'{catch["req4"]["party"]} at {party["req4"]}, {catch["p14"]["party"]} at {party["p14"]}, {catch["p2"]["party"]} at {party["p2"]}.'),
     (MUTE, 's', f'A mark is the way it moved, not its facing (it strafed E facing S).'),
-    (MUTE, 's', f'Marks never fade: 0 of 2048 bytes change in {TRACK_FRAMES * TRACK_STEP:,} steps.'),
+    (MUTE, 's', f'Marks never fade: 0 of 2048 bytes change in {TRACK_FRAMES * TRACK_STEP:,} instructions.'),
     (None, None, ''),
-    (INK, 'b', f'Group 16 (type ${typ16:x}, aware, hostile), no pokes:'),
+    (INK, 'b', f'Group 16 (aware, hostile), nothing set by hand:'),
     (MUTE, 'row', ('sample', 'from', 'what it did', 'why (rule in D)')),
 ]
 for f, (cx, cy), face, pos, fc, did, labs, why, srcx in chase:
@@ -508,7 +513,7 @@ for c, cls, txt in story:
         a(f'<text x="{TX}" y="{y}" class="{cls}" style="fill:{c}">{txt}</text>')
     y += 16
 ry = para(TX, y + 4, 356, f'A sample is the game\'s state read every {TRACK_STEP:,} instructions, one creature update in this '
-          'base. Group 16 acts on every 18th update (its period, 16, plus 2), hence samples 4, 22, 40, 58, 76.')
+          'base. Group 16 acts on every 18th update, hence samples 4, 22, 40, 58, 76.')
 ly2 = y0 + 8 * cs + 16 + 15 * 4
 y = para(40, max(ly2, ry) + 8, 820, 'Each footprint points to the cell the party entered next, so following footprints moves '
          'forward in time and ends at the party. The party arrived on the entrance, so as it walks it takes the entrance\'s '
@@ -519,7 +524,7 @@ close(pB, y + 4)
 
 # C: sight ---------------------------------------------------------------------------------------
 CY = y + 18
-pC = panel(24, CY, 400, 420, 'C. Sight: a row and a column, 6 cells', 'proven: gate')
+pC = panel(24, CY, 400, 420, 'C. Sight: a row and a column, 6 cells', f'proven: {len(sight)}/{len(sight)} match')
 cs = 18; xs = list(range(party['p2'][0] - 7, party['p2'][0] + 8)); ys = list(range(0, party['p2'][1] + 8))
 x0, y0 = 224 - len(xs) * cs // 2, CY + 42
 ppx, ppy = party['p2']
@@ -552,11 +557,11 @@ for txt in [f'Green: the {n_cross} cells (row -1 is off the map) from which an a
             f'"sees" P. No wall test: {wall_cross} of them are wall, and {other_floor} open ones are on',
             f'floor {floor_ids[1]}, across the block wall. Purple: group 43 at (16,5), sample {g43f},',
             'in sight through the wall (15,5); not aware, so it wanders.',
-            f'Gate trials decided by sight: {len(sight)}; {len(thru_wall)} with a wall between,',
+            f'Test cases decided by sight: {len(sight)}; {len(thru_wall)} with a wall between,',
             f'{len(cross_floor)} across floors; all match. Blue tint: the "near" box (a trail',
             'step that would turn the group around steps forward instead).']:
     a(f'<text x="38" y="{ty}" class="s">{txt}</text>'); ty += 15
-cyb = para(38, ty + 4, 372, f'The party P stands at {party["p2"]} in state p2. Dark cells are rock; the thick line is the wall '
+cyb = para(38, ty + 4, 372, f'The party P stands at {party["p2"]}, after its first steps. Dark cells are rock; the thick line is the wall '
            'between two floor blocks of the grid.', lead='How to read.')
 cyb = para(38, cyb + 4, 372, 'Sight compares coordinates only: rock does not block it. Floors are blocks of one grid, so the '
            'test also reaches into a neighbouring floor\'s block. Reading that as a creature seeing through the floor is '
@@ -564,7 +569,7 @@ cyb = para(38, cyb + 4, 372, 'Sight compares coordinates only: rock does not blo
 
 # D: the decision rule ---------------------------------------------------------------------------
 DX, DW = 436, 440
-pD = panel(DX, CY, DW, 420, 'D. The decision ($10304), one per think', f'proven: {emu["p2"]["ok"]}/{emu["p2"]["n"]} labels')
+pD = panel(DX, CY, DW, 420, 'D. How a group chooses its move ($10304)', f'proven: {emu["p2"]["ok"]}/{emu["p2"]["n"]} match')
 tl = emu['p2']['tally']
 def box(x, y, w, h, lines, fill='#f6f8fa', stroke=GRIDC):
     a(f'<rect x="{x}" y="{y}" width="{w}" height="{h}" rx="4" fill="{fill}" stroke="{stroke}"/>')
@@ -574,7 +579,7 @@ def ln(x1, y1, x2, y2, t=None, tx=None, ty=None):
     a(f'<line x1="{x1}" y1="{y1}" x2="{x2}" y2="{y2}" stroke="{MUTE}" stroke-width="1"/>')
     if t: a(f'<text x="{tx}" y="{ty}" class="s">{t}</text>')
 bx = DX + 14
-box(bx, CY + 38, 190, 32, [('bit 5 (cell action)?', 'b'), (f'yes: SPECIAL {tl["SPECIAL"]}', 's')])
+box(bx, CY + 38, 190, 32, [('cell has a special action (bit 5)?', 'b'), (f'yes: SPECIAL {tl["SPECIAL"]}', 's')])
 box(bx, CY + 80, 190, 32, [('not aware, or type 6 / 8?', 'b'), (f'yes: WANDER ({byb("unaware").get("WANDER",0)})', 's')])
 box(bx, CY + 122, 190, 45, [('party on my row or column,', 'b'), ('1 to 6 cells away?', 'b'), ('no wall test', 's')], '#e6f4ea', '#2da44e')
 ln(bx + 95, CY + 70, bx + 95, CY + 80); ln(bx + 95, CY + 112, bx + 95, CY + 122)
@@ -602,16 +607,16 @@ box(rx, CY + 224, 204, 72, [('0 to 3: aim that way, no attack', 'b'),
                             (f'behind: FORWARD if near, else', 's'),
                             (f'  turn at random {tb_.get("BEHIND_TURN",0)}', 's')])
 ty = CY + 312
-for txt in [f'Counts: the {emu["p2"]["n"]} gate trials on p2 (one group record, its cell byte,',
-            f'the party and the RNG poked), split by the model\'s branch;',
-            f'group on the party\'s cell: WANDER {byb("same cell").get("WANDER",0)}. Labels from the emulator:',
+for txt in [f'Counts: {emu["p2"]["n"]} test cases run on the game\'s own routine (a group, its cell byte,',
+            f'the party and the random number set by hand), split by the model\'s branch;',
+            f'group on the party\'s cell: WANDER {byb("same cell").get("WANDER",0)}. Outcomes the game produced:',
             ', '.join(f'{k} {v}' for k, v in sorted(tl.items(), key=lambda kv: -kv[1])[:4]) + ',',
             ', '.join(f'{k} {v}' for k, v in sorted(tl.items(), key=lambda kv: -kv[1])[4:]) + '.',
-            f'Natural base: {emu["base1"]["ok"]}/{emu["base1"]["n"]}. Control (range 5, &lt; $31e0): {emu["control"]["ok"]}/{emu["control"]["n"]}.']:
+            f'A base reached by ordinary play: {emu["base1"]["ok"]}/{emu["base1"]["n"]}.',
+            f'Control (a model deliberately changed: range 5, &lt; $31e0): {emu["control"]["ok"]}/{emu["control"]["n"]}.']:
     a(f'<text x="{DX+14}" y="{ty}" class="s">{txt}</text>'); ty += 15
-dyb = para(DX + 14, ty + 4, DW - 28, 'Each box is a question; read from the top, and the first that applies decides. A think is one '
-           'turn of a group, taken every period + 2 creature updates. CAPITALS are outcomes (the code label the gate stopped '
-           'at); the number after one is how many trials ended there. Aware means the group has noticed the party; relentless '
+dyb = para(DX + 14, ty + 4, DW - 28, 'Each box is a question; read from the top, and the first that applies decides. A turn is one '
+           'decision by one group (group 16 takes a turn every 18th creature update). CAPITALS are outcomes (the names in the game\'s code); the number after one is how many test cases ended there. Aware means the group has noticed the party; relentless '
            'groups never follow the trail; ranged types may attack from a distance. RNG is the game\'s random number for the '
            'update.', lead='How to read.')
 dyb = para(DX + 14, dyb + 4, DW - 28, 'Four inputs decide: the group\'s flags, its facing, the party\'s position and one byte '
@@ -622,20 +627,21 @@ close(pC, bot); close(pD, bot)
 y = bot + 26
 a(f'<text x="24" y="{y}" class="h">How we know</text>')
 y = para(24, y + 20, 852, 'proven: the game\'s own code was run in an Atari ST emulator and agreed with a Python model on every '
-         'trial. computed: counted by this figure\'s script from memory snapshots of the running game. inferred: read from '
-         'the 68000 machine code but not run.', 'k', lead='Labels.')
-y = para(24, y + 3, 852, 'a gate calls one game routine thousands of times with chosen inputs written into memory ("pokes") '
+         'trial. observed: counted by this figure\'s script in saved states of the running game. inferred: read from '
+         'the 68000 machine code (the Atari ST\'s processor) but not run.', 'k', lead='Labels.')
+y = para(24, y + 3, 852, 'A check script calls one game routine thousands of times with chosen inputs written into memory by hand '
          f'and compares each outcome with the model: {emu["p2"]["ok"]}/{emu["p2"]["n"]} means every trial agreed. The '
          'control runs the same gate against a deliberately wrong model (sight range 5 instead of 6, "<" instead of '
-         f'"<="); it disagrees on {emu["control"]["n"] - emu["control"]["ok"]} trials, so the gate can tell the two apart. '
-         'walk.py and track.py drive the party and record the creatures.', 'k', lead='Gates.')
-y = para(24, y + 3, 852, 'req4 is mission 1\'s base just after entry, the party on the entrance (reached by setting the game\'s '
-         'level-request word to 4); p14 and p2 are the same base after the party walked E, E, S and then four more S; base1 '
-         'is a base reached by ordinary play. A step is one 68000 instruction. Hex numbers such as $10304 are addresses of '
+         f'"<="); it disagrees on {emu["control"]["n"] - emu["control"]["ok"]} trials, so the check can tell the two apart. '
+         'Other scripts walk the party and record the creatures.', 'k', lead='Checks.')
+y = para(24, y + 3, 852, 'Panel A is mission 1\'s base just after entry, the party on the entrance (reached by setting the game\'s '
+         'level-request word to 4); the other panels are the same base after the party walked E, E, S and then four more S, plus one '
+         'count on a base reached by ordinary play. A step is one 68000 instruction. Hex numbers such as $10304 are addresses of '
          'the game\'s code and data, given for reference; "bits 3-5" are bits of the plane-2 byte.', 'k', lead='States.')
 HT = y + 30
-a(f'<text x="24" y="{HT-14}" class="s">Wander, hostility and what follows each label are inferred (ai.md "Wander and hostility"); '
-  f'the base is mission 1, request word poked to 4 (ai.md "Getting into a base").</text>')
+a(f'<text x="24" y="{HT-14}" class="s">Wander, hostility and what follows each outcome are inferred; '
+  f'the base is mission 1 with the level-request word set by hand to 4.</text>')
+a(f'<text x="24" y="{HT-2}" style="font-size:9px;fill:{MUTE}">Sources: ai.md "Wander and hostility", "Getting into a base"; saved states req4, p14, p2, base1; scripts gen_trail.py, walk.py, track.py, gate_decide.py, field.py. Facts: trail.facts.md.</text>')
 a('</svg>')
 s[0] = (f'<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 {WD} {HT}" width="{WD}" height="{HT}" role="img" '
         'aria-labelledby="t d">')

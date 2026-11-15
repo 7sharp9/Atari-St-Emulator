@@ -43,6 +43,14 @@ Doc: `packer.md`.
 | lz4 has no entropy coding, gzip/zstd/xz do | general knowledge of those formats |
 | c80 RAM match 322,880 of 323,168, the rest presumably game variables | table above |
 | mover from code only | packer.md, table above |
+| title: unpacking a program inside its own memory, from the end backwards; the 218-byte end distance moved from the title into the lead | lead; table above |
+| the game is an Atari ST game; the figure comes from reverse-engineering it in an emulator; a packer compresses a program file so it unpacks itself when loaded | README.md opening; GLOSSARY.md ("packer, depacker, crunched") |
+| a literal run is bytes copied as they are; a match is a copy of earlier output | the panel's own flag box ("1 = literals") and the old Takeaway ("either copy literal bytes, or copy a run of earlier output") |
+| "entropy coding" glossed as variable-length codes tuned to the data | general knowledge (the lz4 versus gzip/zstd/xz row above); not from packer.md |
+| "the sentinel bit" also called a marker bit | same fact as before |
+| panel D title "the real safety margin is 219, not 218"; the other files stated as counts (4 have 218, 1 has 220) | table above (219 binding; other files 218, 218, 218, 218, 220); file names moved to the Sources line |
+| lessons in A, B, C, E takeaways (layout keeps the writer ahead; compressible data keeps it ahead; the safety condition; a simple scheme is enough) | same sentences and numbers as before, reordered |
+| "How we know" names no snapshot or file in the prose; the move routine is labelled inferred | table above |
 
 ## Flags
 

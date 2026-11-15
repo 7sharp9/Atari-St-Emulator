@@ -42,3 +42,21 @@
 | first group dies: pigeons freed, pending words stay, later orders copy the dead sender | strategy.md "The pending word"; README "Design digest" ("Pigeons can leak") |
 | 357 / 183 / 142 / 141 | the figure's own pending-census line (strategy.md "The pending word") |
 | `$58016` one 6-byte slot per side | strategy.md "`$58016` command buffer" |
+
+## Clarity pass (title, key line, plain boxes)
+
+| text added or changed | source |
+|---|---|
+| key line under the lead: `$` numbers are citations; proven / observed / inferred | repo evidence taxonomy: reversing/GLOSSARY.md "Evidence labels" (proven = checked against the game; observed = seen running; inferred = read only); ai.md "Evidence taxonomy" |
+| legend words proven / observed / inferred replace "callcap gate", "live", "code read" | same; the box fills are unchanged |
+| "here the Atari ST version"; "reverse-engineering the game's 68000 machine code (the ST's CPU) and running it in an emulator" | README.md title line; GLOSSARY.md "The Atari ST", "68000" |
+| script, file and saved-game names moved from panels into the final "Sources:" line | presentation only; every name is unchanged |
+| title: "how a stuck 'order in flight' flag can freeze an army" | the figure's own takeaway (an order that never flies freezes that group); strategy.md "The pending word" |
+| "also called the in-flight flag"; "If it stays set, the group is frozen" | same takeaway; strategy.md "The commander AI `$6522`" (skip on `4() != 0`) |
+| "refuses only if the group is already in that state: `76(group) = $6888[type]`" | strategy.md "`$6822`: issuing an order" (refuses when `76()` = `$6888[type]`) |
+| "natural clicks captured in the running game", "observed: ..." for the saved-game names | presentation; the saved states are listed in the Sources line |
+| "Senders (the handlers for each order type)" | strategy.md "The executor, proven" (`$6b38` dispatches to a handler by type) |
+| "proven with the senders" for "in gate_orders.py" | strategy.md "The order senders and arrival executors, proven" |
+| "land 25" for k25 | strategy.md "Transfer `$664c`, `$668c`" (k25 is a land) |
+| "one side also watched for 150M steps" moved to Sources | this file, row "rand1_s1 side 4: 150M steps, 0 writes, 12 pigeons" |
+| "Posture is a group's aggression setting (2 aggressive, 3 neutral, 4 passive)" | strategy.md `$51538` table (posture row) |

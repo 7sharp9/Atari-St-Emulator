@@ -42,6 +42,14 @@ Every dot is a captured game value; the only model output drawn is the red froze
 | nudged-constant method and the threshold intervals | vehicles.md 5; table above |
 | both runs from c_s30 (carrier at Vulcan) with the game's own lift `$11386` and launch `$11af6`; turning run pokes yaw `$644` and target speed `$648` | `gen_takeoff.py` docstring; README.md snapshot table |
 | pitch units and sign inferred | table above |
+| title: taking off from a moving, turning deck with no special case; the game is an Atari ST game, figure from reverse-engineering in an emulator; tick defined before first use | lead; README.md opening; vehicles.md 5 ("main ticks") |
+| panel A: "seen from the carrier, which stands still" for "in the carrier's frame"; legend names the phases 0, 1, 2 | vehicles.md 5; the phases row above |
+| panel C title and text: "the game's memory keeps its state (at offset +28) and phase (at offset +29)"; "rotation routine `$1d908`" | vehicles.md 5 (slot fields); the position row above |
+| panel D "What is proven" turned into prose: 42/42 and 42/42, 43/43 with the launch tick, 11 of 13 constants on the turning run, threshold intervals, hand-off speed 60 / 108 = 60 + 48, 107 over the sea | the rows above (same numbers, printed by `gen_takeoff.py`) |
+| "the figure is not drawn if our model differs from the game on any tick" for the script's refusal | docstring of `gen_takeoff.py`; table above |
+| "yaw (turning) value" for the poked `$644` | table above; vehicles.md 1 (+10 a tick heading) |
+| lessons in the A, B, C takeaways (one rule serves every case; following the carrier needs no special case; simple because almost everything happens on the deck) | same numbers as the old takeaways |
+| "How we know" and one Sources line name files and the `stserver` process; the prose names none | clarity-pass convention |
 
 ## Flags
 

@@ -43,6 +43,14 @@ Regenerate: `cd M68000 && reversing/carriercommand/py/infographics/bsp_order_all
 | 12314/12314, 6189/6189, 12228/12228, 684/684; reversed walk differs 228/228 | `bsp/order_sum.txt` via `gen_bsp.py` printout |
 | 31 runs from seven snapshots, 24 with the Manta's angles poked | render.md 4 |
 | not covered: the clipping path (no polygon took it), P1/P2 flags always equal (4 of 8 patterns) | render.md 4 |
+| title: how a 1988 game drew solid 3D without a depth buffer; the problem sentence in the lead | lead (no z-buffer, painter's order), render.md intro, 4 |
+| the game is an Atari ST game; the figure comes from reverse-engineering it in an emulator; blitter = block-copy chip | README.md opening; GLOSSARY.md ("Atari ST", "blitter") |
+| back-face = a face pointing away from the eye; normal = the direction the face points; to walk the tree = to visit its nodes root down | the lead's own gloss; generic definitions, no claim about the game |
+| panel D title as a question; takeaway "facing is recomputed, not stored" | render.md 4 (three vertex indices per item, halved cross product) |
+| panel E tags: from code -> inferred, matched in the emulator -> observed, proven -> proven | GLOSSARY.md "Evidence labels" |
+| takeaways in B, C, E lead with the lesson (looked up not sorted; order right without sorting; checked in most detail) | same numbers and sources as the rows above; no new claim |
+| the raw stream bytes (`00 00 46 ff 06 03`) are no longer drawn; `gen_bsp.py` still prints them | cut for readers; value unchanged in the printout |
+| "How we know" and one Sources line name the files; the prose names none | clarity-pass convention |
 
 ## The drawing-order check (render.md 7 first item, session item 5)
 

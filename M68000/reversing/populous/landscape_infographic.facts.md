@@ -38,3 +38,17 @@ Docs: `reversing/populous/terrain.md` (T), `graphics.md` (G), `README.md` "Desig
   JS string in the template now says so.
 - The rules-table header "cost and gate" uses "gate" for the game's pre-check; it is not the proof sense of "gate".
 - No numbers were changed. No doc/figure numeric disagreement found.
+
+## Clarity pass: sources for the added or reworded sentences
+
+| sentence on the page | source |
+|---|---|
+| "the ST being a 1985 home computer built around the Motorola 68000 processor" | GLOSSARY.md "Atari ST", "68000" |
+| "The routines were read out of the original game by reverse-engineering it while it ran in an emulator." | the page's own section 6 (routines rewritten in Python and compared with the real routine in the emulator) |
+| key line (addresses; proven / observed / inferred) | clarity-pass conventions; section 6 for "proven" |
+| Terms "snapshot ... GENESIS, conquest world 0" | `landscape_infographic.py` PRESETS ("conquest world 0 (LEVEL record 0)") |
+| Terms "conquest, custom": numbered worlds, seed from the level file, GENESIS world 0, SADINDON world 1235, player-typed seed | PRESETS ("conquest world 1235 (desert)", "a number typed at the world dialog"); section 5 prose; T 3 new_world step 1 |
+| "4 for GENESIS and SADINDON (both conquest worlds)" | PRESETS (both pre = 4, conquest) |
+| rules-table note: "the rules that depend on them are simplified: the volcano's protected cells are just cell (0, 0) and nothing blocks a swamp" | the old sentence; the "side 0 has no leader and the papal magnets are unset" clause was dropped, not explained (see Needs Dave) |
+| "the game's six powers (the four terrain powers on this page, plus knight and armageddon, which do not change terrain and are not shown) matched under callcap on 2670 of 2670 states" | T 4: "All six powers share one gate ($11f6e, $12354, $12640, $12a18, $12bbc, $12d2a)"; "Knight $12ba0 and armageddon $12d26 do not touch terrain"; "2670/2670 randomized states". Correction of wording only: "six" was right, but the page lists four terrain powers |
+| "(this page's own code, landscape_core.js)"; verify_cmd.py name removed from the body | the old text; names stay in the footer |

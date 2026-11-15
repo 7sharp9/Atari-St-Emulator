@@ -45,3 +45,23 @@ All from `reversing/powermonger/strategy.md` unless marked. Branch addresses wer
 | order codes `$08` get men, `$0c` march and engage, `$06` get food, `$04` transfer, `$02` from the recheck | the figure's own arm boxes; strategy.md orders table |
 | AI groups start with `$5fff` food; the food test never binds in any run; the AI writes posture 4 on attackers | README "Design digest" ("The opponent is simple"; "Combat") |
 | census counts compared in the takeaway (31122, 3507, 2286) | the figure's own numbers (strategy.md "Natural coverage") |
+
+## Clarity pass (title, key line, plain boxes)
+
+| text added or changed | source |
+|---|---|
+| key line under the lead: `$` numbers are citations; proven / observed / inferred | repo evidence taxonomy: reversing/GLOSSARY.md "Evidence labels" (proven = checked against the game; observed = seen running; inferred = read only); ai.md "Evidence taxonomy" |
+| legend words proven / observed / inferred replace "callcap gate", "live", "code read" | same; the box fills are unchanged |
+| "here the Atari ST version"; "reverse-engineering the game's 68000 machine code (the ST's CPU) and running it in an emulator" | README.md title line; GLOSSARY.md "The Atari ST", "68000" |
+| script, file and saved-game names moved from panels into the final "Sources:" line | presentation only; every name is unchanged |
+| title "How the computer's commander AI picks one order for one army group" | the lead and strategy.md "The commander AI `$6522`" |
+| "an order still travelling to its captain by carrier pigeon" for "an order in flight" | order_pipeline figure lead; strategy.md "The pending word" (cleared by a pigeon landing) |
+| "(an arm is one branch of the list)" | the figure's own use of "arm" (strategy.md "The commander AI `$6522`", decide arms 1 to 5) |
+| "(see the two mode figures)" | fsm.facts.md; the lead already says "the men's own state machines" |
+| "recheck the target, order `$02` (go to)" | order_pipeline figure ("order `$02` go to"); strategy.md orders table |
+| "land 25", "land 143", "lands 106 and 50" for k25, k143, k106 and k50 | strategy.md "Natural coverage" ("2286 in all 75 lands (k25 alone 182 ..."), "Natural hits" (k143, k25); "k106 and k50 5 together" is the original "(k143 140, k106 and k50 5)" |
+| "75-land test", "short test" for "75-land census", "short census" | same counts; "census" is repo wording (GLOSSARY.md "hits") |
+| "(29 saved games, 150M steps each)" | the figure's own footer line (29 start snapshots x 150M steps) |
+| "set by hand" for "poked" | GLOSSARY.md (poke) |
+| takeaway: the AI's posture 4 (passive) turns every kill in a fight into a rout, so its attacks scatter armies rather than kill them | strategy.md "Data structures (C)" (comment at `$30fe`: posture 4 -> shift 2 -> "rout, never kill"); "What's crude, and what a modern version changes" item 6 ("attacks at posture 4, which forces every kill into a rout, so its field combat almost never kills") |
+| "the computer's whole strategy is a short priority list that mostly marches on the nearest enemy lord" | the figure's own counts (31122 of the arm fires) and strategy.md "The AI as modern pseudocode" |

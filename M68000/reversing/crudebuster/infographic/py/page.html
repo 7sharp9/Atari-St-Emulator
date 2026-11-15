@@ -3,14 +3,15 @@
 <style>{{CSS}}</style>
 <main>
 <header>
-  <h3>Data East, 1990 &middot; arcade game, run in the MAME emulator &middot; 68000 program read from the decrypted ROM</h3>
+  <h3>Data East, 1990 &middot; an arcade game, studied by running it in the MAME emulator</h3>
   <h1>How Crude Buster decides who gets hit</h1>
   <p class="lede">The game never compares sprites. Every punch, bite and explosion is a rectangle test, and every enemy that does more than walk straight at you runs one shared decision routine. Both are small enough to read in full.</p>
   <p>Crude Buster (Two Crude in the USA) is a 1990 Data East arcade fighting game for one or two players. The attract screens set it in <code>NEW YORK A.D.2010</code>. You walk right through six levels (numbered 0 to 5 here, as the program numbers them) and fight the thugs, cyborgs and bosses that a level script releases as the screen scrolls. There are three buttons: attack, jump, and grab or throw, which picks up props and enemies and throws them. This page answers two questions a programmer would ask about such a game: how does the program decide that a blow connected, and how does an enemy decide what to do next?</p>
   <p>The answers are cheap. A hit is four integer comparisons between two rectangles. An enemy's next move is three table lookups, by height, by distance and by what you are doing, followed by a random choice among a short list of next states. The surprising parts are in the details: an enemy that touches you loses health as well, you are not protected for even a frame after a hit, and the same enemy behaves differently depending on whether you stand on its level or above it.</p>
   <div class="note">
-    <p><strong>Setup.</strong> Crude Buster is an arcade board, not an Atari ST game. It runs in MAME 0.289 (set <code>cbuster</code>, the World version), which here serves both as the emulator and as the reference for what really happens. The board's main processor is a 68000, the same CPU family as the ST, so the repo's disassembler reads its program. The program is stored encrypted in the ROM chips and MAME decrypts it as it loads; every address on this page (written like <code>$2438a</code>) is an address in that decrypted image. Addresses are citations only: the prose says what each one does.</p>
+    <p><strong>Setup.</strong> Crude Buster is an arcade board; the other games in this series are for the Atari ST, a home computer. This page comes from reverse-engineering the game while it ran in an emulator. It runs in MAME 0.289 (set <code>cbuster</code>, the World version), which here serves both as the emulator and as the reference for what really happens. The board's main processor is a 68000, the same processor family as the Atari ST's, so a 68000 disassembler can read its program. The program is stored encrypted in the ROM chips and MAME decrypts it as it loads; every address on this page (written like <code>$2438a</code>) is an address in that decrypted image. Addresses are citations only: the prose says what each one does.</p>
   </div>
+  <p class="cap"><code>$</code> numbers are addresses in the game's memory, given as citations; the text says what each one is. Evidence words: <span class="tag">proven</span> checked against the game's own behaviour or code with a match count; <span class="tag">observed</span> seen in the running game; <span class="tag">inferred</span> read from the code or reasoned, not run.</p>
   <div class="keys" aria-label="Colour key for every figure on this page">
     <span class="k"><i class="sw body"></i>player body box</span>
     <span class="k"><i class="sw atk"></i>player attack box</span>
@@ -32,11 +33,11 @@
   </dl>
   <h3>How sure we are</h3>
   <dl class="terms">
-    <div><dt><span class="tag">measured</span></dt><dd>Run in MAME and counted. "397 tests, 71 hits, 0 disagreements" means a script predicted the outcome of 397 cases from the rule and compared each with what the game did.</dd></div>
-    <div><dt><span class="tag">read</span></dt><dd>Read from the disassembled program, not run.</dd></div>
-    <div><dt><span class="tag">decoded</span></dt><dd>Computed by a script that reads the ROM tables and the code that uses them, without sampling the game. Exact if the reading is right, but not yet confirmed by counting in a run.</dd></div>
+    <div><dt><span class="tag">proven</span></dt><dd>Run in MAME and compared with a rule, with a match count. "397 tests, 71 hits, 0 disagreements" means a script predicted the outcome of 397 cases from the rule and compared each with what the game did.</dd></div>
+    <div><dt><span class="tag">observed</span></dt><dd>Seen in MAME while the game ran and measured or counted, without a rule-against-game comparison.</dd></div>
+    <div><dt><span class="tag">inferred</span></dt><dd>Read from the disassembled program, or computed by a script from the ROM tables and the code that uses them, and not run. Exact if the reading is right, but not yet confirmed by counting in a run.</dd></div>
     <div><dt><span class="tag">open</span></dt><dd>Not settled.</dd></div>
-    <div><dt>gate</dt><dd>A script that re-runs a check from scratch and reports matches out of cases, such as <code>player/py/hitbox_gate.py</code>. The script names in the source line at the foot of the page are the gates behind the counts.</dd></div>
+    <div><dt>check script</dt><dd>A script that re-runs a check from scratch and reports matches out of cases. The script names in the source line at the foot of the page are the ones behind the counts.</dd></div>
     <div><dt>lab, natural run</dt><dd>A lab run loads a saved MAME state, places chosen enemies and keeps the player alive, to isolate one mechanism. A natural run plays a level from its start with real button presses (see the last section).</dd></div>
   </dl>
 </section>
@@ -57,20 +58,20 @@
       <figcaption>Level 0, frame 1342. The jab box (right 612, left 580) overlaps the thug on the left of the player and ends 11 px short of the one behind him. Only the first is flagged as hit.</figcaption>
     </figure>
     <figure class="plate">
-      <img class="shot" alt="Level 0 fight with the hit boxes drawn; the brawler is inside the player's attack box" src="{{IMG2}}">
-      <figcaption>Level 0, frame 2097. The brawler's body box (left 876, right 891) sits inside the jab box (848 to 888), so the hit lands.</figcaption>
+      <img class="shot" alt="Level 0 fight with the hit boxes drawn; the brawler's body box overlaps the player's attack box" src="{{IMG2}}">
+      <figcaption>Level 0, frame 2097. The brawler's body box (left 876, right 891) overlaps the jab box (848 to 888), so the hit lands.</figcaption>
     </figure>
   </div>
   <p>Below is the test as the game writes it, with X the enemy's body box and Y the player's attack box, then the numbers of the first frame worked through. Each line reads as one condition: the attack's right edge is at or past the body's left edge, the attack's left edge is before the body's right edge, and the same two checks vertically. The mix of "at or past" (&ge;) and "strictly before" (&lt;) means that boxes which only touch along one edge count as overlapping on one side and not on the other; it is the game's rule, not a rounding choice of ours.</p>
   <div class="formula" role="note"><span class="t">hit(enemy body X, player attack Y) =</span><br>R<sub>Y</sub> &ge; L<sub>X</sub> &nbsp;and&nbsp; L<sub>Y</sub> &lt; R<sub>X</sub> &nbsp;and&nbsp; B<sub>Y</sub> &ge; T<sub>X</sub> &nbsp;and&nbsp; T<sub>Y</sub> &lt; B<sub>X</sub><br><span class="t">frame 1342, thug on the left: 612 &ge; 577, 580 &lt; 592, 464 &ge; 432, 432 &lt; 479, all true, hit</span><br><span class="t">frame 1342, thug behind: 580 &lt; 569 is false, no hit</span></div>
   <p class="take"><strong>Takeaway.</strong> The same comparison serves every kind of contact: your blows on enemies, enemies' blows on you, bodies touching, projectiles, and the grab's pick-up test. The program holds six copies of it, all equal; only the pair of boxes changes.</p>
   <ul class="facts">
-    <li><span class="tag">measured</span>In a recorded fight against 40 grunts, 397 tests ran with the attack flag set. The box model predicted 71 hits; all 71 happened, and none happened that it did not predict.</li>
-    <li><span class="tag">measured</span>Enemy attacks use the same rectangles the other way round: a one-frame hit object is built from the attacker's animation, tested against your body box, then erased. 2,628 melee tests, 13 hits, 0 disagreements.</li>
-    <li><span class="tag">measured</span>A hit costs the enemy 1 health. The attack box is only live on certain animation frames, so a jab that is still winding up hits nothing.</li>
-    <li><span class="tag">read</span>The player's body box is 15 px wide and 63 tall standing, shorter when crouching or rolling, and empty (nothing can hit it) while being knocked down.</li>
-    <li><span class="tag">measured</span>Bodies touching is a trade. When an enemy's body box overlaps yours, you lose 1 health and so does the enemy, and you are paid the points for hitting it. A thug with 2 health died from two touches without being attacked.</li>
-    <li><span class="tag">measured</span>Your punches never hurt the other player: there is no player-against-player attack path. In a lab test a three-hit chain over the partner's body box left the partner's health unchanged.</li>
+    <li><span class="tag">proven</span>In a recorded fight against 40 grunts, 397 tests ran with the attack flag set. The box model predicted 71 hits; all 71 happened, and none happened that it did not predict.</li>
+    <li><span class="tag">proven</span>Enemy attacks use the same rectangles the other way round: a short-lived rectangle (a hit object) is built for one frame from the attacker's animation, tested against your body box, then erased. 2,628 melee tests, 13 hits, 0 disagreements.</li>
+    <li><span class="tag">observed</span>A hit costs the enemy 1 health. The attack box is only live on certain animation frames, so a jab that is still winding up hits nothing.</li>
+    <li><span class="tag">inferred</span>The player's body box is 15 px wide and 63 tall standing, shorter when crouching or rolling, and empty (nothing can hit it) while being knocked down.</li>
+    <li><span class="tag">observed</span>Bodies touching is a trade. When an enemy's body box overlaps yours, you lose 1 health and so does the enemy, and you are paid the points for hitting it. A thug with 2 health died from two touches without being attacked.</li>
+    <li><span class="tag">observed</span>Your punches never hurt the other player: there is no player-against-player attack path. In a lab test a three-hit chain over the partner's body box left the partner's health unchanged.</li>
   </ul>
 </section>
 
@@ -80,12 +81,12 @@
   <div class="read"><strong>How to read this.</strong> Each cell is one move for a player facing right, drawn at twice game scale. The green box is the standing body box, centred on the player's position; the dashed line is the ground under the feet. The yellow box is where that move can hit. Under each cell, <em>reach</em> is how far the box's front edge lies in front of the player's position, in pixels, and <em>height</em> is the box's height. The frame range is when the box is live, counted from the first frame the game sees the button (at 58 frames a second, frames 6 to 11 is about a tenth of a second). The dashed grey box in the last cell is the grab's pick-up box, which takes hold of an enemy or prop instead of damaging it. Hover a box for its four numbers.</div>
   <div class="plate"><div class="scroll">{{MOVES}}</div></div>
   <p class="cap">Units are game pixels, y grows downward. The jump kick box hangs below the body box centre line, so it reaches enemies lower than the player and cannot hit one standing on the same ground at head height.</p>
-  <p class="take"><strong>Takeaway.</strong> Almost every blow reaches 40 px in front of your centre, so the moves differ mainly in height and in timing. The chain is three jabs: a second press within the window turns a 12-frame jab into a 24-frame two-hit move and a third press into a 42-frame three-hit move; each hit costs the enemy 1 health. Button priority is fixed: if several buttons go down on the same frame, attack beats grab and grab beats jump.</p>
+  <p class="take"><strong>Takeaway.</strong> The moves differ mainly in height and in timing, not in reach: almost every blow reaches 40 px in front of your centre. The chain is three jabs: a second press within the window turns a 12-frame jab into a 24-frame two-hit move and a third press into a 42-frame three-hit move; each hit costs the enemy 1 health. Button priority is fixed: if several buttons go down on the same frame, attack beats grab and grab beats jump.</p>
 </section>
 
 <section id="ai">
   <h2>How an enemy decides</h2>
-  <p>Thirty-odd enemy types, most of the bosses among them, call one shared routine at the end of their idle and walking states (`$2438a`, 40 call sites). It copies the position of a target player, then makes three lookups. First the <strong>height difference</strong> picks one of three tables. Beyond 256 px it simply walks in. Otherwise the <strong>distance</strong>, in sixteen buckets of 16 px, picks a row, and in the same lane the target's current pose and its variant pick the leaf. The leaf waits for the current animation to end, then rolls a die over a list of next states.</p>
+  <p>Thirty-odd enemy types, most of the bosses among them, call one shared routine at the end of their idle and walking states (<code>$2438a</code>, 40 call sites). It copies the position of a target player, then makes three lookups. First the <strong>height difference</strong> picks one of three tables. Beyond 256 px it simply walks in. Otherwise the <strong>distance</strong>, in sixteen buckets of 16 px, picks a row, and, if the enemy is on your level, the target's current pose and its variant pick the leaf. The leaf waits for the current animation to end, then rolls a die over a list of next states.</p>
   <ol class="steps">
     <li><strong>Pick a target.</strong> With two players in the game, the enemy chooses one of them at random, skipping a player who is not playing or is knocked down, and copies that player's position and pose into its own record.</li>
     <li><strong>Pick a table by height.</strong> Table A when the enemy stands between 32 px above and 96 px below you (roughly your level), table B when it is more than 96 px below you, table C when it is higher up. It also turns to face you, with 16 px of slack (48 px in tables B and C) so it does not flicker between directions.</li>
@@ -105,12 +106,12 @@
   </div>
   <p class="take"><strong>Takeaway.</strong> The personality of an enemy type is just its table. Distance decides most of it: close in, they mostly idle or attack; at middle range most of them walk in; far out, the jet-pack cyborg attacks and the armoured cyborg turns to its special states half the time. Height decides the rest: off your level, three of the four types below never attack and only try to reach your level. For these four types every real choice waits for the current animation to end, so an enemy commits to what it is doing before it reconsiders; only a cell with a single outcome, such as "walk in", fires at once.</p>
   <ul class="facts">
-    <li><span class="tag">decoded</span><strong>Bruiser</strong> (8 health) within 32 px of you idles half the time, tries a grab a quarter of the time and uses its shuffling attack the other quarter. The grab squeezes you for 4 health each time.</li>
-    <li><span class="tag">decoded</span><strong>Armoured cyborg</strong> idles half the time and uses two attacks within 48 px, walks in at 64 to 127 px, and from 128 px out spends half its decisions on four different jump and special states, 12% each.</li>
-    <li><span class="tag">decoded</span><strong>Strongman</strong> has no attack beyond 96 px; past that distance it always walks. (At half health it becomes a different type that throws knives, which this table does not cover.)</li>
-    <li><span class="tag">decoded</span><strong>Jet-pack cyborg</strong> is the only one of the four that attacks from range: from 64 px outward every decision is an attack, and from another height 38% to 56% of its decisions still are.</li>
-    <li><span class="tag">decoded</span>On another height the other three never attack. About 70% of their decisions walk toward you and the rest jump to your lane or drop to it first.</li>
-    <li><span class="tag">decoded</span>The grab attempt is conditional: it only becomes a grab if you are on the ground, not already held and not blinking. Otherwise the enemy idles.</li>
+    <li><span class="tag">inferred</span><strong>Bruiser</strong> (8 health) within 32 px of you idles half the time, tries a grab a quarter of the time and uses its shuffling attack the other quarter. The grab squeezes you for 4 health each time.</li>
+    <li><span class="tag">inferred</span><strong>Armoured cyborg</strong> idles half the time and uses two attacks within 48 px, walks in at 64 to 127 px, and from 128 px out spends half its decisions on four different jump and special states, 12% each.</li>
+    <li><span class="tag">inferred</span><strong>Strongman</strong> has no attack beyond 96 px; past that distance it always walks. (At half health it becomes a different type that throws knives, which this table does not cover.)</li>
+    <li><span class="tag">inferred</span><strong>Jet-pack cyborg</strong> is the only one of the four that attacks from range: from 64 px outward every decision is an attack, and from another height 38% to 56% of its decisions still are.</li>
+    <li><span class="tag">inferred</span>On another height the other three never attack. About 70% of their decisions walk toward you and the rest jump to your level or drop to it first.</li>
+    <li><span class="tag">inferred</span>The grab attempt is conditional: it only becomes a grab if you are on the ground, not already held and not blinking. Otherwise the enemy idles.</li>
     <li><span class="tag">open</span>1,524 of the 1,536 table cells decode to exact probabilities. The other 12 (types 13 and 75, distances 64 to 159) use a leaf with a different shape. The rates have not yet been confirmed by spawning each type and counting its decisions.</li>
   </ul>
 </section>
@@ -127,26 +128,26 @@
   <div class="plate"><div class="scroll">{{BOSSES}}</div><p class="cap">Hover a bar for the thrown-prop count (4 health per hit). Some bosses cannot be grabbed (the armoured cyborg is one), so props and ordinary grabbable enemies are the only way to use the 4.</p></div>
   <p class="take"><strong>Takeaway.</strong> The economy is lopsided on purpose: enemies hit rarely and hard, the player often and lightly. Five clean hits end your life on Normal, while the strongest boss here needs 48 of yours, so the fight is about not getting hit rather than about trading.</p>
   <ul class="facts">
-    <li><span class="tag">measured</span>There is no invulnerability after being hit. A second attack that lands 8 frames after the first is a second hit, which is why one thug animation can deal 36.</li>
-    <li><span class="tag">measured</span>An enemy that takes a hit is stunned for 15 frames and does not move. You flinch for 16.</li>
-    <li><span class="tag">measured</span>83 of 83 health decrements in a damage log matched 4 &times; table for melee, 1 for contact and 1 or 10 for projectiles.</li>
-    <li><span class="tag">read</span>The one health pickup is a pool A object that restores 8 and only works below 48 health.</li>
-    <li><span class="tag">read</span>You do blink, and cannot be hurt, for 320 frames after joining, respawning or continuing, and for 20 frames after getting up from a knock-down. Nothing in the program awards an extra life.</li>
+    <li><span class="tag">observed</span>There is no invulnerability after being hit. A second attack that lands 8 frames after the first is a second hit, which is why one thug animation can deal 36.</li>
+    <li><span class="tag">observed</span>An enemy that takes a hit is stunned for 15 frames and does not move. You flinch for 16.</li>
+    <li><span class="tag">proven</span>83 of 83 health decrements in a damage log matched 4 &times; table for melee, 1 for contact and 1 or 10 for projectiles.</li>
+    <li><span class="tag">inferred</span>The one health pickup restores 8 and only works below 48 health.</li>
+    <li><span class="tag">inferred</span>You do blink, and cannot be hurt, for 320 frames after joining, respawning or continuing, and for 20 frames after getting up from a knock-down. Nothing in the program awards an extra life.</li>
   </ul>
 </section>
 
 <section id="played">
   <h2>Played through, not only read</h2>
-  <p>A bot reads the same RAM the enemies do and plays each level from its start with only the health cell held up (and the level timer refilled, which is noted per level). It uses the moves above. Where it stalled, the cause was usually geometry the earlier lab work had not met. Only level 1 is cleared; the other rows say how far the runs got.</p>
+  <p>A bot reads the same RAM the enemies do and plays each level from its start with only the health cell held up (and the level timer refilled, which is noted per level). It uses the moves above. Where it stalled, the cause was usually geometry the earlier lab work had not met. Levels 1 and 2 are cleared; the other rows say how far the runs got. The final bot is not monotonic: some behaviours that helped one level cost another.</p>
   <div class="read"><strong>How to read this.</strong> The bot is a Lua script running inside MAME that presses the buttons a player would. "Health cell held up" means it keeps writing the player's health byte back to full, so it cannot die from damage; everything else, including every enemy decision, is the game's own. Its targeting uses the box rule from the top of this page: it attacks only when its jab box would overlap the target's body box. "Scroll" is how far the screen has scrolled into the level, in pixels (hexadecimal). A green pill means the level was cleared, amber that the run got part of the way.</div>
   <div class="plate"><div class="scroll"><table>{{NATROWS}}</table></div></div>
   <ul class="facts">
-    <li><span class="tag">measured</span>Lock walls are not unbreakable. Standing against the level 1 rubble wall and jabbing breaks it within about 150 frames, so no prop has to be carried.</li>
-    <li><span class="tag">measured</span>Ladders are narrow doors. In level 4 the descent accepts a plain down press only between x 1502 and 1506, five pixels, and 1501 or 1507 does nothing.</li>
-    <li><span class="tag">read</span>A wall tile can stop a walking player. At the end of level 2 the player halts at x 2291, 12 px short of a tile column at x $900 (terrain attribute $e800), and the level 4 lower floor halts the same way at x 1779. Whether a jump clears them has not been tested yet.</li>
-    <li><span class="tag">measured</span>The level timer starts at 300 and loses one per 63 frames, so about 18,900 frames per life. It kills in god mode too, so a stalled bot dies at frame 19,800.</li>
+    <li><span class="tag">observed</span>Lock walls are not unbreakable. Standing against the level 1 rubble wall and jabbing breaks it within about 150 frames, so no prop has to be carried.</li>
+    <li><span class="tag">observed</span>Ladders are narrow doors. In level 4 the descent accepts a plain down press only between x 1502 and 1506, five pixels, and 1501 or 1507 does nothing.</li>
+    <li><span class="tag">observed</span>A wall tile can stop a walking player. At the end of level 2 the player halts at x 2291, 12 px short of a tile column at x $900 (terrain attribute $e800), and the level 4 lower floor halts the same way at x 1779. A jump clears the level 2 column (the bot's hop carries the player from x 2291 to x 2329 on top of the block); it does not clear the level 4 column, which is taller than the 48 px jump.</li>
+    <li><span class="tag">observed</span>The level timer starts at 300 and loses one per 63 frames, so about 18,900 frames per life. It kills in god mode too, so a stalled bot dies at frame 19,800.</li>
   </ul>
-  <p class="take"><strong>Takeaway.</strong> The rules read from the code were good enough to fight with: a bot that only knows the hit boxes and the moves gets through real levels. What stopped it was terrain, such as walls and ladders, which this page does not model.</p>
+  <p class="take"><strong>Takeaway.</strong> The rules read from the code were good enough to fight with: a bot that only knows the hit boxes and the moves gets through real levels. What stopped it was terrain, such as walls and ladders, which this page does not model: a jump got over the level 2 wall but not the level 4 one.</p>
 </section>
 
 <footer>

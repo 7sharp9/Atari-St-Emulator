@@ -55,3 +55,20 @@
 Disagreement: economy.md section 1 (the `$3bc0` row) says order `$12`'s settlement food drop is proven by
 `gate_orders.py` (344 states, 1292/1292); the figure keeps the box blue (live, one run). Not changed (brief: no
 number or label changes without an owner decision).
+
+## Clarity pass (subtitle, key line, plain boxes)
+
+| text added or changed | source |
+|---|---|
+| key line under the lead: `$` numbers are citations; proven / observed / inferred | repo evidence taxonomy: reversing/GLOSSARY.md "Evidence labels" (proven = checked against the game; observed = seen running; inferred = read only); ai.md "Evidence taxonomy" |
+| legend words proven / observed / inferred replace "callcap gate", "live", "code read" | same; the box fills are unchanged |
+| "here the Atari ST version"; "reverse-engineering the game's 68000 machine code (the ST's CPU) and running it in an emulator" | README.md title line; GLOSSARY.md "The Atari ST", "68000" |
+| script, file and saved-game names moved from panels into the final "Sources:" line | presentation only; every name is unchanged |
+| subtitle "Everything that changes one lord's four numbers, and which routine or order changes it" | the lead (every change to the four numbers is a single write by a handler or an order) |
+| winter: farmers, merchants and fishers "park" at home and each periodic "pulse" charges the lord for them | this file, rows "`$7c` park needs `$57fd0 == 0`" and "mode `$7c` pulse `$163b8`: -1 per parked man per pulse"; economy.md 3a |
+| "share" replaces "slice" and ">> shift" on the arrows; all / half / quarter by posture | this file, row "shift = posture - 2 (`$30fe`)"; strategy.md `$51538` table (posture row) |
+| "invention" = the weapon grade of the army's men | economy.md section 1 table ("weapon grade ('invention')", `pm_object` byte 44 / 33); Summary ("Invention is that upgrade step (`$638c`), not a research timer") |
+| record fields named by role ("Men at home (byte +8)") instead of the source field names | economy.md section 1 struct (`troops_field` is the men at home) |
+| "land 5" for k5_s4 | this file, row "`k5_s4` is a snapshot on land 5" |
+| order boxes use plain headlines ("a man outside any group is killed") | this file rows for the KILL tail `$567e`; unchanged claim |
+| merchants box: "(one run, land 5, 100M steps: 10 taken, 8 banked)" | this file, row "merchants" ("k5_s4 over 100M: 10 decrements ..., 8 increments") |

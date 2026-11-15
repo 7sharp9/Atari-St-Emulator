@@ -46,3 +46,19 @@ named in its last section and footer.
   107 are distinct dumps for the graphics census); the gates count the files in `gfx/dump` at run time and the page's
   numbers come from those runs. Both gates were re-run for this pass: 127 dumps, attack 51 of 52, hurt 212 of 213, absent 216 of 216 and 55 of 55, windows 115 of 115 and 26 of 26, as on the page.
 - No doc and figure number disagreed for this page.
+
+## Clarity pass: sources for the added or reworded sentences
+
+| sentence on the page | source |
+|---|---|
+| dek "a brawler with depth ... near enough along the street, at the right depth and at the right height" | the page's lead paragraph (three questions: near enough along the street, same depth, right height) |
+| Setup "the other games in this series are for the Atari ST, a home computer"; "reverse-engineering the game while it ran in an emulator"; "a 68000 disassembler" | GLOSSARY.md "Atari ST", "oracle"; R first paragraph |
+| key line; "inferred" / "observed" / "proven" in the terms, tags and tables | clarity-pass conventions. Mapping: "read in the ROM", "ROM" become "inferred"; "seen live" becomes "observed"; "saved frames" counts and "gate, 51 of 52" become "proven" in the term, "observed in saved frames" where only a sighting is claimed |
+| "(the game's working memory)" for work RAM | GLOSSARY.md; the old term row |
+| caption "(BRED) and the blow (blow id 1, field +22), and both fighters freeze for a hit-stop of 6 frames" | the old caption (+60 = BRED, +22 = 1, hit-stop 6); step 6 "freezes both fighters for 6 frames" |
+| check table rows "near enough along the street? (reach list)", "at the right depth? (depth lane)", "boxes overlap in x/y?" | the old row names and the four steps of "Is it a hit?" |
+| "On impact both fighters freeze for a few frames, the hit-stop" | step 6 (6 frames on both fighters) |
+| "A prop (a breakable object)" | terms row "fighter, boss, prop" (breakable props such as drums and phone booths) |
+| "rank 4, the game's running difficulty level, explained under the damage tables below" | the rank definition in "How to read the tables" |
+| takeaway "Keep the expensive part, testing pairs, bounded by cheap filters: here it is bounded by the lists ..." | the old takeaway |
+| script names moved from the ledger rows to the Source line; "a script that plays the game with the players' health held at full by writing it into memory" | the old rows and the old "stage bot ... survival poke" sentence |

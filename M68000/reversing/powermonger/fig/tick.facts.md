@@ -39,3 +39,18 @@ Evidence colours: proven = gated routines; live = the four routines counted in t
 | buckets: a neighbour query walks one chain, not all 511 records | ai.md "`$163ea`" ("broad-phase") |
 | VBL is the ST's per-frame interrupt; "compute-bound" | strategy.md "Measured cadence" (`$1270` VBL IRQ, once per displayed frame) |
 | what "proven", N/N, callcap and a gate mean | README.md "Differential testing against the real 68000"; ai.md "Evidence taxonomy" |
+
+## Clarity pass (title, key line, plain rows)
+
+| text added or changed | source |
+|---|---|
+| key line under the lead: `$` numbers are citations; proven / observed / inferred | repo evidence taxonomy: reversing/GLOSSARY.md "Evidence labels" (proven = checked against the game; observed = seen running; inferred = read only); ai.md "Evidence taxonomy" |
+| legend words proven / observed / inferred replace "callcap gate", "live", "code read" | same; the box fills are unchanged |
+| "here the Atari ST version"; "reverse-engineering the game's 68000 machine code (the ST's CPU) and running it in an emulator" | README.md title line; GLOSSARY.md "The Atari ST", "68000" |
+| script, file and saved-game names moved from panels into the final "Sources:" line | presentation only; every name is unchanged |
+| title and subtitle: the divider sets how often the screen is redrawn; at normal speed it is 1 | strategy.md "Where the calls sit" ("present-rate divider (how often the frame is pushed to the shifter and the terrain re-rastered), not a sim-rate divider"; `$57fee` observed at 1) |
+| takeaway: slowing the drawing does not slow the world | same passage ("not a sim-rate divider") |
+| "a mode number (one byte saying what that man or boat is doing)" | ai.md "What the loop actually is"; fsm.facts.md (mode byte 31) |
+| call rows reworded in plain words with the address as a citation | the same call-order listing (strategy.md "Where it runs"); wording only |
+| "relink = refile the record in its map-cell bucket" | ai.md epilogue table (`$161c4`, `$16228`), "`$163ea` maintain the per-cell entity buckets" |
+| "one tick takes as long as about 19 screen refreshes" for "about 19 VBLs of instructions" | strategy.md "Measured cadence" (~19 VBLs of instructions) |

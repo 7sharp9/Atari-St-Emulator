@@ -66,3 +66,22 @@ Both figures are now wrapped by `build_fsm.py` `compose()`: the title moved out 
 
 Disagreement: ai.md "The entity FSM" says 177 edges; this file's header says 178 (the water-veto edge added). The figures
 do not print the count.
+
+## Clarity pass (titles, key line, lane keys)
+
+| text added or changed | source |
+|---|---|
+| key line under the lead: `$` numbers are citations; proven / observed / inferred | repo evidence taxonomy: reversing/GLOSSARY.md "Evidence labels" (proven = checked against the game; observed = seen running; inferred = read only); ai.md "Evidence taxonomy" |
+| legend words proven / observed / inferred replace "callcap gate", "live", "code read" | same; the box fills are unchanged |
+| "here the Atari ST version"; "reverse-engineering the game's 68000 machine code (the ST's CPU) and running it in an emulator" | README.md title line; GLOSSARY.md "The Atari ST", "68000" |
+| script, file and saved-game names moved from panels into the final "Sources:" line | presentation only; every name is unchanged |
+| titles "PowerMonger villagers: each job is a small loop of behaviours" and "PowerMonger captains and their men: what happens after an order arrives" | the leads (the civilian job cycles; the army side) |
+| "Each box is one behaviour a man can be in (a 'mode'); each arrow is a way the game switches him to the next, read from the code" | the figure's own "How to read it" |
+| the lead (the captain's own unit) | ai.md "The entity FSM"; strategy.md `$51538` table (`lead` is the lead man's object offset) |
+| "An order does not make the lead do the work at once ... on arrival the game switches to it" | the figure's own "Arrows" note and first takeaway (the walk `$10/$12` ends in the stored previous mode) |
+| "Lanes" paragraphs (one per figure) | the leads and lane titles; wording only |
+| "$3C08 send home ... puts a man back into a job lane according to his flag bits" | the jobs figure's own first takeaway ("$3C08 send home re-enters a lane by the man's flag bits") |
+| legend "proven (checked against the real game code)", "inferred (read from the code only)" | GLOSSARY.md "Evidence labels" |
+| lane titles "Farmer", "Merchant", ... without the record bit numbers | the bit positions (byte 7 bits 0 to 3) remain in the jobs lead ("a bit in byte 7") |
+| "(seen live only after setting the previous mode by hand)" | same claim as before ("one-byte poke of the previous mode"); GLOSSARY.md (poke) |
+| jobs takeaway 2: the three cycles "close through shared routines, so reading the handlers one at a time would miss them" | the same takeaway ("Three cycles show only on the whole graph") |

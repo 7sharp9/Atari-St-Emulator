@@ -60,7 +60,7 @@ print('table T[0..127]: %d .. %d; fit deviation (i>=1) %.1f .. %.1f' % (TAB[0], 
 print('dx=-32768 results:', [hex(v) for v in bug_vals])
 
 # ---- svg ----------------------------------------------------------------------------------------
-from igtext import para, height
+from igtext import para, height, KEY
 W = 900
 s = []
 a = s.append
@@ -82,11 +82,13 @@ def caption(x, y, w, read, take):
 def caption_h(w, read, take):
     return height('**How to read.** ' + read, w, 11.5) + 4 + height('**Takeaway.** ' + take, w, 11.5)
 
-LEAD = ('Carrier Command (Realtime Games, 1988) is a real-time strategy and vehicle game: two aircraft carriers, '
-        'one yours and one the computer\'s, fight over a 64-island archipelago in 3D. Whenever something '
+LEAD = ('Carrier Command (Realtime Games, 1988) is a real-time strategy and vehicle game for the Atari ST: two '
+        'aircraft carriers, one yours and one the computer\'s, fight over a 64-island archipelago in 3D. This '
+        'figure comes from reverse-engineering the game in an emulator. Whenever something '
         'has to point at something else (the carrier\'s autopilot, a guided missile, about twenty routines in all) '
-        'the game needs the compass bearing of a vector (dx, dz), an arctangent. The 68000 has no floating point. '
-        'Routine $aae6 gets the bearing from integers with two divides and one table of 128 numbers: fold the '
+        'the game needs the compass bearing of a vector (dx, dz), an arctangent. The ST\'s 68000 processor has no '
+        'floating point. The game\'s arctangent routine ($aae6) gets the bearing from integers with two divides '
+        'and one table of 128 numbers: fold the '
         'vector into a 45-degree wedge, divide the short side by the long side, then divide that ratio by a '
         'tabulated factor to turn it into an angle. '
         'Angles are in units of 1/65536 of a turn ($4000 = 90 degrees, $8000 = 180), 0 along +z.')
@@ -94,50 +96,55 @@ LEAD = ('Carrier Command (Realtime Games, 1988) is a real-time strategy and vehi
 A_READ = ('The circle is the compass, cut into eight 45-degree octants. The black vector (dx, dz) can lie anywhere; '
           'negating and swapping its components moves it to the blue dashed vector in the shaded octant, where '
           '0 <= dx <= dz. Steps 1 to 6 are the routine in order. divs and divu are the 68000\'s signed and unsigned '
-          'divide instructions; Q15 means a fraction held as an integer times 32768; T is the table in panel B.')
-A_TAKE = ('Only the shaded octant is ever computed. Step 6 reflects the answer back to the original octant, '
-          'which costs a subtraction or a negation. There is no polynomial and no CORDIC (the usual '
-          'shift-and-add rotation method): two divides and a table load.')
+          'divide instructions (the ratio in step 3 is a fraction held as an integer times 32768); T is the '
+          'table in panel B.')
+A_TAKE = ('Symmetry does most of the work: only the shaded octant is ever computed, and step 6 reflects the '
+          'answer back to the original octant at the cost of a subtraction or a negation. There is no '
+          'polynomial and no CORDIC (the usual shift-and-add rotation method): two divides and a table load.')
 B_READ = (f'Each blue dot is one stored 16-bit word of the table at $3864, plotted against its index i; entry i '
           f'serves every ratio r from i/128 to (i+1)/128. The grey line is 4096 pi r / atan(r) at the middle of '
           f'each entry\'s range. That formula is our fit to the stored numbers (inferred: the game does not '
           f'compute it); entries 1 to 127 lie within {min(fit_dev):.1f} / +{max(fit_dev):.1f} of it.')
-B_TAKE = (f'Each factor is ratio divided by angle, so dividing the ratio by it gives the angle. The factor only '
-          f'runs from {tab_lo} to {tab_hi} over the whole octant, so 128 steps of it are enough. The real '
-          f'arctangent curve is never stored.')
-C_READ = (f'We swept 65536 directions evenly round a circle of radius {R} and compared the routine with the '
-          f'exact atan2. Across: the true angle inside one octant, 0 to 45 degrees. Up: the error in angle '
+B_TAKE = (f'A smooth curve needs only a coarse table. Each factor is ratio divided by angle, so dividing the '
+          f'ratio by it gives the angle, and the factor only runs from {tab_lo} to {tab_hi} over the whole octant, '
+          f'so 128 steps of it are enough. The real arctangent curve is never stored.')
+C_READ = (f'We swept 65536 directions evenly round a circle of radius {R} (vectors of length {R}) and compared '
+          f'the routine with the exact atan2. Across: the true angle inside one octant, 0 to 45 degrees. Up: the error in angle '
           f'units (1 unit = {U1:.4f} degrees). The black line is step 4 alone, before the shift of step 5; '
           f'the pale blue dots are what the game actually returns.')
-C_TAKE = (f'The sawtooth comes from one table factor serving each 1/128 of the ratio range; it grows toward '
-          f'45 degrees, where panel B\'s curve is steepest. Step 5 truncates to a multiple of 16, so the game '
-          f'has 4096 headings to the turn ({16*U1:.3f} degrees each) and that truncation adds up to 16 units '
-          f'below the table\'s {tab_worst:.1f}. Worst case: {worst:.0f} units, {worst*U1:.2f} degrees, the same '
-          f'in all eight octants.')
+C_TAKE = (f'A 128-entry table is accurate enough: the worst case is {worst:.0f} units, {worst*U1:.2f} degrees, '
+          f'the same in all eight octants. The sawtooth comes from one table factor serving each 1/128 of the '
+          f'ratio range; it grows toward 45 degrees, where panel B\'s curve is steepest. Step 5 truncates to a '
+          f'multiple of 16, so the game has 4096 headings to the turn ({16*U1:.3f} degrees each) and that '
+          f'truncation adds up to 16 units below the table\'s {tab_worst:.1f}.')
 D_READ = ('Across: dz over its whole signed 16-bit range, with dx held at -32768, the most negative 16-bit '
           'number. Up: the bearing in degrees. Grey is the true bearing; red is what $aae6 returns, and the '
           'red dot is its answer at dz = 0.')
-D_TAKE = ('To fold, the routine makes negative inputs positive with the 68000\'s neg.w. In 16 bits +32768 does '
-          'not exist, so neg.w leaves -32768 unchanged and the fold lands in the wrong octant. The answer is '
+D_TAKE = ('In 16 bits +32768 does not exist, so negating the most negative number returns it unchanged. To '
+          'fold, the routine makes negative inputs positive with the 68000\'s neg.w, so with dx = -32768 the fold '
+          'lands in the wrong octant. The answer is '
           'pinned to one value whatever dz is: up to 45 degrees wrong off the axis and 90 on it. dz = -32768 '
-          'does the same ($6000, $a000, $c000). It is a real bug in the game, not in our port: 27 of the 529 '
-          'test-grid cases hit it, and the emulator returned the same pinned values.')
-KNOW = ('**How we know.** **Proven** here means observed in an emulator running the game\'s own code, with a '
-        'count of matches. A Python port of $aae6 (py/units/atan_port.py) was checked against the real routine '
-        'by callcap: the emulator restores a saved game state (snapshot c_s30, the Strategy game with the '
-        'player\'s carrier at the island Vulcan), calls $aae6 with chosen inputs, and records what it returns. '
-        'Over a 23 x 23 grid of inputs the port agreed in all 529 cases (529/529); the doc also reports the '
+          'does the same (135, 225 and 270 degrees). It is a real bug in the game, not in our Python model: 27 of '
+          'the 529 test inputs hit it, and the emulator returned the same pinned values.')
+KNOW = ('**How we know.** We wrote a Python model of the arctangent routine and checked it against the real one '
+        'with a "callcap": the emulator restores a saved game state (the Strategy game, with the '
+        'player\'s carrier at the island Vulcan), runs the routine alone on chosen inputs, and records what it '
+        'returns. Over a 23 x 23 grid of inputs the model agreed in all 529 cases (529/529; **proven**); the notes '
+        'also report the '
         'routine within 0.15 degrees of exact over 200,000 random inputs. Every curve on this page is then '
-        'computed from the port, and the table is read from the same snapshot. The formula in panel B is '
-        '**inferred**: it describes the numbers, the code does not contain it. $hex numbers are addresses in '
-        'the game\'s memory, given as citations.')
+        'computed from the model, and the table is read from the same saved state. The formula in panel B is '
+        '**inferred**: it describes the numbers, the code does not contain it.')
+SRC = ('Sources: reversing/carriercommand/vehicles.md section 2; py/units/atan_port.py, py/units/atan_grid.py; '
+       'saved state c_s30.')
 
 # layout -------------------------------------------------------------------------------------------
 LW = 852
 lead_end = para(a, LEAD, 24, 66, LW, size=13, color=INK)       # measured first, emitted below in order
 s.clear()
 lead_y0 = 66
-top = lead_end + 2                     # first panel row top
+key_y0 = lead_end + 2
+key_end = key_y0 + height(KEY, LW, 10.5)
+top = key_end + 8                      # first panel row top
 CW2 = 392                              # caption width in the half panels
 cap_ab = max(caption_h(CW2, A_READ, A_TAKE), caption_h(CW2, B_READ, B_TAKE))
 hAB = 446 - 80 + cap_ab - 2            # captions' first baseline at 446
@@ -151,7 +158,7 @@ cap_d = caption_h(820, D_READ, D_TAKE)
 hD = 954 - 760 + cap_d - 2             # caption's first baseline at 948
 dy3 = topD - 760
 topK = topD + hD + 14
-know_h = height(KNOW, 820, 11.5)
+know_h = height(KNOW, 820, 11.5) + 6 + height(SRC, 820, 9)
 H = int(topK + know_h + 30)
 
 a(f'<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 {W} {H}" width="{W}" height="{H}" role="img" aria-labelledby="t d">')
@@ -164,8 +171,9 @@ a('<style>text{font-family:Helvetica,Arial,sans-serif;fill:%s;font-size:12px}.t{
   '.h{font-size:14px;font-weight:bold}.m{fill:%s}.c{font-family:Menlo,monospace;font-size:11.5px}'
   '.s{font-size:11px;fill:%s}</style>' % (INK, MUTE, MUTE))
 a(f'<rect width="{W}" height="{H}" fill="#ffffff"/>')
-a('<text x="24" y="38" class="t">An arctangent from one table</text>')
+a('<text x="24" y="38" class="t">An arctangent with no floating point: two divides and one table</text>')
 para(a, LEAD, 24, lead_y0, LW, size=13, color=INK)
+para(a, KEY, 24, key_y0 + 11, LW, size=10.5, color=MUTE)
 
 # A: the method --------------------------------------------------------------------------------
 a(f'<g transform="translate(0,{dy1:.1f})">')
@@ -190,12 +198,12 @@ a(f'<text x="{cx+rad*fx+6:.0f}" y="{cy-rad*fz-6:.0f}" class="s" style="fill:{ACC
 a(f'<text x="{cx-rad+4}" y="{cy+rad+28}" class="s">signs and a swap put every</text>')
 a(f'<text x="{cx-rad+4}" y="{cy+rad+42}" class="s">vector in the shaded 45 degrees</text>')
 steps = [
-    ('1', 'halve dx, dz', 'until both fit a signed word'),
+    ('1', 'halve dx, dz', 'until both fit in 16 bits'),
     ('2', 'fold: negate, swap so', '0 &lt;= min &lt;= max'),
-    ('3', 'r = (min &lt;&lt; 15) / max', 'one divs, Q15, 0 .. 1'),
-    ('4', 'a = (r &lt;&lt; 8) / T[r &gt;&gt; 8]', 'one divu, 128-entry table'),
-    ('5', 'a &lt;&lt;= 4', 'octant angle, 0 .. $2000'),
-    ('6', 'unfold', '$4000 - a, $8000 - a, neg: undo 2'),
+    ('3', 'r = (min &lt;&lt; 15) / max', 'signed divide, ratio 0 to 1'),
+    ('4', 'a = (r &lt;&lt; 8) / T[r &gt;&gt; 8]', 'unsigned divide, table lookup'),
+    ('5', 'a &lt;&lt;= 4', 'octant angle, 0 to 45 degrees'),
+    ('6', 'unfold', 'mirror back to the true octant'),
 ]
 y = 128
 for n, l1, l2 in steps:
@@ -205,7 +213,7 @@ for n, l1, l2 in steps:
 caption(38, 446, CW2, A_READ, A_TAKE)
 
 # B: the table ---------------------------------------------------------------------------------
-panel(456, 80, 420, hAB, 'B. The 128 factors at $3864')
+panel(456, 80, 420, hAB, 'B. The table: 128 correction factors (at $3864)')
 bx, by, bw, bh = 516, 120, 330, 262
 lo, hi = 12800, 16400
 def BX(i): return bx + bw * i / 127
@@ -229,7 +237,7 @@ a('</g>')
 
 # C: the error ---------------------------------------------------------------------------------
 a(f'<g transform="translate(0,{dy2:.1f})">')
-panel(24, 494, 852, hC, 'C. Error over one octant, radius 30000 (the other seven repeat it)')
+panel(24, 494, 852, hC, 'C. How accurate: error over one octant, vectors of length 30000 (the other seven repeat it)')
 cx0, cy0, cw, ch = 96, 530, 750, 150
 emax = 30
 def CX(k): return cx0 + cw * k / 8192
@@ -238,7 +246,7 @@ for e in (-27, -16, 0, 16, 27):
     dash = '' if e == 0 else ' stroke-dasharray="3 3"'
     a(f'<line x1="{cx0}" y1="{CY(e):.1f}" x2="{cx0+cw}" y2="{CY(e):.1f}" stroke="{GRID}"{dash}/>')
     a(f'<text x="{cx0-8}" y="{CY(e)+4:.1f}" text-anchor="end" class="s">{e:+d}</text>')
-a(f'<text x="40" y="{cy0+ch/2+4}" class="s" transform="rotate(-90 40 {cy0+ch/2})" text-anchor="middle">error, units</text>')
+a(f'<text x="40" y="{cy0+ch/2+4}" class="s" transform="rotate(-90 40 {cy0+ch/2})" text-anchor="middle">error (1 unit = 0.0055 deg)</text>')
 for deg in range(0, 46, 5):
     k = deg / 360 * 65536
     a(f'<text x="{CX(k):.1f}" y="{cy0+ch+16}" text-anchor="middle" class="s">{deg}</text>')
@@ -250,15 +258,15 @@ pts = ' '.join(f'{CX(k):.1f},{CY(e):.1f}' for k, e in table_only[::max(1, len(ta
 a(f'<polyline points="{pts}" fill="none" stroke="{INK}" stroke-width="1.1"/>')
 a(f'<text x="{cx0+cw-4}" y="{CY(27)-5:.1f}" text-anchor="end" class="s">worst {worst:.0f} units = {worst*U2D:.2f} degrees</text>')
 a(f'<line x1="{cx0+8}" y1="{cy0+ch+46}" x2="{cx0+22}" y2="{cy0+ch+46}" stroke="{INK}"/>'
-  f'<text x="{cx0+28}" y="{cy0+ch+50}" class="s">table alone, before the final shift: at most {tab_worst:.1f} units</text>')
+  f'<text x="{cx0+28}" y="{cy0+ch+50}" class="s">step 4 alone, before the shift: at most {tab_worst:.1f} units</text>')
 a(f'<circle cx="{cx0+380}" cy="{cy0+ch+46}" r="2" fill="{ACC}"/>'
-  f'<text x="{cx0+388}" y="{cy0+ch+50}" class="s">what the game returns: truncated to a multiple of 16, so up to 16 lower</text>')
+  f'<text x="{cx0+388}" y="{cy0+ch+50}" class="s">the game answer (after step 5): a multiple of 16, up to 16 lower</text>')
 caption(38, 752, 820, C_READ, C_TAKE)
 a('</g>')
 
 # D: the bug -----------------------------------------------------------------------------------
 a(f'<g transform="translate(0,{dy3:.1f})">')
-panel(24, 760, 852, hD, 'D. The bug: neg.w -32768 is -32768, so dx = -32768 pins the answer')
+panel(24, 760, 852, hD, 'D. A bug in the game: the most negative 16-bit input gives a wrong bearing')
 dx0, dy0, dw, dh = 96, 794, 520, 110
 def DX(dz): return dx0 + dw * (dz + 32768) / 65535
 def DY(deg): return dy0 + dh * (360 - deg) / 180
@@ -277,17 +285,18 @@ for seg in (neg, pos):
 a(f'<circle cx="{DX(0):.1f}" cy="{DY(atan2(-32768,0)*U2D):.1f}" r="3.5" fill="{BAD}"/>')
 tx = 640
 a(f'<text x="{tx}" y="{dy0+6}" class="s"><tspan style="fill:{MUTE};font-weight:bold">grey</tspan>: the true bearing</text>')
-a(f'<text x="{tx}" y="{dy0+22}" class="s"><tspan style="fill:{BAD};font-weight:bold">red</tspan>: $aae6, stuck at $a000 (225)</text>')
-a(f'<text x="{tx}" y="{dy0+38}" class="s">for dz &lt; 0, $e000 (315) for dz &gt; 0</text>')
-a(f'<text x="{tx}" y="{dy0+54}" class="s">and $8000 (180) at dz = 0.</text>')
+a(f'<text x="{tx}" y="{dy0+22}" class="s"><tspan style="fill:{BAD};font-weight:bold">red</tspan>: the game result, stuck at 225</text>')
+a(f'<text x="{tx}" y="{dy0+38}" class="s">degrees for dz &lt; 0, 315 for dz &gt; 0</text>')
+a(f'<text x="{tx}" y="{dy0+54}" class="s">and 180 at dz = 0.</text>')
 a(f'<text x="{tx}" y="{dy0+76}" class="s">27 of the 529 grid cases, all</text>')
-a(f'<text x="{tx}" y="{dy0+90}" class="s">matched in the emulator.</text>')
+a(f'<text x="{tx}" y="{dy0+90}" class="s">matched in the emulator (proven).</text>')
 caption(38, 954, 820, D_READ, D_TAKE)
 a('</g>')
 
 # how we know ----------------------------------------------------------------------------------
 a(f'<rect x="24" y="{topK:.1f}" width="852" height="{know_h+16:.1f}" rx="6" fill="{NOTE}" stroke="{GRID}"/>')
-para(a, KNOW, 38, topK + 20, 820, size=11.5, color=INK)
+yk = para(a, KNOW, 38, topK + 20, 820, size=11.5, color=INK)
+para(a, SRC, 38, yk + 6, 820, size=9, color=MUTE)
 a('</svg>')
 (OUT / 'atan.svg').write_text('\n'.join(s))
 print('wrote', OUT / 'atan.svg', 'height', H)

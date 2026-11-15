@@ -468,7 +468,7 @@ def close(idx, bottom):
 
 
 a('<text x="24" y="38" class="t">A turtle that digs a perfect maze</text>')
-LEAD = ('Captive (Antony Crowther, Mindscape, 1990) is a real-time dungeon crawler in which four droids raid bases on a '
+LEAD = ('Captive (Antony Crowther, Mindscape, 1990) is a real-time dungeon crawler for the Atari ST in which four droids raid bases on a '
         'series of planets. Each base is computed by the game\'s generator module, fed_MapGen, from a 16-bit base number '
         'and a mode, and the same pair always gives the same base. Most of the work is one routine ($244b6), a "turtle": '
         'a digger with a position and a heading that draws one random number per step and, from it, turns, moves on, or '
@@ -476,8 +476,11 @@ LEAD = ('Captive (Antony Crowther, Mindscape, 1990) is a real-time dungeon crawl
         'when 3 of its 4 neighbours are still uncarved (B), makes the corridors a perfect maze: no corridor ever breaks '
         'into another, so on each floor there is exactly one corridor route between two places. Every carved cell keeps '
         'its dig number, and those numbers become arrows that lead back to the entrance (D). The loops a player meets '
-        'come from elsewhere (E).')
+        'come from elsewhere (E). This figure comes from reverse-engineering the game while it ran in an emulator.')
 ly_ = para(24, 62, 912, LEAD, 'l', 17, cpx=6.0)
+ly_ = para(24, ly_ + 2, 912, '$ numbers are addresses in the game\'s memory, given as citations; the text says what each one is. '
+           'proven = checked against the game\'s own code with a match count; observed = seen in the running game; '
+           'inferred = read from the code or reasoned, not run.', 'k', 14, cpx=5.6)
 
 
 # ---- A: the map --------------------------------------------------------------------------------------------------
@@ -485,7 +488,7 @@ AY = ly_ + 8
 C = 13
 mx0, my0 = 64, AY + 108
 pA = panel(24, AY, 912, 604, f'A. Base {SEED}: every cell coloured by the order it was dug',
-      f'port = emulator, whole module block, seed {SEED}')
+      f'proven: our Python version matches the game byte for byte, base {SEED}')
 a(f'<text x="38" y="{AY + 60}" class="s">The turtle starts at the entrance heading east and numbers each cell it '
   f'carves. {nfloors} floors share one 64 x 32 grid, one floor per 16 x 8 block;</text>')
 a(f'<text x="38" y="{AY + 74}" class="s">a lift jumps to another floor\'s block at a fixed offset, and the far end '
@@ -562,13 +565,14 @@ y = para(38, ly + 76, 884, 'Each small square is one cell of the 64 x 32 grid. T
          'rock that was never dug. A dashed red curve joins the two ends of a lift: the turtle jumps to the same place in '
          'a block of a neighbouring floor and digs on from there. A shaft is a chain of entries on consecutive floors laid out '
          'before the dig; the turtle opens its door when a corridor reaches it.', lead='How to read.')
-y = para(38, y + 4, 884, 'This whole map follows from the base number. The generator, ported to Python and run from the '
-         'base number and mode alone, reproduces the game\'s output in 400 of 400 bases.', lead='Takeaway.')
+y = para(38, y + 4, 884, 'This whole map follows from the base number. Our Python version of the whole generator, run from the '
+         'base number and mode alone, reproduces the game\'s output on 400 of 400 bases; the digger stage alone matches '
+         'on 1000 of 1000 (panel B).', lead='Takeaway.')
 close(pA, y + 6)
 
 # ---- B: the carve rule -------------------------------------------------------------------------------------------
 BY0 = y + 20
-pB = panel(24, BY0, 444, 400, 'B. The carve rule: exactly 3 of 4', 'proven: gate 1000/1000; 2-of-4 control 0/1000')
+pB = panel(24, BY0, 444, 400, 'B. The carve rule: exactly 3 of 4', 'proven: 1000/1000 bases match; a changed rule 0/1000')
 ww, wh = 7, 5
 pts = (cX, cY, cF, cO)
 wx0 = (min(q[0] for q in pts) + max(q[0] for q in pts)) // 2 - ww // 2
@@ -607,8 +611,7 @@ btxt = [(INK, 'h', f'Base {SEED}, mid-dig: the turtle stands on #{nF} (black).')
         (GOOD, 'h', f'Green: the retry. 3 of 4 uncarved, so it was dug, as #{nY}.'),
         (MUTE, 's', 'Rock, the grid edge, walls and reserved room space count as'),
         (MUTE, 's', 'uncarved ($24efc). Every corridor carve passes this test ($24514),'),
-        (MUTE, 's', f'so corridors never merge. Base {SEED}: {len(d.tests) - nrefuse:,} of the '
-                    f'{len(d.tests):,} tests after a step pass.')]
+        (MUTE, 's', 'so corridors never merge.')]
 for c_, cls, t in btxt:
     st = 'font-size:12px;font-weight:bold' if cls == 'h' else ''
     a(f'<text x="40" y="{ty}" class="s" style="fill:{c_};{st}">{t}</text>')
@@ -621,7 +624,7 @@ bend = para(40, bend + 4, 412, 'Exactly 3 uncarved neighbours means the new cell
 
 # ---- C: the step word --------------------------------------------------------------------------------------------
 CX0 = 480
-pC = panel(CX0, BY0, 456, 400, 'C. One random word per step ($24872)', f'counted from the port, base {SEED}')
+pC = panel(CX0, BY0, 456, 400, 'C. One 16-bit random number per step ($24872)', f'observed: counted in our Python version, base {SEED}')
 nx0, nw, ny = CX0 + 30, 396, BY0 + 104
 X_ = lambda v: nx0 + nw * v / 65536
 bands = [(0, BLOB_MAX + 1, '#8250df', 'blob'), (BLOB_MAX + 1, ROOM_MAX + 1, '#0969da', 'room'),
@@ -662,7 +665,7 @@ ctxt = [f'{len(fresh)} fresh words in base {SEED}; "expected" is {len(fresh)} x 
         'times, re-drawing only the 2-bit selector and keeping the word:',
         f'{len(retry):,} retries here. Retried room words carved {made_retry["room"]} rooms in '
         f'{calls_retry["room"]}',
-        f'(corpus: {corp["room_retry_made"]} in {corp["room_retry"]:,}); retried lift words made '
+        f'(over the 1000 bases: {corp["room_retry_made"]} in {corp["room_retry"]:,}); retried lift words made '
         f'{made_retry["lift"]} of the {len(d.lifts)} lifts.',
         f'After 10 failures it restarts from a random cell ({d.restart_dec} restarts here).']
 for t in ctxt:
@@ -679,8 +682,8 @@ close(pC, max(bend, cend) + 6)
 
 # ---- D: the flow field -------------------------------------------------------------------------------------------
 DY0 = max(bend, cend) + 20
-pD = panel(24, DY0, 520, 410, 'D. The flow field ($24f4c): point at the lowest number',
-      f'proven: emulator G2 = model, {ff_match}/{len(open_cells)} cells')
+pD = panel(24, DY0, 520, 410, 'D. The route map ($24f4c): each cell points at its lowest number',
+      f'proven: our model matches the game on {ff_match}/{len(open_cells)} cells')
 fx0, fw, fh = ex - 6, 15, 7
 fx0 = max(0, min(fx0, 64 - fw))
 CF = 32
@@ -718,7 +721,7 @@ dtxt = [f'After the dig, every open cell stores the direction of its open neighb
         f'(or lift partner) with the lowest carve number. From all {len(open_cells)} open cells of',
         f'base {SEED} the arrows lead to the entrance ({reach}/{len(open_cells)}, longest walk {longest} steps),',
         f'riding lifts and shafts where the dig did. Cells ({fx0}..{fx0 + fw - 1}, 0..{fh - 1}) of base {SEED};',
-        f'small numbers are carve numbers. Creatures follow this field (inferred).']
+        f'small numbers are carve numbers. Creatures follow this "flow field" (inferred).']
 for t in dtxt:
     a(f'<text x="40" y="{ty}" class="s">{t}</text>')
     ty += 14
@@ -730,7 +733,7 @@ dend = para(40, dend + 4, 490, 'Pointing each cell at its lowest-numbered neighb
 
 # ---- E: why there are loops anyway -------------------------------------------------------------------------------
 EX0 = 556
-pE = panel(EX0, DY0, 380, 410, 'E. Loops anyway', f'proven: tree.py census, {nbase} bases')
+pE = panel(EX0, DY0, 380, 410, 'E. Loops anyway: where they come from', f'proven: counted over {nbase} bases')
 etxt = [(MUTE, f'A forest has no cycles: E - V + C = 0 over carved cells'),
         (MUTE, f'joined to their same-floor neighbours.')]
 ty = DY0 + 62
@@ -747,7 +750,7 @@ for lab, v, note in bars:
     ty += 6
     a(f'<rect x="{EX0 + 16}" y="{ty}" width="{bw_}" height="14" fill="{ROCK}"/>')
     a(f'<rect x="{EX0 + 16}" y="{ty}" width="{bw_ * v / nbase:.1f}" height="14" fill="{GOOD}"/>')
-    a(f'<text x="{EX0 + 24 + bw_}" y="{ty + 11}" class="c">{v}/{nbase} trees</text>')
+    a(f'<text x="{EX0 + 24 + bw_}" y="{ty + 11}" class="c">{v}/{nbase} loop-free</text>')
     a(f'<text x="{EX0 + 16}" y="{ty + 28}" class="s">{note}</text>')
     ty += 50
 lab_src = {'blob-trig': 'blob next to a shaft cell', 'corr-trig': 'corridor next to a shaft cell',
@@ -777,18 +780,18 @@ close(pD, bot)
 close(pE, bot)
 y = bot + 26
 a(f'<text x="24" y="{y}" class="h">How we know</text>')
-y = para(24, y + 20, 912, 'dig.py is a register-level Python translation of the game\'s digging routine and every routine it '
-         'calls. It starts from the emulator\'s state just before the routine and must leave the routine\'s whole '
-         '13,756-byte variable block exactly as the game does.', 'k', lead='The port.')
-y = para(24, y + 3, 912, 'a gate runs that comparison for many base numbers: 1000/1000 means all 1000 matched byte for byte. '
-         'A control runs the same gate with one rule deliberately changed (2 of 4 uncarved instead of 3 of 4): it matches '
-         '0/1000, so the gate can tell the rules apart.', 'k', lead='Gates.')
-y = para(24, y + 3, 912, 'proven: checked against the game running in an Atari ST emulator. counted from the port: measured on '
-         'the port, which the gate makes equal to the game. inferred: read from the code, not checked. Seed 5 is base '
+y = para(24, y + 20, 912, 'We translated the game\'s digging routine and every routine it '
+         'calls into Python, register by register (our Python version, or port). It starts from the emulator\'s state just before the routine and must leave the routine\'s whole '
+         '13,756-byte variable block exactly as the game does.', 'k', lead='The Python version.')
+y = para(24, y + 3, 912, 'a check script runs that comparison for many base numbers: 1000/1000 means all 1000 matched byte for byte (the digger stage; the whole generator was compared on 400 bases). '
+         'A control runs the same check with one rule deliberately changed (2 of 4 uncarved instead of 3 of 4): it matches '
+         '0/1000, so the check can tell the rules apart.', 'k', lead='Checks.')
+y = para(24, y + 3, 912, 'proven: checked against the game running in an Atari ST emulator. observed: counted in '
+         'our Python version, which the check makes equal to the game. inferred: read from the code, not checked. Seed 5 is base '
          'number D0 = 5 in mode D2 = 1. Hex numbers such as $244b6 are addresses in the game\'s code, given for reference; '
          'an instruction count is how many 68000 instructions the emulator ran. G0 and G2 are two of the generator\'s working grids: G0 holds each cell\'s carve number, G2 its arrow.', 'k', lead='Labels.')
 HT = y + 30
-a(f'<text x="24" y="{HT - 14}" class="s">Port: reversing/captive/py/mapgen/digger/dig.py, byte-exact against the '
+a(f'<text x="24" y="{HT - 14}" class="s">Sources: mapgen.md; dig.py, byte-exact against the '
   f'emulator on 1000/1000 seeds (D2 = 1) and 100/100 (D2 = 0). Figure: gen_digger.py; facts: digger.facts.md.</text>')
 a('</svg>')
 s[0] = (f'<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 {WD} {HT}" width="{WD}" height="{HT}" role="img" '

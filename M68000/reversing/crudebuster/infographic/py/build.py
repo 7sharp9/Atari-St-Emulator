@@ -29,7 +29,7 @@ def group(state):
     else: n = state
     return GROUP.get(n, "attack")
 GCOL = ["wait", "approach", "reposition", "attack"]
-GLABEL = {"wait": "idle (6)", "approach": "walk toward you (7, 8)", "reposition": "jump to your lane / drop (9, a)", "attack": "attack or special (b and up, type-specific)"}
+GLABEL = {"wait": "idle (6)", "approach": "walk toward you (7, 8)", "reposition": "jump to your level / drop (9, a)", "attack": "attack or special (b and up, type-specific)"}
 
 def brain_rows():
     out = []
@@ -122,7 +122,7 @@ def lanes_svg():
     px = 40; py = 22 + 0x60 * k
     out = ['<line class="ground" x1="%d" y1="%d" x2="%d" y2="%d"/>' % (px, py, W - 10, py)]
     def Y(dy): return py + dy * k
-    bands = [("C", -0x60, -0x20, "enemy more than $20 above you"), ("A", -0x20, 0x60, "same lane: from $20 above to $60 below"), ("B", 0x60, 0xA0, "enemy more than $60 below you")]
+    bands = [("C", -0x60, -0x20, "enemy more than $20 above you"), ("A", -0x20, 0x60, "same level: from $20 above to $60 below"), ("B", 0x60, 0xA0, "enemy more than $60 below you")]
     for case, a, b, txt in bands:
         out.append('<rect class="band band%s" x="%d" y="%.1f" width="%d" height="%.1f"/>' % (case, px + 22, Y(a), W - px - 32, (b - a) * k))
         out.append('<text class="lab" x="%d" y="%.1f">%s</text>' % (px + 32, Y(a) + 17, "table " + case))

@@ -47,6 +47,16 @@ Doc: `render.md` section 5.
 | widening rule proven, purpose inferred | render.md 5 |
 | c_s30 is a Strategy game in progress | README.md snapshot table |
 | control 531/2183 | render.md 5; `gen_span.py` |
+| title: fast polygon fill, a routine that rewrites itself for each colour; the game is an Atari ST game, figure from reverse-engineering in an emulator; a span is one run of pixels in one row; blitter = block-copy chip | lead; README.md opening; GLOSSARY.md ("Atari ST", "blitter", "bitplane") |
+| "instructions executed in the emulator" for the old "emulated instructions" | same figure (a step is one instruction, as the row above) |
+| A_TAKE: A0 and A5 are the two registers that hold the colour; tables at `$4658` and `$476c` are the masks | panel B (A0, A5 values the middle stores); the facts table (left keep mask `$4658[5]`, right `$476c[10]`) |
+| opcode = CPU instruction code; A0, A5 = two CPU registers | GLOSSARY.md ("D0-D7, A0-A7") and the ST notes |
+| panel B/C branch description in words ("sets a branch at `$46c0` to `$69` / `$68`, which selects the solid-colour or dither loop") | table above (`$46c0` := `$69` bvs / `$68` bvc; bvc always taken, bvs never) |
+| panel C: the row number plus one (bit 0 of D7's high word) picks the pair; fixed to the screen, not the polygon | table above ("pair chosen by bit 0 of D7's high word plus one") |
+| panel D title: steep edges would leave gaps, so each span is widened | table above ("widening is to close gaps on steep edges", inferred; the takeaway keeps "inferred") |
+| panel D: "each end reaches back to the previous row's far end"; "a check script: 780/780 rows, 0 mismatches in the stored ends" | the widening rule row and the `span_gate.py` row above (tracker = the stored `$9ee`/`$9f0` ends) |
+| lessons in A, B, C, D takeaways (a span is mostly plain stores; precompute the answers; the loop choice costs nothing; widening keeps a sliver connected) | same facts as the old takeaways, reordered |
+| "How we know" and one Sources line name the files; the prose names none | clarity-pass convention |
 
 ## Flags
 

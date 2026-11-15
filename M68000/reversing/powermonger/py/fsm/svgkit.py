@@ -12,8 +12,12 @@ EVID = {  # fill, stroke
     'inferred': ('#fff3cd', '#b7791f'),
     'plain': ('#f5f5f5', '#9e9e9e'),
 }
-EVID_NAME = {'proven': 'proven (gate vs the real 68000)', 'live': 'live (seen running, counted)',
-             'code': 'code read', 'inferred': 'inferred'}
+EVID_NAME = {'proven': 'proven (checked against the game\'s own code)', 'live': 'observed (seen in the running game)',
+             'code': 'inferred (read from the code, not run)', 'inferred': 'inferred (reasoned, not run)'}
+
+KEY_ADDR = ('$ numbers are addresses in the game\'s memory, given as citations; the text says what each one is.')
+KEY_EVID = ('Evidence: proven = checked against the game\'s own code with a match count; observed = seen in the '
+            'running game; inferred = read from the code or reasoned, not run.')
 
 
 class Svg:
@@ -64,6 +68,10 @@ class Svg:
         for i, r in enumerate(rows):
             self.text(x, y + i * lh, r, size=size, **kw)
         return y + len(rows) * lh
+
+    def key(self, x, y, w, size=11, lh=14.5):
+        """The shared key line under a figure's lead: what a $ number is and the three evidence words. Returns the y after it."""
+        return self.para(x, y, w, KEY_ADDR + ' ' + KEY_EVID, size=size, lh=lh, color='#424242')
 
     def begin(self, dx=0, dy=0):
         """Shift every element drawn until end() by (dx, dy)."""

@@ -308,14 +308,18 @@ def close(idx, bottom):
 
 
 a('<text x="24" y="38" class="t">A galaxy from one number</text>')
-LEAD = ('Captive (Antony Crowther, Mindscape, 1990) is a real-time dungeon crawler: four droids raid procedurally '
+LEAD = ('Captive (Antony Crowther, Mindscape, 1990) is a real-time dungeon crawler for the Atari ST: four droids raid procedurally '
         'generated bases on a series of planets. The player picks where to land on a star map holding a space station, '
         '50 planets, 100 moons and 10 numbered targets per mission. None of it is stored on the disk. When a mission '
-        'starts, the game runs one 16-bit random number generator, seeded with the mission number, through a fixed chain '
+        'starts, the game runs one 16-bit random number generator, seeded with the mission index (the mission number minus one), through a fixed chain '
         'of steps (panel A), so the same mission always gets the same map. A small table turns each draw into a position '
         'on the map screen and keeps every dot off the grid lines (B, C). The bodies\' names come from the same generator, '
-        'reseeded per body (D), and a different seed gives a different galaxy (E).')
+        'reseeded per body (D), and a different seed gives a different galaxy (E). This figure comes from reverse-engineering '
+        'the game while it ran in an emulator.')
 ly_ = para(24, 62, 852, LEAD, 'l', 17, cpx=6.0)
+ly_ = para(24, ly_ + 2, 852, '$ numbers are addresses in the game\'s memory, given as citations; the text says what each one is. '
+           'proven = checked against the game\'s own code with a match count; observed = seen in the running game; '
+           'inferred = read from the code or reasoned, not run.', 'k', 14, cpx=5.6)
 
 
 def panel(x, y, w, h, title, ev, below=False):
@@ -337,20 +341,23 @@ def esc(t):
 
 # A: the chain ---------------------------------------------------------------------------------------
 AY = ly_ + 8
-pA = panel(24, AY, 852, 300, 'A. One generator, one pass ($30280)',
-      f'proven: model = RAM {M1["ok"][0]}/51, {M1["ok"][1]}/100, {M1["ok"][2]}/150; final D0 = callcap D0')
+pA = panel(24, AY, 852, 300, 'A. One random-number generator, one pass ($30280)',
+      f'proven: {M1["ok"][0]}/51, {M1["ok"][1]}/100, {M1["ok"][2]}/150 match the game')
 a(f'<text x="44" y="{AY+52}" class="c">D0 = (D0 &#215; ${A:x} + ${C:x}) mod 65536</text>')
-a(f'<text x="44" y="{AY+68}" class="s">$3049c: mulu, addi.w; the output D1 = ror.w #2 of D0.</text>')
+a(f'<text x="44" y="{AY+68}" class="s">Each value is the last times ${A:x}, plus ${C:x}, keeping</text>')
+a(f'<text x="44" y="{AY+81}" class="s">16 bits (a linear congruential generator, LCG). The dots</text>')
+a(f'<text x="44" y="{AY+94}" class="s">use it rotated right 2 bits (D1); D0 is the raw value</text>')
+a(f'<text x="44" y="{AY+107}" class="s">($3049c).</text>')
 a(f'<text x="330" y="{AY+52}" class="s" style="fill:{INK};font-weight:bold">Full period: all {visited:,} states, then back to the seed</text>')
-a(f'<text x="330" y="{AY+68}" class="s">{A} = 4 &#215; {(A-1)//4} + 1 (a &#8722; 1 divisible by 4) and {C} is odd: the Hull-Dobell conditions for</text>')
-a(f'<text x="330" y="{AY+82}" class="s">modulus 2^16. Checked by iteration: {period:,} steps from 0 return to 0. The low bits are weak</text>')
-a(f'<text x="330" y="{AY+96}" class="s">(bit k of D0 repeats every {", ".join(str(p) for p in bitp[:4])}, ... steps), which ror.w #2 keeps out of the dot fields.</text>')
+a(f'<text x="330" y="{AY+68}" class="s">{A} = 4 &#215; {(A-1)//4} + 1 and {C} is odd, which is enough for a full period (the Hull-Dobell conditions for</text>')
+a(f'<text x="330" y="{AY+82}" class="s">modulus 2^16). Checked by iteration: {period:,} steps from 0 return to 0. The low bits are weak</text>')
+a(f'<text x="330" y="{AY+96}" class="s">(bit k of D0 repeats every {", ".join(str(p) for p in bitp[:4])}, ... steps), which the rotation keeps out of the dot fields.</text>')
 bx = [(f'seed', f'mission index', f'14776(A6) = {mission0}', ''),
       ('$30430', 'discard 2', f'{M1["stages"][0][1]} steps', ''),
       ('$30444', '51 map dots', f'{M1["stages"][1][1]} steps', f'{M1["stages"][1][2]["zero"]} zero, {M1["stages"][1][2]["dup"]} dup'),
       ('$303fa', '100 moons', f'{M1["stages"][2][1]} steps', f'{M1["stages"][2][2]["dup"]} dup'),
       ('$302fa', '10 targets', f'{M1["stages"][3][1]} steps', f'{M1["stages"][3][2]["taken"]} taken'),
-      ('$3032c', '150 sites', f'{M1["stages"][4][1]} steps', '')]
+      ('$3032c', '150 landing sites', f'{M1["stages"][4][1]} steps', '')]
 x0, bw_, gap = 44, 116, 22
 y0 = AY + 116
 for k, (adr, what, n, rej) in enumerate(bx):
@@ -375,9 +382,9 @@ for k in range(6):
         if t:
             a(f'<text x="{X}" y="{y0+90+14*j}" text-anchor="middle" class="s" style="{"fill:"+INK if j==0 else ""}">{t}</text>')
 footA = [f'Mission 1 (index 0): {M1["n"]} draws, ending at D0 = ${M1["fin"]:04x}; missions 2 and 8: {MISSIONS[1]["n"]} and {MISSIONS[7]["n"]}, ending at '
-         f'${MISSIONS[1]["fin"]:04x} and ${MISSIONS[7]["fin"]:04x}, the D0 the game returns under callcap.',
+         f'${MISSIONS[1]["fin"]:04x} and ${MISSIONS[7]["fin"]:04x}, the D0 the game returns.',
          f'$3037a/$3039e then turn cells into map units, c &#215; 512 &#8722; $2600; a moon adds &#177;160 on each axis by its orbit slot (table $303d6).',
-         f'Site bytes use raw D0, whose low bits are short-period: their low nibble repeats every 16 objects ({rep16}/{150-16} in RAM), the low bit alternates ({par}/149).']
+         f'Landing-site bytes use the raw value D0, whose low bits are short-period: their low nibble repeats every 16 objects ({rep16}/{150-16} in RAM), the low bit alternates ({par}/149).']
 for k, t in enumerate(footA):
     a(f'<text x="44" y="{AY+256+15*k}" class="s">{t}</text>')
 y = para(44, AY + 256 + 15 * len(footA) + 6, 812, 'The boxes are the generator\'s steps in the order they run, left to '
@@ -392,7 +399,7 @@ close(pA, y + 6)
 
 # B: the screen --------------------------------------------------------------------------------------
 BY = y + 20
-pB = panel(24, BY, 470, 490, 'B. Mission 1, generated over its real screen', f'proven: {fit_n}/51 generated dots on white pixels, {unexpl} white pixels unexplained', True)
+pB = panel(24, BY, 470, 490, 'B. Mission 1, generated over its real screen', f'proven: {fit_n}/51 dots land on white pixels, {unexpl} white pixels unexplained', True)
 cx0, cy0, cw, Z = 60, 67, 90, 4
 crop = scr.crop((cx0, cy0, cx0 + cw, cy0 + cw))
 ix, iy = 24 + (470 - cw * Z) / 2, BY + 52
@@ -420,7 +427,7 @@ for slot, ks in TG1.items():
 st0 = cells[0]
 a(f'<text x="{ix + P(st0[0], FX) - 8:.1f}" y="{iy + P(st0[1], FY) + 18:.1f}" class="s" style="fill:#f2cc0c">station</text>')
 ly = iy + cw * Z + 16
-capB = ['The map screen of mission1.snap, pixels &#215;4. Red rings: the 50 generated',
+capB = ['The game\'s own mission 1 map screen, enlarged four times. Red rings: the 50 generated',
         'planets, each on a white pixel. Yellow box: dot 0, the space station, not drawn',
         'as a white pixel. Cyan: targets 1..10 (a moon target at its parent planet).',
         f'The fit was searched, not assumed: pixel = ({FX}, {FY}) + {FS} &#215; cell.']
@@ -434,7 +441,7 @@ bend = para(44, bend + 4, 432, 'Every planet the game draws is one the model gen
 # C: the coordinate table ----------------------------------------------------------------------------
 CX = 506
 pC = panel(CX, BY, 370, 490, 'C. No dot on a grid line', f'proven: {on_line} of {len(allc)} coordinates (missions 1, 2, 8) on a line', True)
-a(f'<text x="{CX+20}" y="{BY+62}" class="s">The 5-bit field (0..31) indexes the 32-byte table at $3047c:</text>')
+a(f'<text x="{CX+20}" y="{BY+62}" class="s">Each dot\'s 5-bit value (0..31) is looked up in a 32-byte table ($3047c):</text>')
 gx0, gy0, cwid = CX + 30, BY + 100, 8.0
 for c in range(-1, 40):
     if c % 5 == 4:
@@ -449,7 +456,7 @@ for i, val in enumerate(xytab):
     a(f'<text x="{gx0-8}" y="{Y+3.5:.1f}" text-anchor="end" class="c" style="font-size:8px;fill:{MUTE}">{i}</text>')
     if i == 0:
         a(f'<circle cx="{X:.1f}" cy="{Y:.1f}" r="2.8" fill="#ffffff" stroke="{BAD}"/>')
-        a(f'<text x="{gx0 + 8 * cwid:.1f}" y="{Y+3.5:.1f}" class="s" style="fill:{BAD};font-size:9px">&#8592; index 0 is rejected (beq $30446)</text>')
+        a(f'<text x="{gx0 + 8 * cwid:.1f}" y="{Y+3.5:.1f}" class="s" style="fill:{BAD};font-size:9px">&#8592; value 0 is rejected ($30446)</text>')
     else:
         a(f'<circle cx="{X:.1f}" cy="{Y:.1f}" r="2.8" fill="{ACC}"/>')
 cy_ = gy0 + 32 * 8 + 22
@@ -471,10 +478,10 @@ close(pC, max(bend, cend) + 6)
 
 # D: names -------------------------------------------------------------------------------------------
 DY = max(bend, cend) + 20
-pD = panel(24, DY, 852, 310, 'D. A name for every body ($3066e)', 'proven on screen for object 13 only; other names inferred')
-a(f'<text x="44" y="{DY+50}" class="s">Not stored and not part of the chain: each name is recomputed when shown, with the same LCG reseeded per body.</text>')
-steps_ = [('seed', f'mission &#215; 150 + object = {OBJ}', d4[0]), ('LCG', '', d4[1]), ('ror.w #8', 'byte swap', d4[2]),
-          ('LCG', '', d4[3]), ('LCG', '', d4[4])]
+pD = panel(24, DY, 852, 310, 'D. A name for every planet and moon ($3066e)', 'proven on screen for object 13 only; other names inferred')
+a(f'<text x="44" y="{DY+50}" class="s">Not stored and not part of the chain: each name is recomputed when shown, with the same kind of generator (an LCG) reseeded for each body (object 1 to 150).</text>')
+steps_ = [('seed', f'mission &#215; 150 + object = {OBJ}', d4[0]), ('LCG step', '', d4[1]), ('byte swap', 'ror.w #8', d4[2]),
+          ('LCG step', '', d4[3]), ('LCG step', '', d4[4])]
 X = 44
 for k, (op, note, val) in enumerate(steps_):
     a(f'<text x="{X}" y="{DY+76}" class="s">{op}</text>')
@@ -503,7 +510,7 @@ for i in range(16):
 crop2 = sscr.crop((62, 174, 142, 188))
 nxi = 520
 a(f'<image x="{nxi}" y="{ty0-12}" width="{80*4}" height="{14*4}" xlink:href="{png_uri(crop2, 4)}"/>')
-a(f'<text x="{nxi}" y="{ty0+60}" class="s">star.snap, object {star_sel} selected (14782(A6) = ${star_sel:x}): the screen</text>')
+a(f'<text x="{nxi}" y="{ty0+60}" class="s">a saved game screen, object {star_sel} selected (14782(A6) = ${star_sel:x}): the screen</text>')
 a(f'<text x="{nxi}" y="{ty0+74}" class="s">prints PLANET- and the generated {nm} for index {OBJ}.</text>')
 a(f'<text x="44" y="{DY+252}" class="s">16^4 = 65,536 spellings. Mission 1\'s first planets come out {", ".join(names[:5])}; '
   f'{dupn} of its 150 names repeat an earlier one. The station is the fixed</text>')
@@ -523,7 +530,7 @@ close(pD, y + 6)
 # E: three missions ----------------------------------------------------------------------------------
 EY = y + 20
 pE = panel(24, EY, 852, 0, 'E. Three missions, three galaxies (moons and targets drawn)',
-      'proven: each 51/51, 100/100, 150/150 vs RAM')
+      'proven: each map\'s tables match the game, 51/51, 100/100, 150/150')
 mw = 250
 for j, idx in enumerate((0, 1, 7)):
     M = MISSIONS[idx]
@@ -553,13 +560,13 @@ for j, idx in enumerate((0, 1, 7)):
         a(f'<text x="{MX(x)+5:.1f}" y="{MY(y)-4:.1f}" class="s" style="fill:#7ee0ff;font-size:9px">{",".join(map(str, sorted(ks)))}</text>')
     a(f'<text x="{ox_}" y="{oy_+mw+18}" class="h" style="font-size:12px">CAPTIVE MISSION {idx+1:04d}: seed {idx}</text>')
     a(f'<text x="{ox_}" y="{oy_+mw+33}" class="s">{M["n"]} draws, D0 ends ${M["fin"]:04x}; '
-      f'{"the snapshot as it stands" if idx == 0 else "poked, re-run by callcap"}</text>')
+      f'{"as saved" if idx == 0 else "set by hand, re-run"}</text>')
 ey2 = EY + 56 + mw + 54
 a(f'<text x="44" y="{ey2}" class="s">White: planets; yellow square: the station; grey: moons, at &#177;160 units on each axis from their planet (a cell '
   f'is 512); red rings: targets 1..10.</text>')
-a(f'<text x="44" y="{ey2+14}" class="s">Mission 1 always puts target 1 on object 0 ({names[0]}). Missions 2 and 8: index poked into 14776(A6), '
-  f'$302c6 re-run under callcap, model = every table.</text>')
-y = para(44, ey2 + 34, 812, 'Each square is one mission\'s whole map, drawn from the model\'s tables, which equal the '
+a(f'<text x="44" y="{ey2+14}" class="s">Mission 1 always puts target 1 on object 0 ({names[0]}). Missions 2 and 8: index set by hand in 14776(A6),</text>')
+a(f'<text x="44" y="{ey2+28}" class="s">generator ($302c6) re-run in the emulator; our model matches every table.</text>')
+y = para(44, ey2 + 48, 812, 'Each square is one mission\'s whole map, drawn from the model\'s tables, which equal the '
          'game\'s memory for that mission. The seed is the mission index, the mission number minus one.',
          lead='How to read.')
 y = para(44, y + 4, 812, 'Only the seed changes between the three maps. The layout rules stay the same: dots inside grid '
@@ -567,18 +574,19 @@ y = para(44, y + 4, 812, 'Only the seed changes between the three maps. The layo
 close(pE, y + 6)
 y += 32
 a(f'<text x="24" y="{y}" class="h">How we know</text>')
-y = para(24, y + 20, 852, 'a linear congruential generator computes each number from the last as x × a + c, keeping '
+y = para(24, y + 20, 852, 'LCG: a linear congruential generator computes each number from the last as x × a + c, keeping '
          'the low 16 bits. D0 and D1 are 68000 registers; ror.w #2 rotates a 16-bit word right by 2 bits. Hex numbers '
          'such as $30280 are addresses of the game\'s code; 13566(A6) and the like are addresses of its tables, '
          'counted from the register A6 that points at the game\'s variables.', 'k', lead='Terms.')
-y = para(24, y + 3, 852, 'universe.py is a Python model of every step. "model = RAM 51/51" means its 51 map dots equal '
-         'the 51 the game holds in memory. mission1.snap and star.snap are saved emulator states of the game at its star '
+y = para(24, y + 3, 852, 'Our Python model reproduces every step. "51/51" means its 51 map dots equal '
+         'the 51 the game holds in memory. The map and name screens are saved emulator states of the game at its star '
          'map. callcap makes the emulator call one game routine from a saved state and record the registers and memory it '
-         'changes; for missions 2 and 8 the mission number was written into memory ("poked") and the generator re-run '
+         'changes; for missions 2 and 8 the mission number was written into memory by hand and the generator re-run '
          'this way.', 'k', lead='Checks.')
-y = para(24, y + 3, 852, 'proven: checked against the game in an Atari ST emulator. computed: worked out by this '
-         'figure\'s script. inferred: read from the code but not checked.', 'k', lead='Labels.')
-H = y + 16
+y = para(24, y + 3, 852, 'proven: checked against the game in an Atari ST emulator. observed: worked out by this '
+         'figure\'s script from the running game\'s memory. inferred: read from the code but not checked.', 'k', lead='Labels.')
+a(f'<text x="24" y="{y+16}" style="font-size:9px;fill:{MUTE}">Sources: world.md section 1; universe.py; saved states mission1.snap, star.snap. Facts: universe.facts.md.</text>')
+H = y + 28
 a('</svg>')
 s[0] = (f'<svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" viewBox="0 0 {W} {H}" '
         f'width="{W}" height="{H}" role="img" aria-labelledby="t d">')

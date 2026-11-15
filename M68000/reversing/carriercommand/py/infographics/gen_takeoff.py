@@ -192,53 +192,66 @@ V = dict(N=N, across=W_['turn']['m'][-1][1], fz_gap=fz_gap, cv=Tn[-2]['cv'], v_t
          npf=RUNS['turn']['n_pf'], b_roll=bounds['roll_end'], b_deck=bounds['deck_end'])
 assert RUNS['rest']['n_pf'] == RUNS['turn']['n_pf']
 # ---- prose (begin): reads only V; tools may exec this block alone ---------------------------------
-from igtext import para, height
-LEAD = ('Carrier Command (Realtime Games, 1988) is a real-time strategy and vehicle game. The player commands an '
+from igtext import para, height, KEY
+LEAD = ('Carrier Command (Realtime Games, 1988) is a real-time strategy and vehicle game for the Atari ST. This '
+        'figure comes from reverse-engineering the game in an emulator. The player commands an '
         'aircraft carrier and launches craft from it, among them the Manta, an aircraft that comes up a lift to '
         'the deck, rolls along it and climbs off the bow. The carrier keeps moving and turning meanwhile. '
-        'Routine $1d22c handles that with one idea: until the Manta leaves the deck it is not flown in world '
-        'coordinates at all. Its motion is a plain offset along the deck, and each tick the game rotates that '
+        'The take-off routine ($1d22c) handles that with one idea: until the Manta leaves the deck it is not '
+        'flown in world coordinates at all. Its motion is a plain offset along the deck, and each tick (one '
+        'update of the game\'s main loop) the game rotates that '
         'offset by the carrier\'s current heading and adds the carrier\'s position. The take-off therefore '
-        'follows the carrier wherever it goes, with no special case for a moving or turning ship. A tick is one '
-        'update of the game\'s main loop; headings are in units of 1/65536 of a turn.')
-A_READ = ('Everything here is in the carrier\'s own frame, where the carrier stands still. Across: the deck offset '
+        'follows the carrier wherever it goes, with no special case for a moving or turning ship. Headings are '
+        'in units of 1/65536 of a turn.')
+A_READ = ('Everything here is seen from the carrier\'s own point of view (its frame), where the carrier stands still. Across: the deck offset '
           'z, the distance along the deck centreline from the carrier\'s reference point. Top strip: the deck '
           'from above, one dot per tick; the dots spread out as the Manta speeds up. Main chart: the same ticks '
           'from the side, altitude against deck offset, with a short stroke showing the nose pitch at its true '
           'angle (pitch read as 65536 units to the turn, inferred). Colours are the three phases of the routine '
           '(panel C).')
-A_TAKE = (f'The take-off with the carrier at rest and the one with it turning and speeding up give exactly the '
-          f'same numbers in this frame, all {V["N"]} ticks: the carrier\'s motion never enters the take-off rules.')
+A_TAKE = (f'Because the carrier\'s motion never enters the take-off rules, one rule serves every case: the '
+          f'take-off with the carrier at rest and the one with it turning and speeding up give exactly the same '
+          f'numbers in this frame, all {V["N"]} ticks.')
 B_READ = ('The same two take-offs in world coordinates. Across: distance along the carrier\'s heading at launch, '
           'measured from the carrier\'s launch position. Up: distance sideways, drawn at a larger scale (the '
           'factor is printed above the chart) so the turn shows. Blue: the carrier at rest. Purple: the carrier '
           'turning and accelerating; its own track is the faded line, and thin lines join it to the Manta every '
           '6th tick. Red dashes: the deck offset rotated by the launch heading only, a variant of our model and '
           'not the game.')
-B_TAKE = (f'Rotating by the current heading carries the Manta round with the turning ship: it leaves the deck '
+B_TAKE = (f'Following the carrier needs no special case: rotating by the current heading carries the Manta round with the turning ship, so it leaves the deck '
           f'{V["across"]:.0f} units to the side, and a frozen heading would put it {V["fz_gap"]:.0f} units from '
           f'where the game does. At hand-off its speed becomes its own 60 plus the carrier\'s {V["cv"]}, so it '
           f'flies off at {V["v_turn"]}.')
 C_READ = ('The rule for one tick, transcribed from the code and confirmed by the per-tick match in D. The Manta\'s '
-          'record (its slot) holds the deck state at offset +28 (2 = taking off) and the phase at +29. Numbered '
-          'circles are the phases, in the colours used in A; z is the deck offset.')
-C_TAKE = ('Three phases of small integer steps (+2 altitude; +8 speed up to 60; -240 pitch with +10 altitude). '
-          'The only world-space work is the last line, one rotation ($1d908) and an add.')
-D_READ = ('Per tick: after every tick the model\'s state is compared with the game\'s, in both runs. Nudged '
-          'constants: each number in the rule is changed by one in turn, and it counts as tested if some tick '
-          'then differs. A threshold the data cannot break is given as an interval, because the Manta moves 60 '
-          'a tick and any value inside one step yields the same run.')
+          'record in the game\'s memory keeps its state (2 = taking off, at offset +28) and its phase (at offset '
+          '+29). Numbered circles are the phases, in the colours used in A; z is the deck offset.')
+C_TAKE = ('The take-off is simple because almost everything happens on the deck: three phases of small integer '
+          'steps (+2 altitude; +8 speed up to 60; -240 pitch with +10 altitude). The only work on the sea (in '
+          'world coordinates) is the last line, one rotation ($1d908) and an add.')
+D_PROSE = (f'Our model reproduces the game on every tick of both runs: {RUNS["rest"]["n_pf"]}/{RUNS["rest"]["n_pf"]} '
+           f'at rest and {RUNS["turn"]["n_pf"]}/{RUNS["turn"]["n_pf"]} turning, and {N}/{N} in both counting the '
+           f'launch tick. The model\'s state is compared with the game\'s after every tick. Changing a constant in '
+           f'the rule by one makes some tick differ for {n_br_turn} of the {len(broke)} constants on the turning '
+           f'run. The deck thresholds are pinned only to ({bounds["roll_end"][0]}, {bounds["roll_end"][1]}] and '
+           f'({bounds["deck_end"][0]}, {bounds["deck_end"][1]}]; 650 and 2000 are read from the code. The speed at '
+           f'hand-off is {R[-1]["v"]} at rest and {Tn[-1]["v"]} turning, which is 60 plus the carrier\'s '
+           f'{Tn[-2]["cv"]}; the last deck tick moved {ws[-1]:.0f} over the sea (from positions).')
+D_READ = ('Nudged constants: each number in the rule is changed by one in turn, and it counts as tested if some '
+          'tick then differs. A threshold the data cannot break is given as an interval, because the Manta '
+          'moves 60 a tick and any value inside one step yields the same run.')
 D_TAKE = (f'The rule is exact for both runs, {V["npf"]}/{V["npf"]} ticks each ({V["N"]}/{V["N"]} counting the '
           f'launch tick). The deck thresholds 650 and 2000 are read from code; the runs only place them within '
           f'({V["b_roll"][0]}, {V["b_roll"][1]}] and ({V["b_deck"][0]}, {V["b_deck"][1]}].')
-KNOW = ('**How we know.** **Proven** means observed in an emulator running the game\'s own code, with a count of '
-        'matches (N/N = matches out of cases). Both runs start from c_s30, a saved Strategy game with the carrier '
-        'at the island Vulcan. The game\'s own lift and launch commands are called, once with the carrier at '
-        'rest and once with its yaw and target speed poked so that it turns and accelerates, and the game state '
-        'is read at every entry to the Manta update routine. Every dot on this page is such a captured value; '
-        'the figure script refuses to draw if the model (py/units/takeoff_proof.py) differs from the game on any '
+KNOW = ('**How we know.** **Proven** means checked against the game\'s own code with a count of matches '
+        '(N/N = matches out of cases). Both runs start from a saved Strategy game with the carrier at the island '
+        'Vulcan. The game\'s own lift and launch commands are called, once with the carrier at rest and once '
+        'with its yaw (turning) value and target speed set by hand so that it turns and accelerates, and the '
+        'game state is read at every entry to the Manta update routine. Every dot on this page is such a '
+        'captured value (**observed**); the figure is not drawn if our model differs from the game on any '
         'tick. The only model output drawn is the red frozen-heading variant. Pitch units and the nose-up sign '
-        'are inferred. $hex numbers are addresses in the game\'s memory, given as citations.')
+        'are **inferred**.')
+SRCLINE = ('Sources: reversing/carriercommand/vehicles.md sections 1, 2, 5; py/units/takeoff_proof.py; saved '
+           'state c_s30; runs captured through the stserver emulator process.')
 
 def caption(x, y, w, read, take):
     y = para(a, '**How to read.** ' + read, x, y, w, size=11.5, color='#1f2328')
@@ -249,15 +262,17 @@ def caption_h(w, read, take):
 
 # layout: panels keep their original coordinates inside translated groups; captions at the original bottoms
 lead_h = height(LEAD, 852, 13)
-T0 = 64 + lead_h + 2
+key_y0 = 64 + lead_h + 2
+T0 = key_y0 + height(KEY, 852, 10.5) + 8
 hA = 466 - 96 + caption_h(820, A_READ, A_TAKE) - 2
 dyA = T0 - 96
 hB = 800 - 472 + caption_h(820, B_READ, B_TAKE) - 2
 dyB = T0 + hA + 14 - 472
-hCD = max(258 + caption_h(488, C_READ, C_TAKE), 234 + caption_h(288, D_READ, D_TAKE)) - 2
+D_PH = height(D_PROSE, 288, 11)
+hCD = max(258 + caption_h(488, C_READ, C_TAKE), 50 + D_PH + 16 + caption_h(288, D_READ, D_TAKE)) - 2
 dyC = T0 + hA + 14 + hB + 14 - 802
 KY = 802 + dyC + hCD + 14
-kh = height(KNOW, 820, 11.5)
+kh = height(KNOW, 820, 11.5) + 6 + height(SRCLINE, 820, 9)
 H = int(KY + kh + 30)
 # ---- prose (end) ------------------------------------------------------------------------------------
 INK, MUTE, ACC, BAD, GRID = '#1f2328', '#656d76', '#0969da', '#cf222e', '#d0d7de'
@@ -265,7 +280,7 @@ C_RISE, C_ROLL, C_CLIMB = '#8c959f', '#bf8700', '#1a7f37'
 C_TURN = '#8250df'
 PHC = [C_RISE, C_ROLL, C_CLIMB]
 a(f'<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 {W} {H}" width="{W}" height="{H}" role="img" aria-labelledby="t d">')
-a('<title id="t">Taking off from a moving deck</title>')
+a('<title id="t">Taking off from a moving, turning deck with no special case</title>')
 a('<desc id="d">Carrier Command (1988) flies the Manta take-off ($1d22c) in the carrier\'s frame: a deck offset that '
   'rises, rolls and climbs, rotated by the carrier\'s heading and added to its position each tick. Source: '
   'reversing/carriercommand/vehicles.md section 5; points are game state captured through stserver by '
@@ -275,8 +290,9 @@ a('<style>text{font-family:Helvetica,Arial,sans-serif;fill:%s;font-size:12px}.t{
   '.h{font-size:14px;font-weight:bold}.m{fill:%s}.c{font-family:Menlo,monospace;font-size:11.5px}'
   '.s{font-size:11px;fill:%s}</style>' % (INK, MUTE, MUTE))
 a(f'<rect width="{W}" height="{H}" fill="#ffffff"/>')
-a('<text x="24" y="38" class="t">Taking off from a moving deck</text>')
+a('<text x="24" y="38" class="t">Taking off from a moving, turning deck with no special case</text>')
 para(a, LEAD, 24, 64, 852, size=13, color=INK)
+para(a, KEY, 24, key_y0 + 11, 852, size=10.5, color=MUTE)
 
 
 def panel(x, y, w, h, title):
@@ -290,7 +306,7 @@ def dot(x, y, c, r=3.0, op=1.0):
 
 # A + B share the deck-z axis -------------------------------------------------------------------
 a(f'<g transform="translate(0,{dyA:.1f})">')
-panel(24, 96, 852, hA, f'A. In the carrier\'s frame: the same {N} ticks at rest and turning')
+panel(24, 96, 852, hA, f'A. Seen from the carrier, which stands still: the same {N} ticks with the ship at rest and turning')
 ax0, aw = 120, 700
 zmax = 2100
 def AX(dz): return ax0 + aw * dz / zmax
@@ -318,8 +334,8 @@ for alt in (180, 200, 300, 400, 430):
 a(f'<text x="44" y="{BY(305)}" class="s" transform="rotate(-90 44 {BY(305)})" text-anchor="middle">side: altitude</text>')
 for dz in range(0, 2001, 250):
     a(f'<text x="{AX(dz):.1f}" y="{by0+bh+16}" text-anchor="middle" class="s">{dz}</text>')
-a(f'<text x="{AX(1050):.1f}" y="{by0+bh+32}" text-anchor="middle" class="s">deck offset z (entity +30), '
-  'along the deck centreline from the carrier\'s reference point</text>')
+a(f'<text x="{AX(1050):.1f}" y="{by0+bh+32}" text-anchor="middle" class="s">deck offset z: distance '
+  'along the deck centreline from the carrier\'s reference point (stored at entity +30)</text>')
 pts = ' '.join(f'{AX(x["dz"]):.1f},{BY(x["alt"]):.1f}' for x in R)
 a(f'<polyline points="{pts}" fill="none" stroke="{GRID}" stroke-width="1.2"/>')
 SEG = 26
@@ -346,23 +362,23 @@ for c, t_ in notes:
     ny += 14
 # legend row
 ly = 424
-items = [(C_RISE, f'rise ({n_rise} ticks)'), (C_ROLL, f'roll ({n_roll})'), (C_CLIMB, f'rotate and climb ({n_climb})'),
-         (INK, 'airborne (+28 = 3)')]
+items = [(C_RISE, f'phase 0: rise ({n_rise} ticks)'), (C_ROLL, f'phase 1: roll ({n_roll})'),
+         (C_CLIMB, f'phase 2: rotate and climb ({n_climb})'), (INK, 'airborne')]
 lx = 120
 for c, t in items:
     dot(lx, ly - 4, c, 4)
     a(f'<text x="{lx+9}" y="{ly}" class="s">{t}</text>')
-    lx += {C_RISE: 110, C_ROLL: 80, C_CLIMB: 170, INK: 130}[c]
+    lx += {C_RISE: 130, C_ROLL: 105, C_CLIMB: 190, INK: 80}[c]
 a(f'<text x="{lx}" y="{ly}" class="s">strokes: pitch at its true angle</text>')
-a(f'<text x="120" y="{ly+18}" class="s">Every dot is a captured game value; the at-rest and turning runs give the same values here, '
-  'tick for tick. Pitch units read as 65536 to the turn (inferred).</text>')
+a(f'<text x="120" y="{ly+18}" class="s">Every dot is a captured game value (observed); both runs give the same values here, '
+  'tick for tick. Pitch: 65536 units to the turn (inferred).</text>')
 
 caption(38, 466, 820, A_READ, A_TAKE)
 a('</g>')
 # C: world frame --------------------------------------------------------------------------------
 cy_top = 472
 a(f'<g transform="translate(0,{dyB:.1f})">')
-panel(24, cy_top, 852, hB, 'B. On the sea: the deck offset rotated by the carrier\'s heading each tick')
+panel(24, cy_top, 852, hB, 'B. On the sea: rotating by the current heading carries the Manta round with the ship')
 cx0, cw = 96, 720
 amax_ = 3600
 def CX(al): return cx0 + cw * (al + 100) / (amax_ + 100)
@@ -407,7 +423,7 @@ a(f'<text x="{CX(pt[0])-8:.1f}" y="{CY(pt[1])-10:.1f}" text-anchor="end" class="
 a(f'<text x="{CX(2200):.1f}" y="{CY(-20):.1f}" class="s" style="fill:{BAD}">dashes: heading frozen at launch</text>')
 a(f'<text x="{CX(2200):.1f}" y="{CY(-20)+13:.1f}" class="s" style="fill:{BAD}">(model variant, not the game): {fz_gap:.0f} short</text>')
 a(f'<text x="{CX(pc[0])-6:.1f}" y="{CY(pc[1])-12:.1f}" text-anchor="end" class="s" style="fill:{C_TURN}">carrier after {N} ticks</text>')
-a(f'<text x="{CX(0)+8:.1f}" y="{CY(0)+24:.1f}" class="s">carriers at launch</text>')
+a(f'<text x="{CX(0)+8:.1f}" y="{CY(0)+24:.1f}" class="s">carrier at launch</text>')
 a(f'<text x="{cx0}" y="{cy_top+46}" class="s">Across is drawn {mag:.0f} times the along scale. Thin lines: carrier to Manta '
   'every 6th tick.</text>')
 a(f'<text x="{cx0}" y="{cy_top+60}" class="s">Turning run: heading +{dh[0]} a tick ({(hs[-1]-hs[0])*U2D:.1f} degrees over the take-off), '
@@ -418,14 +434,14 @@ caption(38, 800, 820, B_READ, B_TAKE)
 a('</g>')
 dy_top = cy_top + 330
 a(f'<g transform="translate(0,{dyC:.1f})">')
-panel(24, dy_top, 520, hCD, 'C. One tick of $1d22c (slot +28 = 2, phase in +29)')
+panel(24, dy_top, 520, hCD, 'C. What the game does each tick during take-off (routine $1d22c)')
 rows = [
     (C_RISE, '0', 'altitude += 2', 'at 200: phase 1, speed 0'),
     (C_ROLL, '1', 'speed = min(speed + 8, 60); z += speed', 'at deck z >= 650: phase 2'),
     (C_CLIMB, '2', 'pitch = max(pitch - 240, -1655)', 'altitude += 10; z += speed'),
     (INK, '', 'at deck z >= 2000: airborne', 'speed += carrier speed, pitch / -14'),
     (ACC, '', 'heading = carrier heading', 'every phase'),
-    (ACC, '', 'pos = carrier + rotate((0, z), heading)', '$1d908, every phase'),
+    (ACC, '', 'pos = carrier + rotate((0, z), heading)', 'rotation routine $1d908, every phase'),
 ]
 y = dy_top + 52
 for c, n, l1, l2 in rows:
@@ -439,30 +455,13 @@ a(f'<text x="38" y="{dy_top+238}" class="s">z: the deck offset. Heading and posi
 # E: the proof ----------------------------------------------------------------------------------
 ex = 556
 caption(38, dy_top + 258, 488, C_READ, C_TAKE)
-panel(ex, dy_top, 320, hCD, 'D. What is proven')
-lines = [
-    ('model against the game, per tick:', True),
-    (f'at rest {RUNS["rest"]["n_pf"]}/{RUNS["rest"]["n_pf"]}, turning {RUNS["turn"]["n_pf"]}/{RUNS["turn"]["n_pf"]}'
-     ' (takeoff_proof.py)', False),
-    (f'{N}/{N} in both with the launch tick', False),
-    ('(checked by gen_takeoff.py)', False),
-    ('constants nudged by one break a tick:', True),
-    (f'{n_br_turn} of {len(broke)} (turning run); the deck thresholds are', False),
-    (f'pinned only to ({bounds["roll_end"][0]}, {bounds["roll_end"][1]}] and ({bounds["deck_end"][0]}, '
-     f'{bounds["deck_end"][1]}],', False),
-    ('650 and 2000 are read from code', False),
-    ('hand-off speed:', True),
-    (f'{R[-1]["v"]} at rest, {Tn[-1]["v"]} turning = 60 + {Tn[-2]["cv"]}; the last', False),
-    (f'deck tick moved {ws[-1]:.0f} over the sea (from positions)', False),
-]
-y = dy_top + 50
-for t, bold in lines:
-    a(f'<text x="{ex+16}" y="{y}" class="s"{" style=\"fill:%s;font-weight:bold\"" % INK if bold else ""}>{t}</text>')
-    y += 16 if not bold else 15
-caption(ex + 16, dy_top + 234, 288, D_READ, D_TAKE)
+panel(ex, dy_top, 320, hCD, 'D. How well the model is pinned down')
+para(a, D_PROSE, ex + 16, dy_top + 50, 288, size=11, color=INK)
+caption(ex + 16, dy_top + 50 + D_PH + 16, 288, D_READ, D_TAKE)
 a('</g>')
 a(f'<rect x="24" y="{KY:.1f}" width="852" height="{kh+16:.1f}" rx="6" fill="{NOTE}" stroke="{GRID}"/>')
-para(a, KNOW, 38, KY + 20, 820, size=11.5, color=INK)
+yk = para(a, KNOW, 38, KY + 20, 820, size=11.5, color=INK)
+para(a, SRCLINE, 38, yk + 6, 820, size=9, color=MUTE)
 a('</svg>')
 (OUT / 'takeoff.svg').write_text('\n'.join(s))
 print('wrote', OUT / 'takeoff.svg')

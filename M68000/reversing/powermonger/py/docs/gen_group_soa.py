@@ -5,11 +5,11 @@ import os, html
 here = os.path.dirname(os.path.abspath(__file__))
 # (n, label, meaning, evidence)  evidence: pv lv cr na
 ROWS = [
- (4,   "pending / link", "4(A1) := D7 by $6822; cleared by $4220 (pigeon landing), $6b20", "pv"),
- (16,  "",               "not named in strategy.md", "na"),
+ (4,   "order in flight", "pending: set by $6822; cleared at $4220 (pigeon lands), $6b20", "pv"),
+ (16,  "",               "no name recorded", "na"),
  (28,  "owner side",     "<= 0: no group, the AI skips it (not the men)", "pv"),
- (40,  "first man",      "roster head, next man via 26(man)", "cr"),
- (52,  "men",            "captain panel \"Troops\"; arm 1 tests < 22", "pv"),
+ (40,  "first man",      "first man of the group; next man via 26(man)", "cr"),
+ (52,  "men",            "captain panel \"Troops\"; the AI's first rule tests < 22", "pv"),
  (64,  "lead",           "lead man's object offset (from $51b66)", "pv"),
  (76,  "state",          "$6 camp, $9 invent, $d fighting, ...", "pv"),
  (88,  "eat timer",      "$3e06 counts it to the side's eat period", "cr"),
@@ -19,11 +19,11 @@ ROWS = [
  (136, "posture",        "2 Aggressive, 3 Neutral, 4 Passive; set per AI decision", "pv"),
  (148, "aggression",     "0 PowerMonger .. 7 Wimp; display only ($90de)", "pv"),
  (160, "goods x 8",      "8 arrays, item i at +160 + 12i (pike .. cannon)", "cr"),
- (256, "camp stamp",     "clock word at camp ($3720); waits $14 ticks", "pv"),
+ (256, "camp stamp",     "clock word at camp ($3720); waits 20 ($14) ticks", "pv"),
  (268, "prev state",     "state before camp ($3728); $6762 key", "pv"),
  (280, "opponent class", "opponent or target: 2 lord, 4 group, 6 man, 8/$a animal, $c", "pv"),
  (292, "opponent",       "opponent's record at the last $4bc8 ($4d6c); escort target", "pv"),
- (304, "",               "+304..+315 not named in strategy.md", "na"),
+ (304, "",               "+304..+315: no name recorded", "na"),
 ]
 W, ROWH = 900, 25
 top = 250
@@ -43,38 +43,46 @@ def wrap(t, w, size, cw=0.5):
 # lead and notes: strategy.md "$51538 group-order table", "Proof of the commander AI", "The executor, proven";
 # README "Design digest" (group_soa.facts.md, "Lead and captions")
 LEAD = [
- 'PowerMonger (Bullfrog / Electronic Arts, 1990) is a war game in which the player and the computer lords command '
- 'armies through captains. Each side has six captains, and each captain leads a group of men; group 0 is the side\'s '
- 'first captain\'s own group. The game keeps all six groups of a side in one 316-byte record, but not as six records '
- 'of fields: each field is an array of six words, one word per group (a structure of arrays). Field n of group k is '
- 'the word at side base + n + 2k.',
- 'This matters for anyone reading the code. The commander AI walks the groups with 2k in register D7 and reads every '
- 'field of the current group as n(A1), A1 = base + 2k. The order executor and the men\'s handlers instead carry a '
- 'group offset D2 and reach the same word at offset n-76. The figure is the map between the two: which word holds what, '
- 'at which byte offset, for each of the six groups.',
+ 'PowerMonger (Bullfrog / Electronic Arts, 1990, here the Atari ST version) is a war game in which the player and the '
+ 'computer lords command armies through captains. This figure comes from reverse-engineering the game\'s 68000 machine '
+ 'code (the ST\'s CPU) and running it in an emulator. Each side has six captains, and each captain leads a group of men; '
+ 'group 0 is the side\'s first captain\'s own group. The game keeps all six groups of a side in one 316-byte record, but '
+ 'not as six records of fields: each field is an array of six words (a word is 16 bits), one word per group (a '
+ 'structure of arrays). Field n of group k is the word at side base + n + 2k.',
+ 'This matters for anyone reading the code. The commander AI walks the groups with 2k held in a CPU register (D7) and '
+ 'reads every field of the current group at offset n from a pointer to it (written n(A1) in 68000 notation, with the '
+ 'pointer A1 = base + 2k). The order executor and the men\'s handlers instead carry a group offset (register D2) and reach '
+ 'the same word at offset n-76. The figure is the map between the two: which word holds what, at which byte offset, for '
+ 'each of the six groups.',
 ]
+KEY = ('$ numbers are addresses in the game\'s memory, given as citations; the text says what each one is. Evidence: '
+       'proven = checked against the game\'s own code with a match count; observed = seen in the running game; inferred = '
+       'read from the code or reasoned, not run.')
 NOTES = [
- ('How to read the table', 'Each row is one field. n(A1) is its offset in the AI\'s frame and "group" its offset '
-  'from the group offset D2 (n-76). The six cells give the byte offset of that field for groups k = 0 to 5, counted '
+ ('How to read the table', 'Each row is one field. "AI" is its offset in the AI\'s frame, n(A1), and "exec" its offset '
+  'in the executor\'s frame, from the group offset D2 (n-76). The six cells give the byte offset of that field for groups k = 0 to 5, counted '
   'from the side base; the yellow column is group 2, followed through in the worked example above. The border of the '
   'meaning cell shows the evidence for that meaning. Groups are walked by the AI from group 5 down to group 0.'),
  ('Terms', 'A1, A3, D2 and D7 are 68000 registers; n(A1) means "the word n bytes past A1". $6564 is the commander '
-  'AI\'s per-group loop, $6ac6 the executor\'s routing step, $9090 the captain panel the player sees. Proven means a '
-  'gate passed: a Python rewrite of the routine was run beside the game\'s own 68000 code from captured states and '
-  'every changed byte matched; 323/323 and 44/44 are states that matched out of states compared. A whole-image scan '
-  'reads every instruction in the game\'s code for accesses to the field. Code read means from the disassembly only.'),
+  'AI\'s per-group loop, $6ac6 the executor\'s routing step, $9090 the captain panel the player sees. Proven means '
+  'checked against the game\'s own code: a Python rewrite of the routine was run beside the game\'s own 68000 code '
+  'from captured game states and every changed byte matched; 323/323 and 44/44 are states that matched out of states '
+  'compared. A whole-image scan reads every instruction in the game\'s code for accesses to the field. Inferred means '
+  'read from the disassembly only.'),
 ]
 LW = W - 40
 lead_rows = []
 for i, t in enumerate(LEAD):
     lead_rows += wrap(t, LW, 12.5) + ([''] if i < len(LEAD) - 1 else [])
-DY = 60 + len(lead_rows) * 17 + 14 - 54
+key_rows = wrap(KEY, LW, 11)
+KEY_H = 4 + len(key_rows) * 14.5
+DY = 60 + len(lead_rows) * 17 + 14 - 54 + KEY_H
 note_rows = []
 for h, t in NOTES:
     note_rows.append(('h', h))
     note_rows += [('', r) for r in wrap(t, LW, 11.5)]
     note_rows.append(('', ''))
-H = top + ROWH * (len(ROWS) + 1) + 108 + DY + 10 + 16 * len(note_rows)
+H = top + ROWH * (len(ROWS) + 1) + 108 + DY + 10 + 16 * len(note_rows) + 30
 cx0, cw = 222, 50          # six word cells
 o = []
 a = o.append
@@ -101,25 +109,27 @@ text{font-family:Helvetica, Arial, sans-serif;fill:#1f2328;font-size:12px}
 .k2{fill:#fff8c5;stroke:#9a6700;stroke-width:1.4}
 </style>''')
 a(f'<rect x="0" y="0" width="{W}" height="{H}" fill="#ffffff"/>')
-a('<text x="20" y="26" class="t">Group fields are six-word arrays: group k\'s word n is at side base + n + 2k</text>')
-a('<text x="20" y="45" class="c">Meaning-cell border = evidence for the field\'s role. Yellow column: group 2, the worked example below.</text>')
+a('<text x="20" y="26" class="t">Reading an army group\'s fields: each field is an array of six words, one per group</text>')
+a('<text x="20" y="45" class="c">Group k\'s word n is at side base + n + 2k. Meaning-cell border = evidence for the field\'s role. Yellow column: group 2, the worked example below.</text>')
 for i, r in enumerate(lead_rows):
     if r:
         a(f'<text x="20" y="{68 + i * 17}" style="font-size:12.5px">{html.escape(r)}</text>')
+for i, r in enumerate(key_rows):
+    a(f'<text x="20" y="{68 + len(lead_rows) * 17 + 4 + i * 14.5 - 4:.1f}" class="c" style="font-size:11px">{html.escape(r)}</text>')
 a(f'<g transform="translate(0,{DY})">')
-for x, cls, lab in ((20,"pv","proven (gated routine or whole-image scan)"),(300,"cr","code read"),(395,"na","not named")):
+for x, cls, lab in ((20,"pv","proven (checked against the game\'s code, or a whole-code scan)"),(405,"cr","inferred (read from the code)"),(600,"na","not named")):
     a(f'<rect x="{x}" y="54" width="22" height="12" class="{cls}"/><text x="{x+27}" y="64" class="s">{lab}</text>')
 # frames box
 a('<rect x="20" y="80" width="420" height="152" rx="4" fill="#f6f8fa" stroke="#57606a" stroke-width="1"/>')
 lines = [
- ('h','Two frames for the same word'),
+ ('h','Two ways to reach the same word'),
  ('', 'side base = <tspan class="m">$51538 + side * $13c</tspan> (316 bytes, 5 sides)'),
- ('', 'AI loop <tspan class="m">$6564</tspan>: <tspan class="m">A1 = base + D7</tspan>, <tspan class="m">D7 = 2k</tspan>'),
+ ('', 'AI loop (<tspan class="m">$6564</tspan>): pointer <tspan class="m">A1 = base + D7</tspan>, <tspan class="m">D7 = 2k</tspan>'),
  ('', '   field at <tspan class="m">n(A1)</tspan>, e.g. men <tspan class="m">52(A1)</tspan>'),
- ('', 'executor, entity modes: group offset'),
+ ('', 'executor and men\'s handlers: group offset'),
  ('', '   <tspan class="m">D2 = side * $13c + $4c + 2k</tspan>, field at <tspan class="m">(n - 76)</tspan>'),
  ('', '   e.g. men <tspan class="m">-24(A3)</tspan>, pending <tspan class="m">-72(A0)</tspan> at <tspan class="m">$4220</tspan>'),
- ('s','Header: long +0 queued flag, byte +1 type, word +2 parameter.'),
+ ('s','Header: +0 queued-order flag (32 bits), +1 type (byte), +2 parameter (word).'),
 ]
 y = 100
 for cls, t in lines:
@@ -134,14 +144,14 @@ ex = [
  ('', 'men again: <tspan class="m">$51538 + $18c - 24 = $516ac</tspan>'),
  ('', 'owner: <tspan class="m">$51674 + 28 + 4 = $51694</tspan>'),
  ('s','Trap: 30(A1) is group k+1\'s owner, not a field of group k;'),
- ('s','a REPL "w" writes a longword, covering two groups\' words.'),
+ ('s','a 4-byte (longword) write here covers two groups\' words.'),
 ]
 y = 100
 for cls, t in ex:
     a(f'<text x="470" y="{y}"{" class=%s" % chr(34)+cls+chr(34) if cls else ""}>{t}</text>'); y += 18
 # table header
 hy = top
-a(f'<text x="20" y="{hy}" class="h">n(A1)</text><text x="70" y="{hy}" class="h">group</text><text x="120" y="{hy}" class="h">field</text>')
+a(f'<text x="20" y="{hy}" class="h">AI</text><text x="70" y="{hy}" class="h">exec</text><text x="120" y="{hy}" class="h">field</text>')
 for k in range(6):
     a(f'<text x="{cx0 + k*cw + 25}" y="{hy}" class="h" text-anchor="middle">k={k}</text>')
 a(f'<text x="{cx0 + 6*cw + 12}" y="{hy}" class="h">meaning</text>')
@@ -164,9 +174,9 @@ for i, (n, lab, mean, ev) in enumerate(ROWS):
 fy = y0 + len(ROWS) * ROWH + 22
 foot = [
  'Cell numbers are byte offsets from the side base. +160 shows only item 0 (pike); item i\'s six words are at +160 + 12i .. +170 + 12i, up to +255.',
- 'Proven: the field is an input or output of $6522 (gate_cmdai.py 323/323 natural), $6ac6 (exec_census.py 44/44), $3e06 or the order senders (gate_orders.py);',
- 'aggression "display only" is a whole-image scan (py/aggr/scan_group_field.py, text segment to $1c488). Offsets are from the code, strategy.md "$51538".',
- '+280: $c a category-4 record, 0 unset; written by $4a7a and $4bc8 (classifier $4de2); $5778 overwrites it with the attacker\'s offset (bug, live 1/1).',
+ 'Proven: the field is an input or output of the commander AI ($6522, 323/323 states), the executor routing ($6ac6, 44/44), $3e06 or the order senders;',
+ 'aggression "display only" comes from a scan of the whole game code (text segment to $1c488). Offsets are read from the code.',
+ '+280: $c a category-4 record, 0 unset; written by $4a7a and $4bc8 (classifier $4de2); $5778 overwrites it with the attacker\'s offset (a bug, observed 1 of 1).',
  'The captain panel $9090 recovers side and 2k from A3 - $51538 divided by $13c; it prints Food, Troops and the aggression line from these arrays.',
 ]
 for j, t in enumerate(foot):
@@ -175,6 +185,11 @@ ny = fy + len(foot) * 16 + 14
 for j, (cls, t) in enumerate(note_rows):
     if t:
         a(f'<text x="20" y="{ny + j*16}"{" class=%s" % chr(34) + cls + chr(34) if cls else ""}>{html.escape(t)}</text>')
+SRC = ('Sources: strategy.md "$51538 group-order table", "Data structures (C)"; check scripts gate_cmdai.py, exec_census.py, '
+       'gate_orders.py; scan py/aggr/scan_group_field.py; generator py/docs/gen_group_soa.py; group_soa.facts.md.')
+sy = ny + len(note_rows) * 16 + 2
+for j, r in enumerate(wrap(SRC, LW, 9.5)):
+    a(f'<text x="20" y="{sy + j*12.5}" style="font-size:9.5px;fill:#57606a">{html.escape(r)}</text>')
 a('</g>')
 a('</svg>')
 out = os.path.join(os.environ.get("PM_WORK", here), "group_soa.svg")

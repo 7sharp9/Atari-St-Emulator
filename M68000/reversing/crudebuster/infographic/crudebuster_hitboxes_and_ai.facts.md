@@ -55,11 +55,32 @@ named in its footer.
 - The chart label "table A, player idle" was changed to "table A, you standing" (the row is pose 0, variant 0).
 - The lanes diagram's canvas cut off the table C label (above the top edge) and drew the table B band under the ruler;
   the canvas is now taller and the bands sit above the ruler. No numbers changed.
-- **Stale played-through section (not changed, per the brief).** N "Results" says level 1 is cleared at frame 13,582 by
-  the current bot (14,262 was the version before the `heli` rule) and level 2 is cleared at frame 22,811; `natural.json`
-  and the page say "Only level 1 is cleared", level 1 at 14,262, and level 2 "to the helicopter". The page's fact "Whether
-  a jump clears them has not been tested yet" is also stale: N says the level 2 column at x 2291 is cleared by a jump
-  (`hop` mode) and the level 4 column at x 1779 is not (taller than the 48 px jump). `natural.json` needs refreshing from N.
+- **Played-through section (refreshed from `player/natural.md` "Results" and the rules table).** Level 1 is cleared at frame 13,582 by
+  the current bot (14,262 with the version before the `heli` rule), level 2 is cleared at frame 22,811, the level 2 column at
+  x 2291 is passed by a jump (`hop` mode, x 2291 to 2329) and the level 4 column at x 1779 is not (taller than the 48 px
+  jump). `natural.json` and the page text were rewritten from those rows; rows are cited below.
 - The armoured cyborg's "12% each" is E1's 12.5% rounded. The page calls its four far-range states (d, e, f, `$10`) "jump and special states"; E1 4.1 says states d, e, f, `$10` are its long beam (hit object C4, reach 80 px). The page wording was left; the new takeaway says only "special states".
 - The bruiser's state `$10` is "recover, 32 frames" (E1 3.2), but `build.py` groups every state from `b` up as "attack or
   special", so it is coloured as an attack in the chart. Left as is; the legend says "type-specific".
+
+## Clarity pass: sources for the added or reworded sentences
+
+| sentence on the page | source |
+|---|---|
+| subtitle "an arcade game, studied by running it in the MAME emulator" | R first paragraph (MAME is emulator and oracle) |
+| Setup: "the other games in this series are for the Atari ST, a home computer"; "reverse-engineering the game while it ran in an emulator"; "a 68000 disassembler" | GLOSSARY.md "Atari ST", "oracle"; R first paragraph; old Setup sentence |
+| key line; evidence words proven / observed / inferred and their definitions | clarity-pass conventions. Mapping used: old "measured" with a rule-against-game match count (397 tests, 71 hits, 0 disagreements; 2,628 melee tests, 13 hits, 0 disagreements; 83 of 83 health decrements) is "proven"; other "measured" is "observed"; "read" and "decoded" are "inferred"; "open" is unchanged |
+| frame 2097 caption "overlaps the jab box (848 to 888)" | correction: body box 876 to 891 against jab box 848 to 888 overlaps, it is not inside (891 > 888); numbers are the old caption's |
+| "a short-lived rectangle (a hit object) is built for one frame" | the old "a one-frame hit object is built" and the How-to-read of "What a hit costs" |
+| "if the enemy is on your level, the target's current pose and its variant pick the leaf"; "same level"; "jump to your level / drop" | the old "in the same lane" and table A definition (E1 2.6: table A = between 32 px above and 96 px below you) |
+| takeaway "The moves differ mainly in height and in timing, not in reach" | the old takeaway (same facts, lesson first) |
+| "The one health pickup restores 8 and only works below 48 health" | the old bullet without "pool A object" |
+| Played-through intro "Levels 1 and 2 are cleared ... The final bot is not monotonic" | N "Results" (levels 1 and 2 rows; "it is **not monotonic**") |
+| Level 1 row: clear flag at 13,582 in every run of the current bot; 14,262 with the version before the heli rule; 33 of 33; heli mode, seven entries between 7,538 and 9,556; leader arena opens 760 frames earlier; roller dead by 6000, leader arena by 11020, leader dead by 13340, flag 256 frames after the leader's death; lock walls jabbed away at 943 and 3448 | N "Results" row 1; N rules table "Lock walls break under jabs" (level 1 at frames 943 and 3448). The old row's frames 5998, 11773, 14006 and 2244, 2940, 3131 belonged to the 14,262 version or are not in N and were dropped |
+| Level 0 row | N "Results" row 0 (not run further, 6000 frames) |
+| Level 2 row: cleared at 22,811 (23,145 in a replay from the post-helicopter state); heli parts jabbed down, 14,500 to 16,700 frames; column at x $900 hopped; conveyor block crossed by repeated hops; fights at $93a to $9c5; final boss killed in boss mode; 55 of 59 entries seen | N "Results" row 2; rules table "A tile column...", "The level 2 raised block is a conveyor", "The level 2 final boss is fought in the air" |
+| Level 3 row | N "Results" row 3 (loops in the ladder search at x 500 to 535; boss at $600; ledge at $801) |
+| Level 4 row: ladder found at frame 13879; halts at x 1779 in front of a wall tile that a jump does not clear; enemy type 53 waits below; 75,850 points at frame 27,100 | N "Results" row 4; rules table "A tile column..." (the jump test at x 1779) |
+| Level 5 row: ladder up at x 990 at frame 9895; final block scroll $e21, 88,700 points at frame 45,000; final version stuck in the first fight (x 641); final boss never met | N "Results" row 5 (the old row said frame 30460; N says 45,000) |
+| bullet "A jump clears the level 2 column ...; it does not clear the level 4 column, which is taller than the 48 px jump" now "observed" | N rules table row "A tile column in the floor row stops a walking player; a jump gets over it" |
+| takeaway "a jump got over the level 2 wall but not the level 4 one" | same row |

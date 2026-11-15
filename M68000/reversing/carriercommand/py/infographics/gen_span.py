@@ -212,7 +212,7 @@ def run_of(tag, c=None, y=None):
     return [r for j, r in zip(jobs, RUNS) if j[0] == tag and (c is None or j[1] == c) and (y is None or j[4] == y)]
 
 # ---- svg ----------------------------------------------------------------------------------------
-from igtext import para, height
+from igtext import para, height, KEY
 W = 900
 s = []
 a = s.append
@@ -226,9 +226,11 @@ def caption_h(w, read, take):
     return height('**How to read.** ' + read, w, 11.5) + 4 + height('**Takeaway.** ' + take, w, 11.5)
 
 c1, c2 = PAIRS[EX_C]
-LEAD = ('Carrier Command (Realtime Games, 1988) is a real-time strategy and vehicle game drawn in filled-polygon '
-        '3D on an 8 MHz 68000 with no blitter. Every polygon is painted one horizontal line (a span) at a time by '
-        'routine $4678, the most-called routine in the game (2079 calls per 1.2 million emulated instructions). '
+LEAD = ('Carrier Command (Realtime Games, 1988) is a real-time strategy and vehicle game for the Atari ST, drawn '
+        'in filled-polygon 3D on an 8 MHz 68000 processor with no blitter (block-copy chip). This figure comes '
+        'from reverse-engineering the game in an emulator. Every polygon is painted one horizontal line at a time; '
+        'one such run of pixels is a span. The span routine ($4678) is the most-called routine in the game (2079 '
+        'calls per 1.2 million instructions executed in the emulator). '
         'A general-purpose filler would have to decide, for every word it writes, whether to set or clear each '
         'colour bit. This one does not: before each polygon, routine $494c rewrites the filler\'s own '
         'instructions and constants for that colour (self-modifying code), so the inner loop only writes. It '
@@ -236,47 +238,51 @@ LEAD = ('Carrier Command (Realtime Games, 1988) is a real-time strategy and vehi
         'span so that steep edges leave no gaps.')
 A_READ = ('The Atari ST\'s 16-colour low-resolution screen stores pixels in bitplanes: each group of 16 pixels is '
           'four consecutive 16-bit words, one per plane, and a pixel\'s colour number takes one bit from each '
-          'word (bit p from plane p; bit 15 is the leftmost pixel). Top strip: real output of $4678 drawing '
+          'word (bit p from plane p; bit 15 is the leftmost pixel). Top strip: real output of the span routine drawing '
           'colour 9 (%1001, so planes 0 and 3) over a row of colour 6 (%0110); the black outline is the span, '
           'screen x 37 to 74. Below it: the four plane words of each 16-pixel group, black for a 1 bit, with '
           'the word in hex.')
-A_TAKE = ('Colouring a span means setting its bits in some planes and clearing them in others. Groups wholly '
-          'inside the span are plain stores of two longwords (A0, A5); only the two edge groups need a mask '
-          'that keeps the pixels outside the span, and that is where the patched instructions sit.')
-B_READ = ('One row per solid colour: the colour, its index in binary, the four opcodes the patcher writes into '
-          'both edge routines (one per plane, plane 0 first), and the A0 and A5 values the middle stores. Blue '
+A_TAKE = ('A span is mostly plain stores: colouring it means setting its bits in some planes and clearing them '
+          'in others, and groups wholly inside the span are stores of two longwords (A0, A5, the two registers '
+          'that hold the colour). Only the two edge groups need a mask that keeps the pixels outside the span '
+          '(tables at $4658 and $476c), and that is where the patched instructions sit.')
+B_READ = ('One row per solid colour: the colour, its index in binary, the four opcodes (CPU instruction codes) '
+          'that the patching routine writes into both edge routines (one per plane, plane 0 first), and the A0 '
+          'and A5 values (two CPU registers) the middle stores. Blue '
           '8D5C is an "or" that sets the span\'s bits in that plane; grey C75C is an "and" that clears them.')
-B_TAKE = ('Read the opcode column as the colour\'s bits from plane 0 up: the table at $49e4 is just the 16 '
-          'precomputed answers. The filler never decides anything per pixel or per word.')
+B_TAKE = ('Precompute the answers and the inner loop has nothing to decide: read the opcode column as the '
+          'colour\'s bits from plane 0 up, and the table at $49e4 is just the 16 precomputed answers. The filler '
+          'never decides anything per pixel or per word.')
 C_READ = (f'Worked example, code {EX_C}: colours {c1} and {c2} alternate pixel by pixel, and the next row is '
-          f'shifted by one, which makes a checkerboard. The four constants are what $494c patches into the '
+          f'shifted by one, which makes a checkerboard. The four constants are what the patching routine writes into the '
           f'dither loop for this code. The strip is six rows of real output, each labelled with the constant '
           f'pair it used. Below: all 48 dithers, each a small tile of real output.')
-C_TAKE = ('Even the choice of loop is patched. The branch at $46c0 becomes bvs (never taken) for a solid colour '
-          'or bvc (always taken) for a dither, because the add before it cannot overflow, so the choice costs '
-          'nothing per span. The phase comes from the screen row, so the pattern is fixed to the screen, not '
+C_TAKE = ('Even the choice of loop is patched, so it costs nothing per span. The branch at $46c0 becomes bvs '
+          '(never taken) for a solid colour or bvc (always taken) for a dither, because the add before it cannot '
+          'overflow. The phase comes from the screen row, so the pattern is fixed to the screen, not '
           'to the polygon (from code).')
 D_READ = (f'Two thin slanted polygons in colour {DCOL}, eight rows each, magnified so one square is one pixel. '
           f'The outlined dark green squares are the span the edge walk computed for each row; pale green squares '
-          f'are the pixels the widening added. Each row was drawn by the game\'s own filler in the emulator, '
-          f'with the stored ends of the previous row set first.')
-D_TAKE = ('A steep edge moves several pixels per row, so successive spans need not touch. Two comparisons per '
-          'row stretch each span back to the previous row\'s far end, and the sliver stays connected. The rule '
+          f'are the pixels the widening added.')
+D_TAKE = ('A steep edge moves several pixels per row, so successive spans would not touch. Two comparisons per '
+          'row stretch each span back to the previous row\'s far end, so the sliver stays connected. The rule '
           'is proven; that its purpose is closing gaps is inferred.')
-KNOW = (f'**How we know.** **Proven** means observed in an emulator running the game\'s own code, with a count of '
-        f'matches (N/N = matches out of cases). Every pixel and patched byte on this page is emulator output, by '
-        f'callcap: the emulator restores a saved game state (c_s30, a Strategy game in progress), calls one '
-        f'routine with chosen inputs and records the result. $494c was called for all 64 colour codes, and the '
-        f'bytes it patched equal what the tables at $49e4, $4ae4 and $4b64 predict ({patch_ok}/64). $4678 was '
-        f'called on {len(jobs)} rows, and {emu_ok}/{len(jobs)} equal span_gate.py\'s Python model, including '
+KNOW = (f'**How we know.** **Proven** means checked against the game\'s own code with a count of matches '
+        f'(N/N = matches out of cases). Every pixel and patched byte on this page is output of the game\'s own '
+        f'code: a "callcap" restores a saved game state (a Strategy game in progress), runs one routine alone on '
+        f'chosen inputs and records the result. The patching routine ($494c) was run for all 64 colour codes, and '
+        f'the bytes it patched equal what the tables at $49e4, $4ae4 and $4b64 predict ({patch_ok}/64). The span '
+        f'routine ($4678) was run on {len(jobs)} rows, and {emu_ok}/{len(jobs)} equal our Python model\'s, including '
         f'{nV} rows on a random background (64 codes x 8 spans x 2 phases x 2 previous spans). As a control, a '
         f'model with the dither phase flipped and the widening dropped matches only 531/{len(jobs)}, so the '
-        f'check can tell the difference. Colours are the palette loaded in the snapshot. $hex numbers are '
-        f'addresses in the game\'s memory, given as citations.')
+        f'check can tell the difference. Colours are the palette loaded in the saved state.')
+SRCLINE = ('Sources: reversing/carriercommand/render.md section 5; py/render/span_gate.py (the model); saved state '
+           'c_s30; cached emulator output span_emu.json.')
 lead_h = height(LEAD, 852, 13)
+key_y0 = 64 + lead_h + 2
 INK, MUTE, ACC, BAD, GRID = '#1f2328', '#656d76', '#0969da', '#cf222e', '#d0d7de'
 a('<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 900 __H__" width="900" height="__H__" role="img" aria-labelledby="t d">')
-a('<title id="t">A filler that rewrites itself per colour</title>')
+a('<title id="t">Fast polygon fill: a routine that rewrites itself for each colour</title>')
 a('<desc id="d">Carrier Command (1988) fills every polygon scanline with $4678, whose opcodes and immediates '
   '$494c patches for each of 16 solid colours and 48 checkerboard dithers; each span is widened to touch the '
   'previous one. Source: reversing/carriercommand/render.md section 5 and py/render/span_gate.py; bytes read '
@@ -287,8 +293,9 @@ a('<style>text{font-family:Helvetica,Arial,sans-serif;fill:%s;font-size:12px}.t{
   '.cs{font-family:Menlo,monospace;font-size:10.5px}'
   '.s{font-size:11px;fill:%s}</style>' % (INK, MUTE, MUTE))
 a('<rect width="900" height="__H__" fill="#ffffff"/>')
-a('<text x="24" y="38" class="t">A filler that rewrites itself per colour</text>')
+a('<text x="24" y="38" class="t">Fast polygon fill: a routine that rewrites itself for each colour</text>')
 para(a, LEAD, 24, 64, 852, size=13, color=INK)
+para(a, KEY, 24, key_y0 + 11, 852, size=10.5, color=MUTE)
 
 def panel(x, y, w, h, title):
     a(f'<rect x="{x}" y="{y}" width="{w}" height="{h}" rx="6" fill="none" stroke="{GRID}"/>')
@@ -298,9 +305,9 @@ def cell(x, y, w, h, fill, stroke=None):
     a(f'<rect x="{x:.1f}" y="{y:.1f}" width="{w:.1f}" height="{h:.1f}" fill="{fill}"{st}/>')
 
 # A: bitplanes ----------------------------------------------------------------------------------
-PA = int(64 + lead_h + 2)
+PA = int(key_y0 + height(KEY, 852, 10.5) + 8)
 hA = 344 + caption_h(820, A_READ, A_TAKE) - 2
-panel(24, PA, 852, hA, 'A. Low resolution is four interleaved bitplanes: a colour is one bit in each of four words')
+panel(24, PA, 852, hA, 'A. How the Atari ST stores colour: four bitplanes, one bit of the colour in each')
 a(f'<text x="38" y="{PA+44}" class="s">16 pixels share four consecutive words, planes 0 to 3; bit 15 is the leftmost pixel. Bit p of the colour index is the pixel\'s bit in plane p,</text>')
 a(f'<text x="38" y="{PA+58}" class="s">so colour 9 = %1001 sets planes 0 and 3. Below, $4678 draws colour 9 from screen x 37 to 74 over a row of colour 6 = %0110 (emulator output).</text>')
 rowA = run_of('A')[0]['row']
@@ -330,9 +337,9 @@ for p in range(4):
 # instruction notes under each group
 lm, rm = LMASK[37 & 15], RMASK[74 & 15]
 notes = [
-    ('left edge: $46e8..$46ef', f'keep mask $4658[5] = ${lm:04x}', 'or.w D6 / and.w D3, one per plane'),
-    ('middle: unrolled loop', 'move.l A0,(A4)+  planes 0-1', 'move.l A5,(A4)+  planes 2-3'),
-    ('right edge: $4758..$475f', f'keep mask $476c[10] = ${rm:04x}', 'the same four patched opcodes'),
+    ('left edge: $46e8..$46ef', f'keeps outside pixels: ${lm:04x}', 'or.w D6 / and.w D3, one per plane'),
+    ('middle: plain stores', 'move.l A0,(A4)+  planes 0-1', 'move.l A5,(A4)+  planes 2-3'),
+    ('right edge: $4758..$475f', f'keeps outside pixels: ${rm:04x}', 'the same four patched opcodes'),
 ]
 for g, (l1, l2, l3) in enumerate(notes):
     gx = ax0 + 16 * pw * g + 6
@@ -344,12 +351,13 @@ caption(38, PA + 344, 820, A_READ, A_TAKE)
 # B: solid colours ------------------------------------------------------------------------------
 PB = PA + hA + 14
 c1, c2 = PAIRS[EX_C]
-hBC = max(456 + caption_h(392, B_READ, B_TAKE), 384 + caption_h(392, C_READ, C_TAKE)) - 2
-panel(24, PB, 420, hBC, 'B. 16 solid colours: four patched opcodes each')
-a(f'<text x="38" y="{PB+44}" class="s">$494c writes $69 (bvs) to $46c0, then copies one 16-byte entry</text>')
-a(f'<text x="38" y="{PB+58}" class="s">of the table at $49e4: four opcodes to both edges, A0 and A5.</text>')
+hBC = max(472 + caption_h(392, B_READ, B_TAKE), 384 + caption_h(392, C_READ, C_TAKE)) - 2
+panel(24, PB, 420, hBC, 'B. Solid colours: the patcher rewrites four instructions each')
+a(f'<text x="38" y="{PB+44}" class="s">The patching routine ($494c) sets a branch at $46c0 to $69, which</text>')
+a(f'<text x="38" y="{PB+58}" class="s">selects the solid-colour loop, then copies one 16-byte entry of</text>')
+a(f'<text x="38" y="{PB+72}" class="s">the table at $49e4: four opcodes for each edge, plus A0 and A5.</text>')
 hx = [38, 66, 124, 284, 350]
-hy = PB + 84
+hy = PB + 100
 for x, t in zip(hx, ['', 'colour', 'opcodes at $46e8 and $4758', 'A0', 'A5']):
     a(f'<text x="{x}" y="{hy}" class="s" style="font-weight:bold">{t}</text>')
 for c in range(16):
@@ -370,16 +378,16 @@ a(f'<text x="38" y="{ly+34}" class="s">Opcode k serves plane k, so the opcode co
 a(f'<text x="38" y="{ly+48}" class="s">bits from plane 0. The four words reach planes 0 to 3 by (A4)+.</text>')
 
 # C: dithers ------------------------------------------------------------------------------------
-caption(38, PB + 456, 392, B_READ, B_TAKE)
+caption(38, PB + 472, 392, B_READ, B_TAKE)
 PC = PB
-panel(456, PC, 420, hBC, 'C. 48 dithers: patched immediates, phase per row')
+panel(456, PC, 420, hBC, 'C. 48 checkerboard dithers, chosen by patching constants')
 c1, c2 = PAIRS[EX_C]
 m = SETUP[EX_C]['mem']
 L = lambda addr: (m[addr] << 24) | (m[addr+1] << 16) | (m[addr+2] << 8) | m[addr+3]
-a(f'<text x="470" y="{PC+44}" class="s">$494c writes $68 (bvc) to $46c0. The filler\'s add.w (A3),D3 never</text>')
-a(f'<text x="470" y="{PC+58}" class="s">overflows, so bvc always jumps to the dither loop and bvs never does.</text>')
+a(f'<text x="470" y="{PC+44}" class="s">For a dither the patcher sets the branch at $46c0 to $68 (bvc).</text>')
+a(f'<text x="470" y="{PC+58}" class="s">The add before it never overflows, so it always jumps to the dither loop.</text>')
 a(f'<text x="470" y="{PC+78}" class="s">Code {EX_C} = colours {c1} and {c2} (byte pair at $1544 + 2 x {EX_C}). The</text>')
-a(f'<text x="470" y="{PC+92}" class="s">immediates are $5555 rows of colour {c1} plus $aaaa rows of colour {c2}:</text>')
+a(f'<text x="470" y="{PC+92}" class="s">constants are $5555 rows of colour {c1} plus $aaaa rows of colour {c2}:</text>')
 iy = PC + 112
 a(f'<text x="470" y="{iy}" class="cs">$47b4 A0 = ${L(0x47b4):08x}  $47ba A5 = ${L(0x47ba):08x}</text>')
 a(f'<text x="470" y="{iy+15}" class="cs">$47c2 A0 = ${L(0x47c2):08x}  $47c8 A5 = ${L(0x47c8):08x}</text>')
@@ -394,8 +402,8 @@ for k, (y, row) in enumerate(rowsC):
         cell(470 + i * cw, gy + k * cw, cw, cw, rgb(v))
     odd = (y + 1) & 1
     a(f'<text x="{470 + NC*cw + 10}" y="{gy + k*cw + 8}" class="cs" style="font-size:9.5px">row {y}: {"$47b4/$47ba" if odd else "$47c2/$47c8"}</text>')
-a(f'<text x="470" y="{gy + 6*cw + 16}" class="s">btst #0 of D7\'s high word (the row, plus one) picks the pair, so</text>')
-a(f'<text x="470" y="{gy + 6*cw + 30}" class="s">the checkerboard is fixed to screen x and y (rows from $4678).</text>')
+a(f'<text x="470" y="{gy + 6*cw + 16}" class="s">The row number plus one (bit 0 of D7\'s high word) picks the pair,</text>')
+a(f'<text x="470" y="{gy + 6*cw + 30}" class="s">so the checkerboard is fixed to the screen, not to the polygon.</text>')
 ty = gy + 6 * cw + 46
 a(f'<text x="470" y="{ty}" class="s" style="font-weight:bold">All 48 dither pairs at $1544, codes 16 to 63</text>')
 for i, c in enumerate(range(16, 64)):
@@ -410,8 +418,8 @@ for i, c in enumerate(range(16, 64)):
 # D: span overlap -------------------------------------------------------------------------------
 caption(470, PC + 384, 392, C_READ, C_TAKE)
 PD = PB + hBC + 14
-hD = 262 + caption_h(820, D_READ, D_TAKE) - 2
-panel(24, PD, 852, hD, 'D. Each span is widened to touch the previous one')
+hD = 294 + caption_h(820, D_READ, D_TAKE) - 2
+panel(24, PD, 852, hD, 'D. Steep edges would leave gaps, so each span is widened to touch the previous one')
 dc = 10
 dx0, dy0 = 40, PD + 54
 NX = 64
@@ -434,13 +442,14 @@ cell(lx, lyD - 9, 10, 10, rgb(DCOL)); a(f'<text x="{lx+16}" y="{lyD}" class="s">
 cell(lx + 250, lyD - 9, 10, 10, '#9be9a8'); a(f'<text x="{lx+266}" y="{lyD}" class="s">pixels added by the widening</text>')
 a(f'<text x="{lx}" y="{lyD+22}" class="s">Without the widening these rows, stepping 3 and 4 pixels a row, would not touch even at a corner;</text>')
 a(f'<text x="{lx}" y="{lyD+36}" class="s">with it each row reaches back to the previous row\'s far end. That this is to close gaps is inferred.</text>')
-a(f'<text x="{lx}" y="{lyD+56}" class="s">Each row: callcap $4678 with $9ee/$9f0 set to the previous row\'s result; {vstats["D"][0]}/{vstats["D"][1]} rows match the model.</text>')
+para(a, f'Each row was drawn by the game\'s own span routine ($4678) in the emulator, with the stored span ends ($9ee/$9f0) set to the previous row\'s result; {vstats["D"][0]}/{vstats["D"][1]} rows match our model.', lx, lyD + 56, 600, size=11, color=MUTE)
 rx = 708
-rules = [('h', 'The rule ($4680..$4698)'), ('c', "xr' = max(xr, prev xl')"), ('c', "xl' = min(xl, prev xr')"),
+rules = [('h', 'The rule (code at $4680..$4698)'), ('s', 'Each end reaches back to the'), ('s', 'previous row\'s far end:'),
+         ('c', "xr' = max(xr, prev xl')"), ('c', "xl' = min(xl, prev xr')"),
          ('s', "$9ee := xr'   $9f0 := xl'"), ('s', 'then clamp to the 256-pixel'), ('s', f'viewport and add {VX}'),
          ('s', ''), ('s', '$494c starts each polygon'), ('s', 'with $9ee = $7fff, $9f0 = $8001,'),
-         ('s', 'so the first row is unchanged.'), ('s', ''), ('s', 'span_gate.py: 780/780 rows,'),
-         ('s', '0 tracker mismatches.')]
+         ('s', 'so the first row is unchanged.'), ('s', ''), ('s', 'A check script: 780/780 rows,'),
+         ('s', '0 mismatches in the stored ends.')]
 ry = dy0 + 6
 for kind, t in rules:
     if kind == 'h': a(f'<text x="{rx}" y="{ry}" class="s" style="fill:{INK};font-weight:bold">{t}</text>')
@@ -448,11 +457,12 @@ for kind, t in rules:
     elif t: a(f'<text x="{rx}" y="{ry}" class="s">{t}</text>')
     ry += 15
 
-caption(38, PD + 262, 820, D_READ, D_TAKE)
+caption(38, PD + 294, 820, D_READ, D_TAKE)
 KY = PD + hD + 14
-kh = height(KNOW, 820, 11.5)
+kh = height(KNOW, 820, 11.5) + 6 + height(SRCLINE, 820, 9)
 a(f'<rect x="24" y="{KY:.1f}" width="852" height="{kh+16:.1f}" rx="6" fill="{NOTE}" stroke="{GRID}"/>')
-para(a, KNOW, 38, KY + 20, 820, size=11.5, color=INK)
+yk = para(a, KNOW, 38, KY + 20, 820, size=11.5, color=INK)
+para(a, SRCLINE, 38, yk + 6, 820, size=9, color=MUTE)
 H = int(KY + kh + 30)
 a('</svg>')
 (OUT / 'span.svg').write_text('\n'.join(s).replace('__H__', str(H)))

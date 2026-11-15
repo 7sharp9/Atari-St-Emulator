@@ -35,6 +35,14 @@ Every curve is computed from the port `py/units/atan_port.py`, which matched `ca
 | within 0.15 degrees over 200,000 random inputs | vehicles.md 2 |
 | proven = emulator observation with a count; inferred = read from code only | ai.md opening ("Proof labels"), which vehicles.md adopts |
 
+| title: a compass bearing with no floating point, two divides and one table | lead ("The 68000 has no floating point", "two divides and one table of 128 numbers"), same sources |
+| the game is an Atari ST game; the figure comes from reverse-engineering it in an emulator | README.md opening; glossary ("Atari ST") |
+| step captions in words (signed/unsigned divide, 16 bits, mirror back, 0 to 45 degrees) | same facts as the old captions; `$2000` = 45 degrees from `$4000` = 90 |
+| takeaway lessons (symmetry does most of the work; a coarse table is enough; 128 entries accurate to 27 units; negating the most negative 16-bit number returns it) | reworded from the panel's own numbers and the `neg.w` explanation above; no new claim |
+| panel D hex answers in degrees: `$a000` 225, `$e000` 315, `$8000` 180; `$6000` 135, `$a000` 225, `$c000` 270 | arithmetic on the unit definition (360/65536 per unit) |
+| key line under the lead (addresses are citations; proven / observed / inferred) | conventions of the clarity pass; `GLOSSARY.md` "Evidence labels" |
+| "How we know" names no file or snapshot in the prose; one Sources line in small type | same sources as the table above |
+
 ## Flags
 
 - The -32768 error is up to 45 degrees off the axes and 90 only on them, and dz = -32768 triggers it as well as

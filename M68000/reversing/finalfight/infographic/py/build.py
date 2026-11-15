@@ -73,10 +73,10 @@ def worked(f, land):
     rows = [
         ("attack box", "%s: centre (%d, %d), half %d × %d" % (name(a), a["atk"]["cx"], a["atk"]["cy"], a["atk"]["hw"], a["atk"]["hh"]), ""),
         ("hurt box", "%s: centre (%d, %d), half %d × %d" % (name(v), v["hurt"]["cx"], v["hurt"]["cy"], v["hurt"]["hw"], v["hurt"]["hh"]), ""),
-        ("1 reach list", "x gap %d, %d + 128 = %d ≤ 256" % (dxr, dxr, dxr + 128), ok(0 <= dxr + 128 <= 256)),
-        ("2 depth lane", "ground line gap %+d, window −12 to +9" % g, ok(-12 <= g <= 9)),
-        ("3 x overlap", "dx %d, s %d: %d ≤ %d" % (land["dx"], land["sx"], (land["dx"] + land["sx"]) & 0xffff, 2 * land["sx"]), ok(F.passes(land["dx"], land["sx"]))),
-        ("4 y overlap", "dy %d, s %d: %d ≤ %d" % (land["dy"], land["sy"], (land["dy"] + land["sy"]) & 0xffff, 2 * land["sy"]), ok(F.passes(land["dy"], land["sy"]))),
+        ("1 near enough along the street? (reach list)", "x gap %d, %d + 128 = %d ≤ 256" % (dxr, dxr, dxr + 128), ok(0 <= dxr + 128 <= 256)),
+        ("2 at the right depth? (depth lane)", "ground line gap %+d, window −12 to +9" % g, ok(-12 <= g <= 9)),
+        ("3 boxes overlap in x?", "dx %d, s %d: %d ≤ %d" % (land["dx"], land["sx"], (land["dx"] + land["sx"]) & 0xffff, 2 * land["sx"]), ok(F.passes(land["dx"], land["sx"]))),
+        ("4 boxes overlap in y?", "dy %d, s %d: %d ≤ %d" % (land["dy"], land["sy"], (land["dy"] + land["sy"]) & 0xffff, 2 * land["sy"]), ok(F.passes(land["dy"], land["sy"]))),
     ]
     assert all("fail" not in r[2] for r in rows)
     return "<table>" + "".join("<tr><th>%s</th><td>%s</td><td>%s</td></tr>" % (esc(k), esc(v_), p) for k, v_, p in rows) + "</table>"
@@ -162,12 +162,12 @@ def build():
     a_svg, fa, la = hero("st_bb_4800_1", "A frame of stage 1: BRED's jab lands on Cody, with every hurt and attack box drawn over it")
     b_svg, fb, lb = hero("st_a_boss_mid_1", "A frame of the stage 0 boss fight: Cody's jab lands on DAMND, with every hurt and attack box drawn over it")
     ca = la["vic"]; ba = la["att"]
-    cap_a = ("<b>BRED jabs Cody.</b> Stage 1, camera x %d. Cody's record names the attacker (<code>+60</code> = $%x, BRED), the blow (<code>+22</code> = %d) and a hit-stop of %d frames. "
-             "The jab box also covers the knife fighter beside BRED. Nothing happens to him: the game tests blows only against players.") % (fa["camx"], ba["addr"] & 0xffffff, ca["hit22"], ca["stop"])
+    cap_a = ("<b>BRED jabs Cody.</b> Stage 1, camera x %d. Cody's record names the attacker (BRED) and the blow (blow id %d, field <code>+22</code>), and both fighters freeze for a hit-stop of %d frames. "
+             "The jab box also covers the knife fighter beside BRED. Nothing happens to him: the game tests blows only against players.") % (fa["camx"], ca["hit22"], ca["stop"])
     cb = lb["vic"]; bb = lb["att"]
-    cap_b = ("<b>Cody jabs DAMND.</b> Stage 0 boss fight, camera x %d. DAMND's record names Cody (<code>+60</code> = $%x) and the blow (<code>+22</code> = %d). "
+    cap_b = ("<b>Cody jabs DAMND.</b> Stage 0 boss fight, camera x %d. DAMND's record names the attacker (Cody) and the blow (blow id %d, field <code>+22</code>). "
              "The jab box is %d wide and %d tall, %d to %d px above Cody's feet. DAMND's hurt box is %d by %d.") % (
-        fb["camx"], bb["addr"] & 0xffffff, cb["hit22"], 2 * bb["atk"]["hw"], 2 * bb["atk"]["hh"], bb["atk"]["cy"] - bb["atk"]["hh"] - bb["y"], bb["atk"]["cy"] + bb["atk"]["hh"] - bb["y"], 2 * cb["hurt"]["hw"], 2 * cb["hurt"]["hh"])
+        fb["camx"], cb["hit22"], 2 * bb["atk"]["hw"], 2 * bb["atk"]["hh"], bb["atk"]["cy"] - bb["atk"]["hh"] - bb["y"], bb["atk"]["cy"] + bb["atk"]["hh"] - bb["y"], 2 * cb["hurt"]["hw"], 2 * cb["hurt"]["hh"])
     data, pre = widget()
     css = open(os.path.join(HERE, "style.css")).read()
     js = open(os.path.join(HERE, "page.js")).read()

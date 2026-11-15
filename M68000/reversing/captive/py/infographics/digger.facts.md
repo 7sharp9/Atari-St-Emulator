@@ -76,3 +76,21 @@ and D1-D7 equal the emulator capture byte for byte.
 | port = register-level translation that must leave the whole 13,756-byte block equal; gate 1000/1000; control 2 of 4 gives 0/1000 | mapgen.md "The digger and rooms" ("Proof", "Controls"); 13,756 from this file's header |
 | G0 holds carve numbers, G2 the arrow | mapgen.md "Carving" (`$24f3c` writes D4 into G0), "The flow field" (value into G2 byte 0) |
 | a step / instruction count is 68000 instructions run by the emulator | emulator convention (`DEVELOPING.md`) |
+
+## Clarity pass: sources for the added or reworded sentences
+
+Wording only; no number changed (the script's printed numbers are identical before and after; the cached corpus numbers were reused for layout, as the script's `DIGGER_CACHE=1` does).
+
+| sentence in the figure | source |
+|---|---|
+| "for the Atari ST"; "reverse-engineering the game while it ran in an emulator" | GLOSSARY.md "Atari ST"; the figure's "How we know" |
+| key line | clarity-pass conventions |
+| panel A tag "proven: our Python version matches the game byte for byte, base 5" | the old tag "port = emulator, whole module block, seed 5"; fact row "Seed: base 5" above |
+| panel A takeaway: whole generator "on 400 of 400 bases; the digger stage alone matches on 1000 of 1000 (panel B)" | 400/400: `mapgen.md` opening ("Proven 400 of 400", D2 = 0 and 1, D0 = 0..99 and 300..399); 1000/1000 and 100/100: `mapgen.md` "The digger and rooms" (`digger/dig.py gate`) and the stage table row 5 |
+| panel B tag "1000/1000 bases match; a changed rule 0/1000" | the old tag "gate 1000/1000; 2-of-4 control 0/1000" |
+| the sentence "Base 5: 368 of the 2,702 tests after a step pass" is no longer drawn | removed as unexplained; its facts row above stays true |
+| panel C title "One 16-bit random number per step"; tag "observed: counted in our Python version" | the old title "One random word per step" and tag "counted from the port" |
+| "(over the 1000 bases: 0 in 626,856)" | the old "(corpus: ...)" |
+| panel D title "The route map ($24f4c): each cell points at its lowest number"; tag "proven: our model matches the game on 915/915 cells"; "Creatures follow this \"flow field\" (inferred)" | the old title "The flow field" and tag "emulator G2 = model"; fact row "creatures follow the field" |
+| panel E "Where they come from"; "N/1000 loop-free" | the old title and "N/1000 trees" (a tree here is a base whose carved cells have no cycle, the How to read) |
+| "The Python version" / "Checks" paragraphs; "the digger stage; the whole generator was compared on 400 bases" | the old "The port" / "Gates" paragraphs; mapgen.md as in the 400/1000 row |

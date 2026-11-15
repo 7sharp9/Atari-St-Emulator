@@ -1,4 +1,4 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 900 1423" width="900" height="1423" role="img" aria-labelledby="t3 d3" xml:space="preserve">
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 900 1534" width="900" height="1534" role="img" aria-labelledby="t3 d3" xml:space="preserve">
 <title id="t3">Order pipeline: from a click or an AI decision to the arrival executor</title>
 <desc id="d3">How an order travels: the player's click or the commander AI's $6822 write, the command slot $58016, the executor $6a3a / $6ac6, the three routes (run now, the dead direct branch $6b20, the carrier pigeon $4562), the pigeon's arrival $41dc clearing the pending word at $4220, the handler table $6b5a, the senders and the arrival executors, with the gate that proves each step.
 Sources: reversing/powermonger/strategy.md "The commander AI `$6522`" (queued orders, "The pending word"), "`$6822`: issuing an order", "`$6a3a` / `$6ac6` / `$6b38` the order executor", "The executor, proven", "What an AI invention order does", "The order senders and arrival executors, proven", "Transfer `$664c`, `$668c`" (k25: pigeon landed 6,279,910 steps later);
@@ -20,33 +20,35 @@ text{font-family:Helvetica, Arial, sans-serif;fill:#1f2328;font-size:12px}
 .lni{stroke:#bc4c00;stroke-width:1.5;fill:none;stroke-dasharray:2 3;marker-end:url(#a)}
 </style>
 <defs><marker id="a" viewBox="0 0 8 8" refX="7" refY="4" markerWidth="7" markerHeight="7" orient="auto"><path d="M0,0 L8,4 L0,8 z" fill="#424a53"/></marker></defs>
-<rect x="0" y="0" width="900" height="1423" fill="#ffffff"/>
+<rect x="0" y="0" width="900" height="1534" fill="#ffffff"/>
 
-<text x="20" y="26" class="t">Order pipeline: click or AI decision to arrival, and the pending word 4(group)</text>
-<text x="20" y="45" class="c">Box border = evidence for that step; the green line in a box names its gate. Each count is from the run or gate named in the box.</text>
-<rect x="20" y="54" width="22" height="12" class="pv"/><text x="47" y="64" class="s">proven (callcap gate)</text>
-<rect x="190" y="54" width="22" height="12" class="lv"/><text x="217" y="64" class="s">live (seen running)</text>
-<rect x="345" y="54" width="22" height="12" class="cr"/><text x="372" y="64" class="s">code read</text>
-<rect x="460" y="54" width="22" height="12" class="in"/><text x="487" y="64" class="s">inferred</text>
+<text x="20" y="26" class="t">How an order reaches a unit, and how a stuck "order in flight" flag can freeze an army</text>
+<text x="20" y="45" class="c">Box border = how well each step is verified; the green line in a box says which check verified it. Counts come from the runs or checks named in the box.</text>
+<rect x="20" y="54" width="22" height="12" class="pv"/><text x="47" y="64" class="s">proven (checked against the game's own code)</text>
+<rect x="320" y="54" width="22" height="12" class="lv"/><text x="347" y="64" class="s">observed (seen in the running game)</text>
+<rect x="570" y="54" width="22" height="12" class="cr"/><text x="597" y="64" class="s">inferred (read from the code, not run)</text>
 
 
-<text x="20" y="88.5" style="font-family:Helvetica, Arial, sans-serif;font-size:12.5px;font-weight:normal;fill:#1f2328">PowerMonger (Bullfrog / Electronic Arts, 1990) is a war game in which you give orders, not controls: the player picks an order icon (go,</text>
-<text x="20" y="105.5" style="font-family:Helvetica, Arial, sans-serif;font-size:12.5px;font-weight:normal;fill:#1f2328">attack, get men, take food and so on) and clicks a target on the map, and a captain's group walks there and acts. The computer lords</text>
-<text x="20" y="122.5" style="font-family:Helvetica, Arial, sans-serif;font-size:12.5px;font-weight:normal;fill:#1f2328">issue their orders through the same command slots and the same executor. The first captain's own group acts at once; an order for any</text>
-<text x="20" y="139.5" style="font-family:Helvetica, Arial, sans-serif;font-size:12.5px;font-weight:normal;fill:#1f2328">other captain is carried to him by a carrier pigeon and takes effect when it lands.</text>
-<text x="20" y="161.4" style="font-family:Helvetica, Arial, sans-serif;font-size:12.5px;font-weight:normal;fill:#1f2328">The figure follows one order from the click or the AI's decision to the routine that carries it out, and tracks the pending word</text>
-<text x="20" y="178.4" style="font-family:Helvetica, Arial, sans-serif;font-size:12.5px;font-weight:normal;fill:#1f2328">4(group): the field that marks a group whose order is still in the air, and which the commander AI reads as "do not decide for this</text>
-<text x="20" y="195.4" style="font-family:Helvetica, Arial, sans-serif;font-size:12.5px;font-weight:normal;fill:#1f2328">group".</text>
-<g transform="translate(0,142.75)"><!-- Row 1: sources -->
+<text x="20" y="88.5" style="font-family:Helvetica, Arial, sans-serif;font-size:12.5px;font-weight:normal;fill:#1f2328">PowerMonger (Bullfrog / Electronic Arts, 1990, here the Atari ST version) is a war game in which you give orders, not controls: the</text>
+<text x="20" y="105.5" style="font-family:Helvetica, Arial, sans-serif;font-size:12.5px;font-weight:normal;fill:#1f2328">player picks an order icon (go, attack, get men, take food and so on) and clicks a target on the map, and a captain's group walks there</text>
+<text x="20" y="122.5" style="font-family:Helvetica, Arial, sans-serif;font-size:12.5px;font-weight:normal;fill:#1f2328">and acts. The computer lords issue their orders through the same command slots and the same executor. The first captain's own group acts</text>
+<text x="20" y="139.5" style="font-family:Helvetica, Arial, sans-serif;font-size:12.5px;font-weight:normal;fill:#1f2328">at once; an order for any other captain is carried to him by a carrier pigeon and takes effect when it lands. This figure comes from</text>
+<text x="20" y="156.5" style="font-family:Helvetica, Arial, sans-serif;font-size:12.5px;font-weight:normal;fill:#1f2328">reverse-engineering the game's 68000 machine code (the ST's CPU) and running it in an emulator.</text>
+<text x="20" y="178.4" style="font-family:Helvetica, Arial, sans-serif;font-size:12.5px;font-weight:normal;fill:#1f2328">The figure follows one order from the click or the AI's decision to the routine that carries it out, and tracks the pending word</text>
+<text x="20" y="195.4" style="font-family:Helvetica, Arial, sans-serif;font-size:12.5px;font-weight:normal;fill:#1f2328">4(group), also called the in-flight flag: the field that marks a group whose order is still in the air, and which the commander AI reads</text>
+<text x="20" y="212.4" style="font-family:Helvetica, Arial, sans-serif;font-size:12.5px;font-weight:normal;fill:#1f2328">as "do not decide for this group". If it stays set, the group is frozen; the large blue box shows how that happens.</text>
+<text x="20" y="227.4" style="font-family:Helvetica, Arial, sans-serif;font-size:11px;font-weight:normal;fill:#424a53">$ numbers are addresses in the game's memory, given as citations; the text says what each one is. Evidence: proven = checked against the game's own code</text>
+<text x="20" y="241.9" style="font-family:Helvetica, Arial, sans-serif;font-size:11px;font-weight:normal;fill:#424a53">with a match count; observed = seen in the running game; inferred = read from the code or reasoned, not run.</text>
+<g transform="translate(0,197.75)"><!-- Row 1: sources -->
 <rect x="20" y="80" width="270" height="56" rx="4" class="lv"/>
 <text x="30" y="98" class="b">Player: icon, then a target click</text>
 <text x="30" y="115">writes type and cell into the local slot</text>
-<text x="30" y="130" class="s">natural clicks captured from m1_s0</text>
+<text x="30" y="130" class="s">natural clicks captured in the running game</text>
 
 <rect x="310" y="80" width="570" height="56" rx="4" class="pv"/>
-<text x="320" y="98" class="b">Commander AI <tspan class="m">$6522</tspan> arm <tspan class="b">→</tspan> <tspan class="m">$67ee</tspan> (cell as x &lt;&lt; 8 | y) <tspan class="b">→</tspan> <tspan class="m">$6822</tspan></text>
-<text x="320" y="115">refuses only when <tspan class="m">76(group)</tspan> already equals <tspan class="m">$6888[type]</tspan> (never natural)</text>
-<text x="320" y="130" class="g">gate_cmdai.py leaves: 160 states, 666 changed bytes and D0</text>
+<text x="320" y="98" class="b">Commander AI (<tspan class="m">$6522</tspan>) decides <tspan class="b">→</tspan> <tspan class="m">$67ee</tspan> packs the cell (x &lt;&lt; 8 | y) <tspan class="b">→</tspan> <tspan class="m">$6822</tspan> issues</text>
+<text x="320" y="115">refuses only if the group is already in that state: <tspan class="m">76(group) = $6888[type]</tspan> (never natural)</text>
+<text x="320" y="130" class="g">proven on 160 states: 666 changed bytes and register D0</text>
 
 <!-- Row 2 -->
 <path d="M445,136 V157" class="ln"/><path d="M740,136 V157" class="ln"/>
@@ -56,7 +58,7 @@ text{font-family:Helvetica, Arial, sans-serif;fill:#1f2328;font-size:12px}
 <text x="320" y="210" class="s">byte 1 type, word 2 parameter</text>
 
 <rect x="600" y="160" width="280" height="56" rx="4" class="pv"/>
-<text x="610" y="178">any other group: <tspan class="m b">4(group) := D7</tspan>  (pending set)</text>
+<text x="610" y="178">any other group: sets the flag <tspan class="m b">4(group) := D7</tspan></text>
 <text x="610" y="195">order in the record header <tspan class="m">base+1/+2</tspan></text>
 <text x="610" y="210">slot gets type <tspan class="m">$22</tspan>, parameter <tspan class="m">D7</tspan></text>
 
@@ -64,19 +66,19 @@ text{font-family:Helvetica, Arial, sans-serif;fill:#1f2328;font-size:12px}
 <rect x="600" y="240" width="280" height="56" rx="4" class="lv"/>
 <text x="610" y="258"><tspan class="m">$22</tspan>→<tspan class="m">$6d90</tspan>→<tspan class="m">$3ce8</tspan>: <tspan class="m">$58042[side]</tspan> := group k;</text>
 <text x="610" y="274">the next <tspan class="m">$6522</tspan> pass copies the header order</text>
-<text x="610" y="289" class="s">1 hit each (rand1 click); AI end to end: k25 $04</text>
+<text x="610" y="289" class="s">1 hit each (player click); AI once (land 25, $04)</text>
 
 <!-- Row 3: $6a3a -->
 <path d="M155,136 V317" class="ln"/><path d="M445,216 V317" class="ln"/><path d="M740,296 V317" class="ln"/>
 <rect x="20" y="320" width="860" height="40" rx="4" class="pv"/>
-<text x="30" y="337"><tspan class="m">$6a3a</tspan> every tick: slots 1..4, dispatch on state byte 4 through <tspan class="m">$6a80</tspan>; clears type and parameter afterwards</text>
-<text x="30" y="353" class="g">gate_exec.py: 80/80 synthetic states (2393 bytes), 288 natural states (157 bytes, 9 natural pigeon launches)</text>
+<text x="30" y="337">Every tick the executor (<tspan class="m">$6a3a</tspan>) reads slots 1..4 and dispatches on state byte 4 through <tspan class="m">$6a80</tspan>; it then clears type and parameter</text>
+<text x="30" y="353" class="g">proven: 80/80 constructed states (2393 bytes), 288 natural states (157 bytes, 9 natural pigeon launches)</text>
 
 <!-- Row 4: $6ac6 -->
 <path d="M450,360 V375" class="ln"/>
 <rect x="20" y="378" width="860" height="40" rx="4" class="pv"/>
-<text x="30" y="395"><tspan class="m">$6ac6</tspan> routes on the type and the group's sender word <tspan class="m">48</tspan> (the lead of the side's first group; 0 for that group)</text>
-<text x="30" y="411" class="g">exec_census.py: routing 44/44 poked slots against the model</text>
+<text x="30" y="395">Routing (<tspan class="m">$6ac6</tspan>) on the type and the group's sender word <tspan class="m">48</tspan> (the lead of the side's first group; 0 for that group)</text>
+<text x="30" y="411" class="g">proven: routing on 44/44 slots set by hand, against our Python model</text>
 
 <!-- Row 5: three routes -->
 <path d="M155,418 V439" class="ln"/><path d="M445,418 V439" class="ln"/><path d="M740,418 V439" class="ln"/>
@@ -85,28 +87,28 @@ text{font-family:Helvetica, Arial, sans-serif;fill:#1f2328;font-size:12px}
 <text x="30" y="477">type <tspan class="m">&gt;= $22</tspan>, or no sender</text>
 <text x="30" y="493">(the commander's own group)</text>
 <text x="30" y="509"><tspan class="m b">4(group)</tspan> is left as it is</text>
-<text x="30" y="526" class="s">live: order $12 from m1_s0, $4562 0 hits</text>
+<text x="30" y="526" class="s">observed: order $12, $4562 0 hits</text>
 
 <rect x="310" y="442" width="270" height="92" rx="4" class="cr"/>
-<text x="320" y="460" class="b">Direct: <tspan class="m">$6b20 clr.w -72(A1)</tspan></text>
+<text x="320" y="460" class="b">Direct branch: <tspan class="m">$6b20 clr.w -72(A1)</tspan></text>
 <text x="320" y="477">meant for sender cell = lead's cell;</text>
 <text x="320" y="493">reads record 0 via <tspan class="m">$51b5a</tspan>, so taken</text>
 <text x="320" y="509">only for a sender at cell (0, 0)</text>
-<text x="320" y="526" class="s">0 hits in 21 stretches; 5/5 with $51b5a poked</text>
+<text x="320" y="526" class="s">0 hits in 21 stretches; 5/5 with it set by hand</text>
 
 <rect x="600" y="442" width="280" height="92" rx="4" class="pv"/>
 <text x="610" y="460" class="b">Carrier pigeon: <tspan class="m">$4562</tspan></text>
 <text x="610" y="477">first free of 47 records, rider = the</text>
 <text x="610" y="493">group's lead, flight byte <tspan class="m">$78</tspan>; none free:</text>
 <text x="610" y="509">the order is lost</text>
-<text x="610" y="526" class="g">gate_pigeon_send.py 1567/1567, 125 states</text>
+<text x="610" y="526" class="g">proven: 1567/1567 bytes over 125 states</text>
 
 <!-- Row 6: flight -->
 <path d="M740,534 V555" class="ln"/>
 <rect x="600" y="558" width="280" height="62" rx="4" class="lv"/>
 <text x="610" y="576">flight in <tspan class="m">$3e06</tspan> (<tspan class="m">$416e..$4326</tspan>): count</text>
 <text x="610" y="592">down, re-steer toward the rider</text>
-<text x="610" y="612" class="s">about 70M steps (side 3); 6,279,910 (k25)</text>
+<text x="610" y="612" class="s">about 70M steps (side 3); 6,279,910 (land 25)</text>
 
 <!-- Row 7: arrival -->
 <path d="M740,620 V641" class="ln"/>
@@ -114,64 +116,68 @@ text{font-family:Helvetica, Arial, sans-serif;fill:#1f2328;font-size:12px}
 <text x="610" y="662"><tspan class="m">$41dc</tspan> arrival, rider alive:</text>
 <text x="610" y="678"><tspan class="m">$4220 clr.w -72(A0)</tspan>: <tspan class="m b">4(group) := 0</tspan></text>
 <text x="610" y="694">packet {side, type, target} → <tspan class="m">$6b38</tspan></text>
-<text x="610" y="712" class="s">live: 1 of 1 natural landing cleared it</text>
+<text x="610" y="712" class="s">observed: 1 of 1 natural landing cleared it</text>
 
 <!-- pending note -->
 <rect x="20" y="558" width="560" height="162" rx="4" class="lv"/>
-<text x="30" y="577" class="b">The pending word <tspan class="m">4(group)</tspan> (array <tspan class="m">base + 4 + 2k</tspan> = <tspan class="m">-72</tspan> from the group offset)</text>
+<text x="30" y="577" class="b">The in-flight flag, the pending word <tspan class="m">4(group)</tspan> (<tspan class="m">base + 4 + 2k</tspan> = <tspan class="m">-72</tspan> from the group offset)</text>
 <text x="30" y="597">Set by <tspan class="m">$6822</tspan> for any group but the side's own. Cleared only at <tspan class="m">$4220</tspan> (pigeon</text>
-<text x="30" y="613">landing) and <tspan class="m">$6b20</tspan>. While it is set, <tspan class="m">$6564</tspan> skips the group: no new decision.</text>
-<text x="30" y="631" class="b">Stuck words, a game bug after the side's first group dies:</text>
+<text x="30" y="613">landing) and <tspan class="m">$6b20</tspan>. While it is set, the AI loop (<tspan class="m">$6564</tspan>) skips the group.</text>
+<text x="30" y="631" class="b">Stuck flags, a game bug after the side's first group dies:</text>
 <text x="30" y="647"><tspan class="m">$2776</tspan> frees the side's pigeons (<tspan class="m">$27c6</tspan>), pending words stay set;</text>
 <text x="30" y="663">a new <tspan class="m">$4562</tspan> copies the dead sender's owner byte (<tspan class="m">$45a8</tspan>), and</text>
 <text x="30" y="679"><tspan class="m">$3e06</tspan> skips a pigeon with owner &lt;= 0 (<tspan class="m">$417a</tspan>): it never flies.</text>
-<text x="30" y="697" class="s">py/arms/pending_census.py, 183 snapshots of live play, 357 set words: 70 pigeon in flight, 142 dead</text>
-<text x="30" y="712" class="s">sender, 141 no pigeon left, 4 queued; 4 with a live first group (strategy.md). Watch-proven on rand1_s1.</text>
+<text x="30" y="697" class="s">Counted over 183 saved games from live play, 357 set flags: 70 pigeon in flight, 142 dead</text>
+<text x="30" y="712" class="s">sender, 141 no pigeon left, 4 queued; 4 with a live first group.</text>
 
 <!-- Row 8: $6b38 -->
 <path d="M20,488 H9 V780 H17" class="ln"/>
 <path d="M445,534 V546 H590 V757" class="ln"/>
 <path d="M740,720 V757" class="ln"/>
 <rect x="20" y="760" width="860" height="40" rx="4" class="pv"/>
-<text x="30" y="777"><tspan class="m">$6b38</tspan>: clear type; types <tspan class="m">&gt;= $34</tspan> exit; handler <tspan class="m">= $6b5a + word[$6b5a + type]</tspan></text>
-<text x="30" y="793" class="g">exec_census.py handler 32/32; live: 12 dispatches at $6b56 over 6 handlers (k60_s2)</text>
+<text x="30" y="777">Dispatch (<tspan class="m">$6b38</tspan>): clear the type; types <tspan class="m">&gt;= $34</tspan> exit; otherwise jump through the table at <tspan class="m">$6b5a</tspan> by type</text>
+<text x="30" y="793" class="g">proven: handler choice 32/32; observed: 12 dispatches at $6b56 over 6 handlers (one saved game)</text>
 
 <!-- Row 9 -->
 <path d="M230,800 V821" class="ln"/><path d="M670,800 V821" class="ln"/>
 <rect x="20" y="824" width="420" height="96" rx="4" class="pv"/>
-<text x="30" y="842" class="b">Senders</text>
+<text x="30" y="842" class="b">Senders (the handlers for each order type)</text>
 <text x="30" y="859"><tspan class="m">$3154</tspan>→<tspan class="m">$4b80</tspan>, <tspan class="m">$3888</tspan>, <tspan class="m">$38ce</tspan>, <tspan class="m">$390e</tspan>, <tspan class="m">$6128</tspan>, <tspan class="m">$3248</tspan>,</text>
 <text x="30" y="875"><tspan class="m">$4a7a</tspan>, <tspan class="m">$1c18</tspan>: group state, lead target cell, lead mode <tspan class="m">$10</tspan></text>
-<text x="30" y="893" class="g">gate_orders.py 61143/61143 bytes over 2273 states;</text>
-<text x="30" y="909" class="g">wrapper_check.py 36/36 register sets</text>
+<text x="30" y="893" class="g">proven: 61143/61143 bytes over 2273 states;</text>
+<text x="30" y="909" class="g">and 36/36 register sets (wrapper check)</text>
 
 <path d="M440,872 H457" class="ln"/>
 <rect x="460" y="824" width="420" height="96" rx="4" class="pv"/>
-<text x="470" y="842" class="b">The lead walks (<tspan class="m">$14b62</tspan>, ai.md), then the arrival executor</text>
-<text x="470" y="859"><tspan class="m">$3956</tspan> (mode <tspan class="m">$74</tspan>), <tspan class="m">$3da4</tspan> (<tspan class="m">$7a</tspan>), <tspan class="m">$5fa0</tspan> (<tspan class="m">$22</tspan>), in <tspan class="m">gate_orders.py</tspan></text>
-<text x="470" y="877" class="s">AI invention order $0e (live): handler 157k to 181k steps after $6822</text>
+<text x="470" y="842" class="b">The lead walks (<tspan class="m">$14b62</tspan>), then the arrival executor</text>
+<text x="470" y="859"><tspan class="m">$3956</tspan> (mode <tspan class="m">$74</tspan>), <tspan class="m">$3da4</tspan> (<tspan class="m">$7a</tspan>), <tspan class="m">$5fa0</tspan> (<tspan class="m">$22</tspan>): proven with the senders</text>
+<text x="470" y="877" class="s">AI invention order $0e (observed): handler 157k to 181k steps after $6822</text>
 <text x="470" y="893" class="s">(4 issues); arrival 295k to 525k steps after $6c48 (22 of 22);</text>
 <text x="470" y="909" class="s">26 of 30 natural orders reach $5fa0, 4 replaced by a later order</text>
 
-<text x="20" y="946" class="s">For the side's own group (D7 = 0) $6822 writes 4(group) := 0. A local $22 reaches $3ce8 only while $2df96 is set. Player order to a second captain, live (rand1.snap,</text>
-<text x="20" y="962" class="s">py/captain2/drive_order.sh): $3ce8 sets $58042[side] := $18a; the posture click launches $4562 (1 hit), counter $57fd8+2 goes 0 to 1, $41dc writes it back to 0</text>
+<text x="20" y="946" class="s">For the side's own group (D7 = 0) $6822 writes 4(group) := 0. A local $22 reaches $3ce8 only while $2df96 is set. Player order to a second captain, observed in</text>
+<text x="20" y="962" class="s">one saved game: $3ce8 sets $58042[side] := $18a; the posture click launches $4562 (1 hit), counter $57fd8+2 goes 0 to 1, $41dc writes it back to 0</text>
 <text x="20" y="978" class="s">(at $4206) about 9.97M steps later, and $35a0 sets group 1's posture 3 to 2. Steps are emulator instructions.</text>
 </g>
-<text x="20" y="1149.8" style="font-family:Helvetica, Arial, sans-serif;font-size:13px;font-weight:bold;fill:#1f2328">How to read it</text>
-<text x="20" y="1170.8" style="font-family:Helvetica, Arial, sans-serif;font-size:11.5px;font-weight:normal;fill:#1f2328">Read top to bottom: boxes are the routines an order passes through and arrows the path it takes. Row 1 holds the two sources. $6822 writes an order</text>
-<text x="20" y="1186.3" style="font-family:Helvetica, Arial, sans-serif;font-size:11.5px;font-weight:normal;fill:#1f2328">for the side's own group (the one $58042 names) straight into the side's command slot ($58016, one 6-byte slot per side); for any other group it</text>
-<text x="20" y="1201.8" style="font-family:Helvetica, Arial, sans-serif;font-size:11.5px;font-weight:normal;fill:#1f2328">writes the order into the side record's header and sets the pending word. Every tick the executor $6a3a reads the slots and $6ac6 picks one of three</text>
-<text x="20" y="1217.3" style="font-family:Helvetica, Arial, sans-serif;font-size:11.5px;font-weight:normal;fill:#1f2328">routes: run now (left), a direct branch that is dead in play (middle, dashed), or a carrier pigeon (right) that flies for millions of steps and, on</text>
-<text x="20" y="1232.8" style="font-family:Helvetica, Arial, sans-serif;font-size:11.5px;font-weight:normal;fill:#1f2328">landing, clears the pending word and hands the order on. The routes meet at $6b38, which dispatches on the order type to a sender; the group's lead</text>
-<text x="20" y="1248.3" style="font-family:Helvetica, Arial, sans-serif;font-size:11.5px;font-weight:normal;fill:#1f2328">then walks to the target, where an arrival executor finishes the order. The large blue box is the pending word and its bug.</text>
-<text x="20" y="1268.8" style="font-family:Helvetica, Arial, sans-serif;font-size:11.5px;font-weight:normal;fill:#1b5e20">Takeaway: the commander AI skips a group while its pending word is set, so an order that never flies freezes that group. When a side's first group</text>
-<text x="20" y="1284.3" style="font-family:Helvetica, Arial, sans-serif;font-size:11.5px;font-weight:normal;fill:#1b5e20">dies its pigeons are freed but the pending words stay set, and later orders copy the dead sender and never fly: of 357 set pending words in 183</text>
-<text x="20" y="1299.8" style="font-family:Helvetica, Arial, sans-serif;font-size:11.5px;font-weight:normal;fill:#1b5e20">snapshots of live play, 142 belonged to a dead sender and 141 had no pigeon.</text>
-<text x="20" y="1321.9" style="font-family:Helvetica, Arial, sans-serif;font-size:13px;font-weight:bold;fill:#1f2328">Terms and evidence</text>
-<text x="20" y="1342.9" style="font-family:Helvetica, Arial, sans-serif;font-size:11.5px;font-weight:normal;fill:#1f2328">Proven (callcap gate): the routine was rewritten in Python and run beside the game's own 68000 code, called in isolation from saved states with the</text>
-<text x="20" y="1358.4" style="font-family:Helvetica, Arial, sans-serif;font-size:11.5px;font-weight:normal;fill:#1f2328">emulator's callcap command, and every changed byte matched; "1567/1567" is matching bytes out of bytes compared, "125 states" the saved states used.</text>
-<text x="20" y="1373.9" style="font-family:Helvetica, Arial, sans-serif;font-size:11.5px;font-weight:normal;fill:#1f2328">Live: seen running in the emulator and counted. Code read: from the disassembly only. m1_s0, rand1, rand1_s1, k25 and k60_s2 are saved states of the</text>
-<text x="20" y="1389.4" style="font-family:Helvetica, Arial, sans-serif;font-size:11.5px;font-weight:normal;fill:#1f2328">game (snapshots) that runs start from. Steps are emulated 68000 instructions. 4(group) is the pending word and 76(group) the state, in the AI's frame</text>
-<text x="20" y="1404.9" style="font-family:Helvetica, Arial, sans-serif;font-size:11.5px;font-weight:normal;fill:#1f2328">(side base + 2k for group k); -72(A0) is the same pending word reached from the group offset.</text>
-<g transform="translate(0,433.925)"></g>
+<text x="20" y="1204.8" style="font-family:Helvetica, Arial, sans-serif;font-size:13px;font-weight:bold;fill:#1f2328">How to read it</text>
+<text x="20" y="1225.8" style="font-family:Helvetica, Arial, sans-serif;font-size:11.5px;font-weight:normal;fill:#1f2328">Read top to bottom: boxes are the routines an order passes through and arrows the path it takes. Row 1 holds the two sources. $6822 writes an order</text>
+<text x="20" y="1241.3" style="font-family:Helvetica, Arial, sans-serif;font-size:11.5px;font-weight:normal;fill:#1f2328">for the side's own group (the one $58042 names) straight into the side's command slot ($58016, one 6-byte slot per side); for any other group it</text>
+<text x="20" y="1256.8" style="font-family:Helvetica, Arial, sans-serif;font-size:11.5px;font-weight:normal;fill:#1f2328">writes the order into the side record's header and sets the in-flight flag (the pending word). Every tick the executor $6a3a reads the slots and</text>
+<text x="20" y="1272.3" style="font-family:Helvetica, Arial, sans-serif;font-size:11.5px;font-weight:normal;fill:#1f2328">$6ac6 picks one of three routes: run now (left), a direct branch that is dead in play (middle, dashed), or a carrier pigeon (right) that flies for</text>
+<text x="20" y="1287.8" style="font-family:Helvetica, Arial, sans-serif;font-size:11.5px;font-weight:normal;fill:#1f2328">millions of steps and, on landing, clears the flag and hands the order on. The routes meet at $6b38, which dispatches on the order type to a sender;</text>
+<text x="20" y="1303.3" style="font-family:Helvetica, Arial, sans-serif;font-size:11.5px;font-weight:normal;fill:#1f2328">the group's lead then walks to the target, where an arrival executor finishes the order. The large blue box is the in-flight flag and its bug.</text>
+<text x="20" y="1323.8" style="font-family:Helvetica, Arial, sans-serif;font-size:11.5px;font-weight:normal;fill:#1b5e20">Takeaway: the commander AI skips a group while its in-flight flag is set, so an order that never lands freezes that group. When a side's first group</text>
+<text x="20" y="1339.3" style="font-family:Helvetica, Arial, sans-serif;font-size:11.5px;font-weight:normal;fill:#1b5e20">dies its pigeons are freed but the flags stay set, and later orders copy the dead sender and never fly: of 357 set flags in 183 saved games from live</text>
+<text x="20" y="1354.8" style="font-family:Helvetica, Arial, sans-serif;font-size:11.5px;font-weight:normal;fill:#1b5e20">play, 142 belonged to a dead sender and 141 had no pigeon.</text>
+<text x="20" y="1376.9" style="font-family:Helvetica, Arial, sans-serif;font-size:13px;font-weight:bold;fill:#1f2328">Terms and evidence</text>
+<text x="20" y="1397.9" style="font-family:Helvetica, Arial, sans-serif;font-size:11.5px;font-weight:normal;fill:#1f2328">Proven: the routine was rewritten in Python and run beside the game's own 68000 code, called in isolation from saved game states with the emulator's</text>
+<text x="20" y="1413.4" style="font-family:Helvetica, Arial, sans-serif;font-size:11.5px;font-weight:normal;fill:#1f2328">callcap command (which runs one routine from a saved state and records what it changed), and every changed byte matched; "1567/1567" is matching</text>
+<text x="20" y="1428.9" style="font-family:Helvetica, Arial, sans-serif;font-size:11.5px;font-weight:normal;fill:#1f2328">bytes out of bytes compared, "125 states" the saved states used. Observed: seen in the running game and counted. Inferred: read from the disassembly</text>
+<text x="20" y="1444.4" style="font-family:Helvetica, Arial, sans-serif;font-size:11.5px;font-weight:normal;fill:#1f2328">only. Steps are emulated 68000 instructions. 4(group) is the pending word and 76(group) the state, in the AI's frame (side base + 2k for group k);</text>
+<text x="20" y="1459.9" style="font-family:Helvetica, Arial, sans-serif;font-size:11.5px;font-weight:normal;fill:#1f2328">-72(A0) is the same pending word reached from the group offset. Posture is a group's aggression setting (2 aggressive, 3 neutral, 4 passive).</text>
+<text x="20" y="1471.4" style="font-family:Helvetica, Arial, sans-serif;font-size:9.5px;font-weight:normal;fill:#57606a">Sources: strategy.md "The commander AI $6522", "$6822: issuing an order", "The pending word", "The executor, proven", "The order senders and arrival executors, proven", "What an AI</text>
+<text x="20" y="1483.9" style="font-family:Helvetica, Arial, sans-serif;font-size:9.5px;font-weight:normal;fill:#57606a">invention order does", "$51538 group-order table" (posture); ai.md "$4562 how an order reaches a subordinate captain"; saved games m1_s0, rand1, rand1_s1 (one side also watched for</text>
+<text x="20" y="1496.4" style="font-family:Helvetica, Arial, sans-serif;font-size:9.5px;font-weight:normal;fill:#57606a">150M steps), k25 (land 25), k60_s2; scripts gate_cmdai.py, gate_exec.py, exec_census.py, gate_pigeon_send.py, gate_orders.py, wrapper_check.py, py/arms/pending_census.py,</text>
+<text x="20" y="1508.9" style="font-family:Helvetica, Arial, sans-serif;font-size:9.5px;font-weight:normal;fill:#57606a">py/captain2/drive_order.sh; order_pipeline.facts.md.</text>
+<g transform="translate(0,544.425)"></g>
 </svg>
