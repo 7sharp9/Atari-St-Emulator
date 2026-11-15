@@ -27,6 +27,9 @@
 00021608	mul32
 0002246a	decrunch
 00022942	build_world
+00022986	place_people
+00022acc	place_walker_at_cell
+00022b0c	spawn_walker
 00022cde	build_plan_lists
 0002309a	update_entities
 0002311c	entity_state_table
@@ -44,6 +47,8 @@
 00025bf4	ai_magnet_and_mode
 00025db4	ai_reset_pending_slot
 00025dc8	ai_mode_byte_table
+00025dcc	set_leader
+00025e5e	place_magnet
 0002622a	nearest_enemy_entity
 00026522	split_entity
 0002657e	power_cost

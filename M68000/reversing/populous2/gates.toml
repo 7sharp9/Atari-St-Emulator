@@ -70,3 +70,10 @@ cmd = "bash reversing/populous2/py/god/gate_short.sh"
 expect = ["re:(?m)^states 150: model equals callcap \\(changed bytes, both sides\\) 150/150; states with any change 150$", "re:0/150  \\[control reload\\]"]
 cite = "README.md \"The computer god\"; py/README.md"
 minutes = 1
+
+[[gate]]
+name = "people_22986"
+cmd = "{python} reversing/populous2/py/people/people_gate.py 30"
+expect = ["re:natural/random seed: model == emulator 30/30", "re:TOTAL 66/66 cases, whole RAM equal except the dead stack", "re:control 'side 2 scans forward': equal in 0/66", "re:control 'no shape bit 0 test': equal in 0/66"]
+cite = "README.md \"World generator\"; py/README.md"
+minutes = 2

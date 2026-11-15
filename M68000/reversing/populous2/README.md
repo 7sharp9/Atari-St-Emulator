@@ -179,7 +179,7 @@ y position words (high byte the cell, low byte the fraction of a cell), +12 the 
 | `$3f42a` | 200 x 14 bytes | 11 / 11 (type `$16`, side 3) | scenery, updated by `$1fcce` |
 | `$3ff1a` | 400 x `$34` bytes, record 0 the null sentinel | 9 / 18 (sides 1 and 2) | entities, updated by `$2309a` |
 | `$4505a` | 250 x 32 bytes | 0 / 0 | updated by `$26644` (state byte +22, table at `$26668`); not yet seen live |
-| `$46f9a` | 3 x 14 bytes | 2 / 2 (type `$14`, sides 1 and 2, both on cell 32,32) | one per side; by Populous's analogy the papal magnets (inferred) |
+| `$46f9a` | 3 x 14 bytes | 2 / 2 (type `$14`, sides 1 and 2, both on cell 32,32) | one per side, placed by `place_magnet` `$25e5e` (see "People placement"); by Populous's analogy the papal magnets (inferred) |
 
 Each cell's word 2 heads a doubly linked list of the records on it. `move_entity` `$2436e(A0,
 D6=x, D7=y)` writes the new position, unlinks the record from its old cell's list, pushes it on
@@ -307,8 +307,44 @@ one attempt. On the natural seed it places nothing: all 29 of its on-map attempt
 
 On unpoked seeds the bonus never fired (at most 46 trees). The poked half proves the stale-D2
 read: with record 45 still free, the first clusters run with 8 extra attempts until a tree
-overwrites the byte. Then `$22986` places the entities and the two `$46f9a` records and fills the
-side records (writes listed from the snapshots, not yet modelled).
+overwrites the byte.
+
+**People placement `$22986` `place_people` (verified).** The last pass uses no `rand`: the seed
+matters only through the land. For side 1, then side 2 (S = the side record `$46fc4 + side*$13a`):
+
+1. The flag cell is (32,32), or (byte `+110`, byte `+111`) of S when the word `+110` is not
+   negative (naturally side 1 `$ffff`, side 2 `$2020`: both flags land on (32,32)).
+   `place_magnet` `$25e5e` turns the side's 14-byte `$46f9a` record into type `$14`, side in
+   byte 12, `$80` sub-cell bytes, frame `$0a88` (side 1) or `$0a90` (side 2), links it at the head of
+   the cell's occupant list and stores its offset from `$3ff1a` in S `+10`. "Magnet" is inferred
+   (`ai_magnet_and_mode` reads `+10` as the magnet).
+2. S `+100` is copied to `+22`, `+98` to `+2`, `+102` to the long `$47386` (side 1) or `$47388`
+   (side 2). The walker count n is word `+90` (naturally 10 and 3; read from the block `$22c40`
+   copies from `$30470`).
+3. The cells are scanned with no randomness, no occupancy test and no distance test: side 1
+   forward from cell 1, side 2 backward from cell 4095. Pass 1 takes each cell whose shape word
+   `$3697a[b1]` has bit 0 (shape codes 15, 31, 145, 151 and 245, all with corner mask `$f`; "flat
+   land" is inferred). If n walkers are not placed, pass 2 rescans the same way taking every
+   non-sea cell, cells already used included (not reached naturally).
+4. `place_walker_at_cell` `$22acc` calls `spawn_walker` `$22b0c`: the first free record of the
+   399 entity records from `$3ff4e` (byte 12 = 0) becomes a type 2 walker, side in byte 12, the
+   cell's x,y with `$80` sub-cell bytes, bytes 22, 23, 24 = 2, byte 18 = S `+95`, byte 25 =
+   S `+97`, word 28 = S `+92` ("strength" is inferred), word 50 = `(offset/52) & $e`, linked at the
+   head of the cell's list (`link_object`). With the array full A3 is left at `$4505a` and the code
+   carries on (matched).
+5. The first walker of a side is special: on the local side (`$4739c`) it sets the initial scroll
+   `$3e79f`/`$3e7a1` = its x-4, y-4; when `+110` is negative it is the side's leader
+   (`set_leader` `$25dcc`: S `+8`, bit 0 of its byte 13; "leader" is inferred, `+8` is the leader
+   in the computer god's code).
+
+On the natural world (1222 land cells, 58 with the shape bit) side 1's ten walkers stand on
+the first ten such cells in raster order, (11,31), (8,32), (9,32), (8,33) .. (14,33), and side 2's
+three on (52,61), (51,61), (46,59): the people start at the top and bottom of the map and both
+flags in the centre. `py/people/people_gate.py 30` callcaps `$22986` from `$2295a` for 30 poked
+seeds and 36 poked variants (flag position, counts 40, 3000, 0, 399 and 450, local side 2, new
+body bytes) and compares all of RAM except the dead stack: **66/66**; controls: side 2 scanned
+forward 0/66, no shape test 0/66, no scroll bytes 0/66, no flag record 0/66, wrong side-2 frame
+0/66, no leader 12/66 and no second pass 42/66 (equal wherever the branch is unused).
 
 ### Raise and lower (verified, from a click to the cell map)
 

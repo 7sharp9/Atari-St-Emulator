@@ -53,6 +53,11 @@ Updated 2026-11-14 by an overseer session that promoted a subagent's computer-go
   move onto the enemy's oldest settlement have run only in poked states (README "The computer god").
 - Cell codes `$2f`/`$3f` are side 1/side 2 settlement land, not rock: 13/13 settlements on their code, swapped
   0/13, unoccupied ones within 2 cells 28/28 (`py/owned_cells.py`); written by `$25298` in `$25168` (state 6).
+- People placement `place_people` `$22986`, the last pass of `build_world`: model equals `callcap` on every changed RAM
+  byte (dead stack aside) in 66/66 cases, 30 poked seeds plus 36 poked side-record variants
+  (`py/people/people_gate.py 30`, gate `people_22986`); controls 0/66 except no-leader 12/66 and no-second-pass 42/66
+  (equal where the branch is unused). No `rand`: flags on (32,32), side 1 scans forward and side 2 backward for cells
+  with shape bit 0; README "People placement".
 
 ## Running
 
@@ -66,8 +71,11 @@ Nothing running.
    census `$25a32` and `$25b5e` there; that also runs power kinds 2, 4, 6, 8 and the magnet move unpoked. Drive
    controller `$12` from the options screen. Then the entity states beyond 2/4/6 (table `$2311c`) and `$24f3a`
    (state 2's test), `$24a92`; drive a walker into a settle or a fight so the other states run under `hits`.
-2. People placement `$22986` (last pass of `build_world`): from `build/c_22986.snap` callcap it and model the
-   entity, `$46f9a` and side-record writes (listed by diffing `c_22986` and `d_after`).
+2. The per-battle side-record fields `place_people` reads: count `+90`, `+92` (strength, inferred), `+95`, `+97`,
+   `+98`, `+100`, `+102`, flag position `+110`, copied by `$22c40` from `$30470` and filled by `$22ec0` from
+   `$47d3e`/`$47d78`. Only battle 0's values (counts 10 and 3, `+110` `$ffff`/`$2020`) run unpoked; a later battle
+   (item 1) runs the rest. Also: shape bit 0 of `$3697a` as "flat land" (find another reader or `hits` census), and
+   the two type-`$14` `$46f9a` records as the magnets (`hits` on `ai_magnet_and_mode`).
 3. Settlement land claim `$25168`/`$25298`: radius against settlement size byte 1 (`owned_cells.py` gives the cells).
 4. Decrunch: port `$2246a` to Python and compare each `.PAK` against its RAM copy (QAZ.PAK's raw 32000 bytes too);
    then `BLOCKn`/`S16`/`S32` formats for `graphics.md`.
@@ -99,6 +107,6 @@ Nothing running.
 
 ## Next session
 
-1. `/resume populous2`; `uv run python tools/gates.py run populous2` should print 10/10 PASS.
-2. Open item 2 (`$22986` people placement), which finishes the world build; then item 3 (land claim).
-3. Then open item 1: a later battle where side 2's plan list is not empty.
+1. `/resume populous2`; `uv run python tools/gates.py run populous2` should print 11/11 PASS.
+2. Open item 3 (land claim), then item 1: a later battle where side 2's plan list is not empty, which also
+   exercises item 2's side-record fields.
