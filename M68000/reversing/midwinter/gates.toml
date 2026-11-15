@@ -8,6 +8,7 @@ cwd = "py/terrain"
 expect = ["70000/70000", "10000/10000"]
 cite = "terrain.md (opening proof paragraph)"
 minutes = 1
+inputs = ["scratchpad/midwinter/d_decisions.snap", "scratchpad/midwinter/zuul067.st"]
 
 [[gate]]
 name = "army"
