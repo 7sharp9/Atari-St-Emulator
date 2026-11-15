@@ -26,6 +26,10 @@ Repo data for the `continuity` skills; repo-wide rules stay in `CLAUDE.md` and a
 - For a game workstream, follow the `reverse-engineer-st-game` skill during the session.
 - `M68000/scratchpad/` is a persistent, gitignored repo folder, not the session scratchpad: its data is kept
   but never committed, and reusable snapshots are indexed in `M68000/scratchpad/ANCHORS.md`.
+- A gate's untracked inputs are declared in its `gates.toml` entry (`inputs = [...]`, paths relative to `M68000/`;
+  `tools/gates.py` docstring): a gate with no `inputs` gives no way to tell which `scratchpad/` files it needs,
+  so none of them can be cleaned up safely. Before deleting anything under `scratchpad/`, run `uv run python tools/gates.py run all --dry-run` from
+  `M68000/` afterwards: 0 MISSING, or restore what it names.
 
 ## Handoff triggers
 
@@ -37,6 +41,9 @@ Repo data for the `continuity` skills; repo-wide rules stay in `CLAUDE.md` and a
   `ps aux | grep '[M]68000.dll'` on the Mac (quote the pattern under zsh). Never kill one you did not start.
 - The working data and the snapshot named in the session file's "Resume point" exist. If not, rebuild them with
   the recipe the file points to before any live test.
+- Gate inputs for the workstream's game: `uv run python tools/gates.py run <game> --dry-run` from `M68000/`.
+  Report its MISSING gates and its "declare no inputs" count in the resume summary. A MISSING input is rebuilt
+  from its `ANCHORS.md` recipe or restored (gpubox) before the gate is relied on.
 - Before scoping a live test for a carried-over "Open" item, grep the game's topic docs for a numbered section
   that already answers it: an Open item goes stale when a later section settles it.
 - Dropped pass (overrides the plugin's "offer to commit"; uncommitted files and no live session on this
@@ -61,6 +68,11 @@ Repo data for the `continuity` skills; repo-wide rules stay in `CLAUDE.md` and a
   proven (script, snapshot, match count to reach), ordered by what unblocks the most, not by what is easiest.
 - The plugin's mechanical diff checks apply with this repo's paths: a script cited only from a scratchpad is
   promoted into `reversing/<game>/py/` (with its README row) or the result labelled a record, and the tool index is `M68000/DEVELOPING.md`.
+- Gate inputs: every gate of the game that this session added, changed or ran declares `inputs` in `gates.toml`,
+  read from the gate script and the scripts it calls (every `scratchpad/` path or `$<GAME>_WORK` file it opens
+  but does not write first). Each declared snapshot has an `ANCHORS.md` row with its rebuild recipe. Report the
+  game's "declare no inputs" count from `gates.py run <game> --dry-run` at resume and at handoff: it never rises,
+  and a session that ran no gate still declares at least one undeclared gate's inputs until the count is 0.
 - Older continuation notes to fold in and delete: a scratchpad `NEXT_SESSION.md`, a root `next_session.md`, a
   memory RESUME block.
 
