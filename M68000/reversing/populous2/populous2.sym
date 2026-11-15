@@ -37,7 +37,12 @@
 000243f6	link_object
 00024430	unlink_object
 00024de0	cmd_lower_checked
-00025168	settled_tick_25168
+00025168	claim_tick
+000251d8	claim_land
+000252d8	claim_count_ring
+00025368	claim_ring3_clear
+000253b8	claim_shrink
+000253e0	clear_land
 00025652	ai_run_sides
 000256d6	ai_flush_mailbox
 00025770	ai_level_settlement

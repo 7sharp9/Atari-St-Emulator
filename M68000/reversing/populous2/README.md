@@ -196,7 +196,8 @@ reading (inferred).
 
 **Entity records** (`$34` bytes). Two types are live in play: type 4, positioned on a cell centre
 (`$xx80`), in state 6; and type 2, at fractional positions, in state 4. Byte 1 of a type-4 record
-runs 1..`$0c` (unnamed; a settlement size is the Populous reading). +14 and +16 are signed
+is the settlement's size, set by the land claim from the number of usable cells around it (1..`$0c`
+on the play anchors; "Settlement land claim"). +14 and +16 are signed
 velocity words (±`$14`, a twentieth of a cell per tick); +20 a step countdown; +22 the state and
 +23 the state to take next; the long +26 is halved when a record over `$14` is split into a copy
 (`$26522` copies all `$34` bytes into a free slot and sets the copy's state to `$24`), which makes
@@ -235,8 +236,9 @@ side's code (control). Every `$2f`/`$3f` cell without a settlement on it lies wi
 (Chebyshev) of a settlement of the side its code names: 6/6, 17/17, 28/28 (`py/owned_cells.py`).
 The writer is `$25298` in `$25168`, the routine state 6 calls each tick: a `watch` on cell (8,32)
 after the world build catches it writing `$2f` there, and the one on the whole map from
-`p2_game_60m` caught it writing `$3f` at (48,54). How far a settlement claims, and from what, is
-not read yet (the counts suggest a radius that grows with byte 1).
+`p2_game_60m` caught it writing `$3f` at (48,54). How far a settlement claims, and the size byte 1
+it sets from that, are in "Settlement land claim" below; no natural settlement on these anchors
+claims past 2 cells, which is why the census above stops there.
 
 `update_scenery` `$1fcce` walks the 200 scenery records. Byte 1 is a counter: positive values
 count down every tick in which `$3979c & $30e86` is 0; when the record's cell has shape 0 (flag
@@ -244,6 +246,58 @@ count down every tick in which `$3979c & $30e86` is 0; when the record's cell ha
 then counts toward `$30e89` (`$18`), where the record is freed and unlinked (`$24430`). So scenery
 on a cell lowered into the sea dies after `$18` ticks (read; not yet driven). Type `$1e` records
 take a separate path through the animation table `$32902`.
+
+### Settlement land claim `$25168` (modelled and gated against `callcap`)
+
+State 6 (`$23580`) calls `claim_tick` `$25168` once a tick for each settlement, and a return of 0
+or less turns the settlement back into a walker: type 2, state 2, word 10 cleared, its land
+released by `clear_land` `$253e0`. `$25168` runs the claim `claim_land` `$251d8` only when the size
+byte 1 is 0, when the record's index (offset from `$3ff1a` over `$34`) and the tick word `$3979c` agree
+mod 4, or when the settlement's own cell has lost its flat shape (`$3697a[code] & 7 == 0`); otherwise
+it returns byte 1 and touches nothing. So a settlement re-measures its land every fourth tick, and at
+once when the ground under it is lowered. A size above 0 that differs from byte 1 is stored there.
+
+`claim_land` counts usable cells ring by ring through the offset list `$2549a` (the centre, the 8 of
+ring 1, the 16 of ring 2, the 24 of ring 3, ended by `$ff9d`), and each ring is looked at only if
+every cell so far counted:
+
+| looked at | when | count |
+|---|---|---|
+| the centre | always | 0 returns 0 at once: the settlement dies |
+| ring 1 | the centre counted | 1..9 |
+| ring 2 | all 9 counted | 9..25 |
+| ring 3 | all 25 counted and `$25368` finds every ring-3 cell usable | forced to 26 |
+
+A cell counts when it is on the map (the sum of the offset and the `$yyxx` position word has no bit
+of `$c0c0` set), its shape word has a bit of `$17` set and bit 4 clear (codes `$0f`, `$1f`, `$2f`,
+`$3f`: flat land and the two sides' held land), and no occupant in its list has type `$18`. The size
+is `$2547e[count]`: the count itself up to 10, then one size per two cells, `$12` (18) at 26. Every
+other type-4 record (another settlement, of either side) on a looked-at cell whose shape passes
+loses its land and becomes a walker, during the occupant walk and so whether or not a `$18` occupant
+then stops the cell counting (`$25368`, the ring-3 pre-check, demotes nobody). The counted cells
+not already coded with the side's own code (`$2f` side 1, `$3f` side 2) are pushed on a word list at
+`$254fe` and recoded after the count. When the new size is below byte 1, own-coded cells of rings 2
+and 3 (new size under 9) or of ring 3 alone go back to `$0f` first. Last, the 8 neighbours' bytes in
+the 64x64 byte map `$3d79e` are set from `$25562 + 8 * size`: all zero up to size 9, tile-like values
+from size 10 (by Populous's analogy, the building's footprint; inferred, the map's reader is not
+found).
+
+The enemy-land test after the occupant walk, `btst D6,$25366.l` (bit 2 for side 1, bit 1 for side 2,
+meant for the codes `$3f` and `$2f`), is a byte test on memory, so it reads the high byte of the shape
+word stored at `$25366`, which is 0 for every code. It never fires: enemy-coded cells count and are
+recoded to the claiming side. The model follows the code; the control with the test applied as a
+word test fails where enemy cells are in range (below).
+
+`py/claim/claim_gate.py` callcaps `$25168` on 164 natural entries (`py/claim/capture.sh`: hits 1..40
+and every 9th to 416 from `p2_game_60m` and `p2_game_start`) and on 753 poked variants of every
+fourth (forced phase, sizes `$11`, 5, 0 and `$12`, a flat 7x7 patch, enemy codes on three
+neighbours, the own cell set to sea, the settlement moved onto flat patches at two corners, an edge
+and (1,1), the nearest two occupants retyped as a settlement or as type `$18`). The model's RAM
+(every byte but the dead stack) and D0.w equal the emulator's in **917/917** (natural 164/164, sizes
+1..`$0c`; poked 753/753, sizes 0..`$12`). Controls, each equal only where its branch is unused: enemy
+cells excluded 876/917, no demote 751/917, no shrink reset 845/917, no ring 3 785/917, claim on every
+call 887/917 (134/164 on the natural states alone). The gate `claim_25168` runs the corpus rebuild
+and the poked variants of every sixteenth state: 367/367.
 
 ### World generator `$1ebee` (verified)
 
@@ -586,7 +640,7 @@ Only the conquest start against Epimetheus has run. Driven: raise and lower by a
 the other powers and the panel, the custom game and deity creation, save/load, the two-player link, the end of
 a battle, the computer god's power and magnet stages for side 2 in natural play (a later battle), the `$12`
 controller from the options screen. Unread: `$26644`, `$1334a` and `$1bfe` of the main loop, the entity states other
-than 2, 4 and 6 (and `$24f3a`, `$24a92`), the `$4505a` array, the reader of the cell footfall
+than 2, 4 and 6 (and `$24f3a`, `$24a92`), the `$4505a` array, the reader of the byte map `$3d79e` the land claim writes, the reader of the cell footfall
 count, the settlement flag bit 2 of entity +13, the experience discount of `power_cost`, Timer A, the sprite and block formats, `LANDn.DAT`.
 
 ## Files
@@ -605,6 +659,7 @@ count, the settlement flag bit 2 of entity +13, the experience discount of `powe
 | `py/gen_gate.py` | `gen_land` under callcap for 30 seeds against the literal model, byte for byte, with two controls |
 | `py/gen_entry.sh` | rebuilds `p2_gen_entry` (stopped at `gen_land`'s entry) from `p2_briefing` |
 | `py/owned_cells.py` | settlements against the `$2f`/`$3f` cell codes, with a swapped-code control |
+| `py/claim/` | the land claim `$25168`: `capture.sh` (natural corpus) and `claim_gate.py` (model against `callcap`, poked variants, controls) |
 | `py/build_passes.sh` | snapshots between the passes of the world build, from `p2_gen_entry` |
 | `py/scatter_gate.py` | the scenery scatters `$1f870` and `$1fa6c` under callcap against the model, with the stale-D2 bonus forced |
 | `py/rand_gate.py` | `rand` `$215dc` against its model, 50 callcaps |

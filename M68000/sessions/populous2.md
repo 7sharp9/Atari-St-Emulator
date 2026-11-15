@@ -1,18 +1,19 @@
 # Populous II: handoff
 
-Updated 2026-11-14 by an overseer session that promoted a subagent's computer-god model (commit `6d78094`).
+Updated 2026-11-15 after the land-claim pass (`$25168` modelled, gate `claim_25168`).
 
 ## Resume point
 
-- Last commit of this workstream: `6d78094` populous2: the computer god as a model, 10 gates.
+- Last commit of this workstream: the land-claim commit after `5de36b7` (`git log --oneline -3 -- M68000/reversing/populous2`).
 - Working data: `M68000/scratchpad/populous2/` (`src/WILD29.MSA` from the Dropbox `WILD! #29.zip`, `wild29.st`,
   `files/`, `anchors/`, `pop2_1770.bin` the depacked image, `pop2_all.asm` the whole-image listing). Rebuild:
   `reversing/populous2/README.md` "Provenance" and "Drive recipe".
 - Start from: `scratchpad/populous2/anchors/p2_game_start.snap` (first play frames, conquest battle 0 vs
   Epimetheus; sidecar remounts `wild29.st`), or `p2_game_60m.snap` 60M steps on with no input.
-- Uncommitted work left behind: none. `uv run python tools/gates.py run populous2`: 10/10 PASS at `6d78094`. The
-  first god pass's listings are in `scratchpad/populous2/agents/god/`; the model's full-run output is
-  `scratchpad/populous2/god/run_all.out`.
+- Uncommitted work left behind: none. `uv run python tools/gates.py run populous2`: 12/12 PASS (11 at `9a17a74`,
+  `claim_25168` at this pass's commit; it takes about 7 minutes, rebuilding its corpus in
+  `scratchpad/populous2/claim/`). The god model's full-run output is `scratchpad/populous2/god/run_all.out`;
+  the claim's full run (`claim_gate.py all`, 917 cases, 12 minutes) is `scratchpad/populous2/claim/all.out`.
 
 ## Proven so far
 
@@ -52,7 +53,14 @@ Updated 2026-11-14 by an overseer session that promoted a subagent's computer-go
   `$22cde` from the side's +112 power bytes; side 2's is empty on battle 0. Power kinds 2, 4, 6, 8 and the magnet
   move onto the enemy's oldest settlement have run only in poked states (README "The computer god").
 - Cell codes `$2f`/`$3f` are side 1/side 2 settlement land, not rock: 13/13 settlements on their code, swapped
-  0/13, unoccupied ones within 2 cells 28/28 (`py/owned_cells.py`); written by `$25298` in `$25168` (state 6).
+  0/13, unoccupied ones within 2 cells 28/28 (`py/owned_cells.py`); written by the land claim (next line).
+- Land claim `claim_tick` `$25168` / `claim_land` `$251d8`: rings counted outward (ring 1 if the centre counts,
+  ring 2 if all 9, ring 3 if all 25 and `$25368` clears it, then count 26), size `$2547e[count]`, other
+  settlements in range demoted, shrink reset to `$0f`, footprint bytes into `$3d79e`; runs every 4th tick by
+  record index, or at once for size 0 or a lowered own cell. Model equals `callcap` on all RAM and D0.w in
+  917/917 (164 natural, 753 poked); controls 751..887/917 (`py/claim/claim_gate.py all`; gate `claim_25168`,
+  367/367). The enemy-land `btst` reads a byte that is always 0, so enemy cells count and are taken (README
+  "Settlement land claim").
 - People placement `place_people` `$22986`, the last pass of `build_world`: model equals `callcap` on every changed RAM
   byte (dead stack aside) in 66/66 cases, 30 poked seeds plus 36 poked side-record variants
   (`py/people/people_gate.py 30`, gate `people_22986`); controls 0/66 except no-leader 12/66 and no-second-pass 42/66
@@ -76,14 +84,16 @@ Nothing running.
    `$47d3e`/`$47d78`. Only battle 0's values (counts 10 and 3, `+110` `$ffff`/`$2020`) run unpoked; a later battle
    (item 1) runs the rest. Also: shape bit 0 of `$3697a` as "flat land" (find another reader or `hits` census), and
    the two type-`$14` `$46f9a` records as the magnets (`hits` on `ai_magnet_and_mode`).
-3. Settlement land claim `$25168`/`$25298`: radius against settlement size byte 1 (`owned_cells.py` gives the cells).
-4. Decrunch: port `$2246a` to Python and compare each `.PAK` against its RAM copy (QAZ.PAK's raw 32000 bytes too);
+3. Decrunch: port `$2246a` to Python and compare each `.PAK` against its RAM copy (QAZ.PAK's raw 32000 bytes too);
    then `BLOCKn`/`S16`/`S32` formats for `graphics.md`.
-5. Bit 2 of entity +13 releases a walker group at the settlement's next state-6 expiry (`$236b8`; seen once, strength
+4. Bit 2 of entity +13 releases a walker group at the settlement's next state-6 expiry (`$236b8`; seen once, strength
    411 to 293, after the computer's own command): drive it as the player from `p2_game_60m` with `click_ab.py`'s
    pointer on cell (12,33) and a right click against a no-click control, and model the share that leaves (`114(A2)`).
-6. Cell byte 0 bits 3-7 (footfall count, only `$2436e` writes it in play): find its reader; and what the
-   `$4505a` array holds (empty on both anchors; `$26644` updates it).
+5. Cell byte 0 bits 3-7 (footfall count, only `$2436e` writes it in play): find its reader; and what the
+   `$4505a` array holds (empty on both anchors; `$26644` updates it); and the reader of the byte map `$3d79e`
+   the land claim fills (a building footprint by Populous's analogy, inferred).
+6. Drive the enemy-land quirk in play: a settlement next to enemy land should take it on its next claim tick
+   (`claim_gate.py`'s "enemy code" variants show it under `callcap` only).
 
 ## Known traps
 
@@ -107,6 +117,6 @@ Nothing running.
 
 ## Next session
 
-1. `/resume populous2`; `uv run python tools/gates.py run populous2` should print 11/11 PASS.
-2. Open item 3 (land claim), then item 1: a later battle where side 2's plan list is not empty, which also
-   exercises item 2's side-record fields.
+1. `/resume populous2`; `uv run python tools/gates.py run populous2` should print 12/12 PASS.
+2. Open item 1: a later battle where side 2's plan list is not empty, which also exercises item 2's
+   side-record fields.
