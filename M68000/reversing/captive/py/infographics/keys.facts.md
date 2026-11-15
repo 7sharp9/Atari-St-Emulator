@@ -28,7 +28,10 @@ condensed capitals), at Dave's request, not the house style of the other four Ca
 | E: panel shows the clipboard's number; two LCG steps of code + base number; undone, 15099 gives `$8520`, the setting that opens Phoopel's door in the emulator | `mapgen.md` "Locks and keys" step 7 (`$12d4e`, proven 301/301) and "Sealed keys" (`panel13.py`); inversion asserted in `gen_keys.py` |
 | E: with the label, 1,100 of 1,100 bases can be finished (model) | `route.json` (`label_finishable`) |
 | footer: generator port checked 400 of 400 against the emulator | `py/mapgen/full/README.md` (`chain_run.py gate`) |
-| footer: prior work, captive.atari.org MapGen (2007) | `mapgen.md` "Why the key is reachable" (the paragraph on it and where it differs) |
+| footer: prior work, captive.atari.org (from 2007); the bug is in 1.0 and fixed in 1.2 by a fake (walk-through) wall | `mapgen.md` "Why the key is reachable" (the paragraph on the site: its "Bugs" and "Release Information" pages); this disk behaves as 1.0 (inferred from Phoopel) |
+
+Every count in the figure is for this disk's generator, which behaves as version 1.0; in 1.2 the sealed doors are
+fake walls and those bases can be finished.
 
 What the work found in the docs: `finish.py`'s 27 unfinishable bases assumed every lock other than the sealed ones
 openable; with the fixpoint the count is 38 (31 missions with an ordinary target, not 23). `mapgen.md` "Can such a

@@ -830,13 +830,17 @@ count:
   (0 of 400 bases). Doors can be opened in dig order.
 - 1,021 locks were abandoned for want of a key cell; the key-object census by kind is under "The object list".
 
-An earlier disassembly and C++ port of the generator, captive.atari.org's "MapGen" pages (work begun in 2007; "The
-Puzzles", "The Root Path"), describes the same dig-order rule and notes that the clipboard can land on the blocking
-cell. Two of its readings differ from this one: it compares the key cell with "the cell in front of the cupboard"
-(the panel), where `$258ac` compares it with the door cell D (the census above: 8,617 of 8,617 against D), and it says
-the blocking cell becomes a fake wall, where here D gets the lock's door kind (Phoopel's is the flame wall, kind 2,
-below; kind 1 does draw as a plain wall). It describes version 1.2; which version this disk is has not been read. It
-does not count sealed keys or ask whether a base can still be finished.
+The sealed key is a known bug of Captive 1.0, fixed in 1.2. captive.atari.org, an earlier disassembly and C++ port
+of the generator (work begun in 2007), describes the same dig-order rule ("MapGen", "The Puzzles", "The Root Path");
+its "Bugs" page says the 1.0 generator can put a puzzle's clipboard on the cell the puzzle affects, that this happens
+in 4,380 bases, and that 1.2 fixes it by making that cell a fake wall, which the party walks through ("Release
+Information": "the object blocking the cell (wall, fire or door) is now replaced by a fake wall"). So 1.2 trades an
+unreachable clipboard for a lock that no longer blocks; the comparison itself is unchanged. This disk behaves as 1.0:
+Phoopel's door cell holds the clipboard under a flame door that blocks from both sides (below). Inferred from that
+behaviour; the version string has not been read. The site's "MapGen" page compares the key cell with "the cell in
+front of the cupboard" (the panel), where `$258ac` compares it with the door cell D (the census above: 8,617 of 8,617
+against D). The range its 4,380 covers is not stated, so it is not yet checked against this model; the counts below
+are for missions 1..100 of this (1.0) generator.
 
 **Sealed keys: the Phoopel case.** A player hint sheet (credited to Lennart Wahl) reports that on "level 14", the
 moon Phoopel, a sign giving a door's code sits on the wrong side of a wall, and that the code is 15099. That is base

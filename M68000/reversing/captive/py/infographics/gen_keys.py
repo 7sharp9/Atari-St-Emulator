@@ -177,7 +177,7 @@ t(70, y + 196, 'So a player can always open the doors in the order they were dug
 # C: the slip, Phoopel
 y = 740
 h = 520
-panel(y, h, 'C', 'The slip: "no higher than" includes the door', 'Phoopel (mission 2), from the model')
+panel(y, h, 'C', 'The slip: "no higher than" includes the door', 'Phoopel (mission 2); version 1.0, from the model')
 X0, X1, Y0, Y1 = 0, 24, 0, 15
 cs = 21
 mx, my = 70, y + 80
@@ -242,7 +242,7 @@ para(70, y + 90, ['The panel shows the same number as the clipboard: the code mi
 y = 1910
 para(40, y, ['Model: the generator ported to Python and checked against the game in an emulator (400 of 400 bases identical).',
              'Counts are from the model; Phoopel\'s door, clipboard, panel and code are checked in the emulator.',
-             'Prior work: captive.atari.org MapGen (2007) describes the dig-order rule and the clipboard on the blocking cell.',
+             'Prior work: captive.atari.org (from 2007) documents the rule and this bug in Captive 1.0, fixed in 1.2 by a walk-through wall.',
              'Sources: mapgen.md "Locks and keys", "Sealed keys"; route.py; finish.py; panel13.py; keys.facts.md.'], 17, MUTED)
 
 H = y + 4 * 17 * 1.3 + 30
