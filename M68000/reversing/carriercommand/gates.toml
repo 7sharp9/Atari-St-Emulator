@@ -25,6 +25,14 @@ cwd = "py/ai"
 expect = ["1344/1344", "21/21"]
 cite = "ai.md section 2"
 minutes = 1
+inputs = ["scratchpad/carrier/ai/nat/d1.snap", "scratchpad/carrier/ai/nat/d2.snap",
+          "scratchpad/carrier/ai/nat2/e2.snap", "scratchpad/carrier/ai/nat2/e3.snap", "scratchpad/carrier/ai/nat2/e4.snap",
+          "scratchpad/carrier/ai/nat2/e5.snap", "scratchpad/carrier/ai/nat2/e6.snap", "scratchpad/carrier/ai/nat2/e7.snap",
+          "scratchpad/carrier/ai/nat2/e8.snap", "scratchpad/carrier/ai/nat2/e9.snap", "scratchpad/carrier/ai/nat2/e10.snap",
+          "scratchpad/carrier/ai/nat2/e11.snap", "scratchpad/carrier/ai/nat2/e12.snap",
+          "scratchpad/carrier/ai/s1.snap", "scratchpad/carrier/ai/s2.snap", "scratchpad/carrier/ai/s3.snap",
+          "scratchpad/carrier/ai/s3b.snap", "scratchpad/carrier/ai/s4.snap", "scratchpad/carrier/ai/s5.snap",
+          "scratchpad/carrier/ai/s6a.snap", "scratchpad/carrier/ai/s6b.snap"]
 
 [[gate]]
 name = "units"
