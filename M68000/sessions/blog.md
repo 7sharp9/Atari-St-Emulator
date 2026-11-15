@@ -1,6 +1,6 @@
 # Blog: handoff
 
-Updated 2026-11-15 by the session that ended at commit `f6ac961`.
+Updated 2026-11-15 by the session that ended at commit `feea809`.
 
 The blog workstream curates and extends posts for 7sharp9.dev from the game research. Each game is
 reversed in its own workstream; this one reads their docs, checks the claims a post would rest on
@@ -15,8 +15,9 @@ sessions build up; they are not rewritten for newcomers. Clarity is applied wher
 
 ## Resume point
 
-- Last commit of this workstream: `f6ac961` (clarity pass on all 25 infographics), after `d3b204a` (glossary,
-  writing rules, README openings) and `016f784` (`tools/docguard.py`). Master was level with origin at resume.
+- Last commit of this workstream: `feea809` (Carrier Command target gate declares its inputs; the game's
+  undeclared count is now 6/7). The session before it rated the seven Carrier Command figures and ran a read-only
+  survey for undrawn candidates (Open 1-3); nothing was drafted. Master is 7 commits ahead of origin (not pushed; 4 of them predate this session).
 - Infographics: Carrier Command PNGs in `M68000/scratchpad/carrier/infographics/` (gitignored; rebuild with
   `reversing/carriercommand/py/infographics/README.md`); every other figure's PNG/HTML is committed next to its
   game. Not yet copied into the blog repo. The rebuilt Lemmings page is only in
@@ -96,11 +97,12 @@ Nothing running.
   source. PNGs: `rsvg-convert -b white -w 1800`.
 - `gen_routing.py drive` takes about 5 minutes; `gen_takeoff.py` always drives `stserver` from `c_s30`.
 - `gen_depack.py` panel F needs lz4, gzip, zstd and xz on PATH.
+- `tools/gates.py run <game> -k <gate>` runs one gate; `run <game>/<gate>` looks for a directory and fails.
 - In zsh, a multi-path `$VAR` passed to `git commit --` needs `${=VAR}` (CLAUDE.md "zsh").
 
 ## Waiting on Dave
 
-- Which Carrier Command figures to publish, as one post or a series (Open 1).
+- Whether the proposed Carrier Command series stands (Open 1), and when to progress the survey candidates (Open 2).
 - The gaps in Open 4, and whether to keep the two general-knowledge glosses (entropy coding, Bellman-Ford
   relaxation) flagged in the Carrier Command facts files.
 - Crude Buster and Final Fight use "proven" for rule-against-game counts where `WRITING.md` would say observed;
@@ -109,7 +111,8 @@ Nothing running.
 
 ## Next session
 
-`/resume blog`. Ask Dave which Carrier Command figures go into a post, copy those PNGs into the blog repo and scaffold
-it with `dave-post`, writing each section by `reversing/WRITING.md` and quoting numbers from the figure's
-`.facts.md`. Run `tools/docguard.py` on any doc or figure touched. If Dave has written into the Midwinter post
-instead, re-check every changed passage against `terrain.md`.
+`/resume blog`. Ask Dave whether the proposed Carrier Command series (Open 1) stands and when to progress the survey
+candidates (Open 2); until he says, nothing there is started. For the first post chosen, read each tie-in source
+page before citing it, copy the PNGs into the blog repo and scaffold with `dave-post`, quoting numbers from the
+figure's `.facts.md` and running `tools/docguard.py` on anything touched. If Dave has written into the Midwinter
+post instead, re-check every changed passage against `terrain.md`.
