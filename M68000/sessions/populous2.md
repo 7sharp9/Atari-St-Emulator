@@ -1,6 +1,6 @@
 # Populous II: handoff
 
-Updated 2026-11-15 after the land-claim pass (`$25168` modelled, gate `claim_25168`).
+Updated 2026-11-15 after the land-claim pass (gate `claim_25168`) and the later-battles pass (gate `battle_god`).
 
 ## Resume point
 
@@ -10,8 +10,11 @@ Updated 2026-11-15 after the land-claim pass (`$25168` modelled, gate `claim_251
   `reversing/populous2/README.md` "Provenance" and "Drive recipe".
 - Start from: `scratchpad/populous2/anchors/p2_game_start.snap` (first play frames, conquest battle 0 vs
   Epimetheus; sidecar remounts `wild29.st`), or `p2_game_60m.snap` 60M steps on with no input.
-- Uncommitted work left behind: none. `uv run python tools/gates.py run populous2`: 12/12 PASS (11 at `9a17a74`,
-  `claim_25168` at this pass's commit; it takes about 7 minutes, rebuilding its corpus in
+- Later battles: `bash reversing/populous2/py/god/battle_census.sh <out> 1 <N>...` writes `<out>/b<N>_start.snap`
+  (battle N's first play frame, by a `$473a0` poke at `p2_title`); this pass's are in `scratchpad/populous2/battle/`
+  (0, 10, 40, 100, 260, 285, 485, 635, plus 300M-step `b<N>_end.snap` for 10, 40, 100, 260, 285, 485, 635).
+- Uncommitted work left behind: none. `uv run python tools/gates.py run populous2`: 13/13 PASS at `15a8272` plus this pass (11 at `9a17a74`,
+  `claim_25168` and `battle_god` run singly at this pass's commits; it takes about 7 minutes, rebuilding its corpus in
   `scratchpad/populous2/claim/`). The god model's full-run output is `scratchpad/populous2/god/run_all.out`;
   the claim's full run (`claim_gate.py all`, 917 cases, 12 minutes) is `scratchpad/populous2/claim/all.out`.
 
@@ -61,6 +64,12 @@ Updated 2026-11-15 after the land-claim pass (`$25168` modelled, gate `claim_251
   917/917 (164 natural, 753 poked); controls 751..887/917 (`py/claim/claim_gate.py all`; gate `claim_25168`,
   367/367). The enemy-land `btst` reads a byte that is always 0, so enemy cells count and are taken (README
   "Settlement land claim").
+- Conquest battles: `$22e8c` copies `CONQUEST.PAK` record battle/5 (250 bytes) to `$30470`, side records from it,
+  seed from +182 plus (battle mod 5) x `$2d7`; the setup runs right after the CONQUEST GAME click, so the battle number
+  is poked at the title. Plan sizes predicted 8/8 (`py/god/conquest_records.py`). Side 2 casts unpoked on later
+  battles: kind 0 (10, 40, 100), kind 4 x 72 (485), kind 2 x 1 (285), magnet command 8 (260); god model 600/600
+  (485) and 300/300 (260), radius control 99/100 (gate `battle_god`). Kind 8 is not in the power stage's entry table;
+  kinds 6 and `$a` never entered. World names from `$22266` (battle 0 DOEGAC) (README "Conquest battles").
 - People placement `place_people` `$22986`, the last pass of `build_world`: model equals `callcap` on every changed RAM
   byte (dead stack aside) in 66/66 cases, 30 poked seeds plus 36 poked side-record variants
   (`py/people/people_gate.py 30`, gate `people_22986`); controls 0/66 except no-leader 12/66 and no-second-pass 42/66
@@ -73,16 +82,18 @@ Nothing running.
 
 ## Open, in priority order
 
-1. The computer god in a later battle (README "The computer god"): side 2's plan list is empty on battle 0, and
-   poking the battle number `$473a0` to 10, 40 or 100 before the briefing click changed nothing. Read how `$22ec0`
-   fills the +112 power bytes from `$47d3e`/`$47d78`, reach a later battle through the conquest map, and `hits`
-   census `$25a32` and `$25b5e` there; that also runs power kinds 2, 4, 6, 8 and the magnet move unpoked. Drive
-   controller `$12` from the options screen. Then the entity states beyond 2/4/6 (table `$2311c`) and `$24f3a`
-   (state 2's test), `$24a92`; drive a walker into a settle or a fight so the other states run under `hits`.
+1. Replace the battle-number poke with the game's own route: type a world name on the briefing (`$15632` reads the
+   buffer `$1572e`; read how keys reach it, then type UMHEAB for battle 10 and compare its start with
+   `battle_census.sh`'s `b10_start`). Then kinds 6 and `$a` in play: a battle whose side 2 has the mana for kind 6
+   (battle 260 stayed short for 300M steps; try a run past it, or a record with a cheap kind-6 power), and a kind-`$a`
+   battle where the leader outgrows the enemy's. Then the entity states beyond 2/4/6 (table `$2311c`), `$24f3a`
+   (state 2's test) and `$24a92`: drive a walker into a settle or a fight so the other states run under `hits`.
+   Controller `$12` from the options screen.
 2. The per-battle side-record fields `place_people` reads: count `+90`, `+92` (strength, inferred), `+95`, `+97`,
-   `+98`, `+100`, `+102`, flag position `+110`, copied by `$22c40` from `$30470` and filled by `$22ec0` from
-   `$47d3e`/`$47d78`. Only battle 0's values (counts 10 and 3, `+110` `$ffff`/`$2020`) run unpoked; a later battle
-   (item 1) runs the rest. Also: shape bit 0 of `$3697a` as "flat land" (find another reader or `hits` census), and
+   `+98`, `+100`, `+102`, flag position `+110`, copied by `$22c40` from the battle record (README "Conquest
+   battles"). Run `py/people/people_gate.py`'s model on later battles' build: rebuild a `p2_gen_entry` for battle N
+   (`py/gen_entry.sh` from a `p2_briefing` reached with the title poke) and compare unpoked; pick battles whose
+   records give `+110` non-negative and counts other than 10 and 3 (extend `conquest_records.py` to list them: record bytes 0 and 20, 58 and 78). Also: shape bit 0 of `$3697a` as "flat land" (find another reader or `hits` census), and
    the two type-`$14` `$46f9a` records as the magnets (`hits` on `ai_magnet_and_mode`).
 3. Decrunch: port `$2246a` to Python and compare each `.PAK` against its RAM copy (QAZ.PAK's raw 32000 bytes too);
    then `BLOCKn`/`S16`/`S32` formats for `graphics.md`.
@@ -117,6 +128,5 @@ Nothing running.
 
 ## Next session
 
-1. `/resume populous2`; `uv run python tools/gates.py run populous2` should print 12/12 PASS.
-2. Open item 1: a later battle where side 2's plan list is not empty, which also exercises item 2's
-   side-record fields.
+1. `/resume populous2`; `uv run python tools/gates.py run populous2` should print 13/13 PASS.
+2. Open item 2 (people placement on later battles, unpoked), then item 1's world-name entry.

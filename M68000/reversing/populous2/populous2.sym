@@ -9,6 +9,7 @@
 00001d2e	install_mfp_vectors
 00001de0	rte_stub
 00012524	main_loop
+00015476	briefing_draw
 0001ebe4	gen_land_save_seed
 0001ebee	gen_land
 0001ec38	hill_walk
@@ -25,12 +26,18 @@
 0001fcce	update_scenery
 000215dc	rand
 00021608	mul32
+0002222c	match_world_name
+00022266	world_name
 0002246a	decrunch
 00022942	build_world
 00022986	place_people
 00022acc	place_walker_at_cell
 00022b0c	spawn_walker
+00022bb8	battle_setup
+00022c40	copy_side_records
 00022cde	build_plan_lists
+00022e8c	conquest_battle_setup
+00022ec0	or_conquest_powers
 0002309a	update_entities
 0002311c	entity_state_table
 0002436e	move_entity
@@ -63,6 +70,7 @@
 00029c7e	run_scripted_commands
 0002cc98	load_file
 0002cdb6	file_table
+0002d42c	load_battle_record
 00030664	hill_table
 00030e96	scatter_offsets
 000310d0	power_base_cost

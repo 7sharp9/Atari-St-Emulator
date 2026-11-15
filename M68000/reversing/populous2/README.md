@@ -529,14 +529,18 @@ radius 2 for 3 fails 5 of 498 variants; `$25b72`'s per-direction reset fails 10 
 minutes), `bash reversing/populous2/py/god/gate_short.sh` (150 ticks of the side 1 arm and the reload control, in the
 gate set as `god_model`: 150/150 and 0/150).
 
-The variants are pokes and not played results. Power kinds 2, 4, 6, 8 and the magnet's move onto the enemy's oldest
-settlement have run only in those poked states, never in play. The plan list of a side is built by `$22cde` from the
-side's power bytes at +112 (indexed through `$30f48`; `w148` is the entry count plus 1 for slot 0, `w150` the count of
-the second list the magnet stage draws from); those bytes come from `$47d3e` and `$47d78` through `$22ec0`. Side 2's
-is empty on battle 0 and poking the conquest battle number `$473a0` to 10, 40 or 100 before the briefing click left
-both side records identical to battle 0, so a later battle with a computer plan list was not reached and how a later
-battle fills +112 is unread. Side 1 as computer has the game's own list: slots (power 6, kind 0), (6, kind 0),
-(`$48`, kind `$a`), `w148` = 4, `w150` = 1.
+The plan list of a side is built by `$22cde` from the side's power bytes at +112 (indexed through `$30f48`; `w148`
+is the entry count plus 1 for slot 0, `w150` the count of the second list the magnet stage draws from); those bytes
+are the battle's record in `CONQUEST.PAK` ("Conquest battles" below). Side 2's first list is empty on battle 0, so on
+the play anchors its power stage never posts. Side 1 as computer has battle 0's own list: slots (power 6, kind 0),
+(6, kind 0), (`$48`, kind `$a`), `w148` = 4, `w150` = 1. On later battles, reached with one poke of the battle number
+before the CONQUEST GAME click, side 2 casts unpoked: kind 0 on battles 10, 40 and 100, kind 4 on battle 485 (72
+casts in 300M steps), kind 2 once on battle 285, and the magnet's move (command 8) on battle 260; the model equals
+`callcap` there on 600/600 ticks of battle 485 and 300/300 of battle 260 (below). Kind 8 is not in the first list's
+entry table `$306a2` at all (its 8 entries are all in the second list `$30702`), so the power stage never draws it in
+any battle, and kinds 6 and `$a` were never entered in the runs below (kind 6 mana short on every visit; kind `$a` never
+passed its gate on the leader's strength and the tick, or drew slot 0): their branches have still run only in the
+poked variants.
 
 `py/god/god_hits.py` censuses the side 1 arm with `hits` over the same 1000 ticks, with `$25652` itself as the
 positive control: `$25652` 1000 for 1000 entries; `$25a32` 387 (model 387); `$25b5e` power post 3 (3); `$25d08`
@@ -604,6 +608,54 @@ services 10-byte request records at `$2a396` (sound requests, inferred); `$2d4c8
 current player's mana bar and power icons and `$14158` the highlight of the side's mode word +12. None of them makes
 a decision.
 
+### Conquest battles (record format verified on 8 battles; the god driven on 7)
+
+The conquest has 1000 battles, `$473a0` 0..999. `$15206..$15242` adds 1 or a computed step to it, capped at 999
+(read; after a won battle by Populous's analogy, inferred, not driven). The
+setup `$22bb8`, called by the title's game routine right after the CONQUEST GAME click (`$22932`) and before the
+briefing is drawn, dispatches on the game mode `$4739e` (table `$22bcc`: modes 0 and 4 enter at `$22bd8`, which sets the mode to 4,
+mode 6 at `$22be0` just after it, mode 2, the conquest, at `$22c1a`). The conquest arm calls `$22e8c(battle)`: `$2d42c` loads file `$c`,
+`CONQUEST.PAK`, at `$47d28` and copies the 250-byte record battle/5 to `$30470`; `$22c40` copies its first 58
+bytes into side 1's record from +90 and the next 58 into side 2's (count +90, the rest of the fields `place_people`
+reads, the power bytes +112 at record bytes 22 and 80), and the per-battle command list at record byte 122 to
+`$39638`; the seed `$47382` is the long at record +182 plus (battle mod 5) x `$2d7`. Five battles share one
+record and differ only in their seed. The other arm (modes 0, 4 and 6) instead ORs (battle/5 + 1) 36-byte rows of `CONQUEST.PAK`
+from `$47d3e` or `$47d78` (by the current player `$4739c`) into both sides' power bytes of the block `$3056a`
+(`$22ec0`), and copies that block to `$30470`.
+
+`py/god/conquest_records.py` decodes the records from the briefing snapshot (170 of the 200 survive below
+`FACES.PAK`'s load address `$523f4`) and predicts both sides' `w148` and `w150` with `$22cde`'s rule: equal on
+**8/8** driven battle starts (0, 10, 40, 100, 260, 285, 485, 635); battle 0's seed by the rule, `$10d7`, is the one
+`p2_gen_entry` records. Side 2's first list is empty in 5 of the 170 records (battles 0-4 among them). Kind 0
+fills most lists; kinds 2, 4, 6 and `$a` are one entry each, in 56, 75, 46 and 99 records.
+
+The briefing also takes a typed world name (`$15632`): `$2222c` compares the buffer `$1572e` with each battle's
+name from 0 up and on a match sets `$473a0` and reruns `$22e8c` and the briefing. `$22266` makes the name: v =
+(battle x `$24a1`, with `$24df` added to the low word) & `$7fff`, one two-letter syllable of the table `$22298` per
+6 bits of v, low bits first. Battle 0 is DOEGAC (in briefing RAM at `$1571e` and `$1c351`), 10 UMHEAB, 485 OWOP.
+The name entry is the game's route to a later battle; it is not driven yet, and the runs below stand in for it with
+one poke of `$473a0` at `p2_title` before the click. Battle 0's drive that way is byte-identical to
+`p2_game_start` (control).
+
+`py/god/battle_census.sh` and `py/god/power_census.sh` count the god's stages from each start (side 1 human, so
+every count is side 2's):
+
+| battle | side 2 list | 30M steps: plan stage / power posts | 300M steps: stage, mana short, kind entered, posts |
+|---|---|---|---|
+| 0 | empty | 4 / 0 | |
+| 10 | 2 x power 6 | 5 / 0 | 48, 45, kind 0 x 2, 2 (power 6) |
+| 40 | 5, kind 0 | 6 / 0 | 45, 42, kind 0 x 2, 2 |
+| 100 | 12, one kind 4 | 5 / 0 | 46, 44, kind 0 x 2, 2 (power `$16`) |
+| 260 | 1, kind 6 | 21 / 0; magnet command 8: 4 | 181, 181, none, 0 |
+| 285 | 3, one kind 2 | 31 / 0 | 209, 208, kind 2 x 1, 0 (kind 2 stores its target, no post) |
+| 485 | 1, kind 4 | 29 / 5 | 179, 42, kind 4 x 72, 72 |
+| 635 | 1, kind `$a` | 171 / 0 | 2302, 462, none, 0 (the other 1840 exits: slot-0 draws and the kind-`$a` gate) |
+
+`god_gate.py` on the natural ticks of these starts: **600/600** on battle 485 (6 kind-4 casts in the window) and
+**300/300** on battle 260 (4 magnet moves). Gate `battle_god` (`py/god/gate_battle.sh`) rebuilds the starts of
+battles 0, 10, 260 and 485, checks the decode 4/4, the model 100/100 on each of 485 and 260, and the control with
+kind 4's search radius 3 for 2 at 99/100 (the one kind-4 tick of the window fails).
+
 ### Random numbers (verified)
 
 `rand` `$215dc` is not Populous's: seed long `$47382` (0 is replaced by `$bc614e`),
@@ -636,10 +688,10 @@ files go to `$a000` (the second screen) instead.
 
 ## Not yet exercised
 
-Only the conquest start against Epimetheus has run. Driven: raise and lower by a click. Not driven:
-the other powers and the panel, the custom game and deity creation, save/load, the two-player link, the end of
-a battle, the computer god's power and magnet stages for side 2 in natural play (a later battle), the `$12`
-controller from the options screen. Unread: `$26644`, `$1334a` and `$1bfe` of the main loop, the entity states other
+Played: the conquest start against Epimetheus; later battles only through a poke of the battle number at the
+title. Driven: raise and lower by a click. Not driven: the briefing's world-name entry, the other powers and the
+panel, the custom game and deity creation, save/load, the two-player link, the end of a battle, the computer god's
+power kinds 6 and `$a` in play (blocked on every battle tried), the `$12` controller from the options screen. Unread: `$26644`, `$1334a` and `$1bfe` of the main loop, the entity states other
 than 2, 4 and 6 (and `$24f3a`, `$24a92`), the `$4505a` array, the reader of the byte map `$3d79e` the land claim writes, the reader of the cell footfall
 count, the settlement flag bit 2 of entity +13, the experience discount of `power_cost`, Timer A, the sprite and block formats, `LANDn.DAT`.
 
@@ -664,6 +716,7 @@ count, the settlement flag bit 2 of entity +13, the experience discount of `powe
 | `py/scatter_gate.py` | the scenery scatters `$1f870` and `$1fa6c` under callcap against the model, with the stale-D2 bonus forced |
 | `py/rand_gate.py` | `rand` `$215dc` against its model, 50 callcaps |
 | `py/god_census.sh` | the computer god `$25652` against its controller word: three poked arms under `hits` |
+| `py/god/conquest_records.py`, `battle_census.sh`, `power_census.sh`, `gate_battle.sh` | the `CONQUEST.PAK` record decode and its plan-size prediction; later battles' starts by a battle-number poke at the title, and the god's stage and kind counts there; gate `battle_god` |
 | `py/god/` | the computer god's model (`god_model.py`), its `callcap` gate (`god_gate.py`, `gate_short.sh`, `run_all.sh`) and the `hits` census (`god_hits.py`); `sidedump.py` prints the side records' controller, countdown and plan fields of snapshots |
 | `py/fdc_files.py` | names the file behind each sector of an `ATARI_TRACE_FDC` log |
 | `compilation_menu.png`, `title.png`, `briefing.png`, `zeus.png`, `game_start.png`, `game_60m.png` | the milestones (`tools/snap_render.py` of the boot and the five anchors) |

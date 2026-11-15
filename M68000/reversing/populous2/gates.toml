@@ -84,3 +84,10 @@ cmd = "bash reversing/populous2/py/claim/capture.sh > /dev/null && {python} reve
 expect = ["re:natural: model == emulator 164/164", "re:TOTAL 367/367 cases, RAM and D0.w equal except the dead stack", "re:control 'enemy cells excluded': equal in 356/367", "re:control 'no demote': equal in 326/367", "re:control 'no shrink reset': equal in 347/367", "re:control 'no ring 3': equal in 332/367", "re:control 'claim every call': equal in 337/367"]
 cite = "README.md \"Settlement land claim\"; py/README.md"
 minutes = 8
+
+[[gate]]
+name = "battle_god"
+cmd = "bash reversing/populous2/py/god/gate_battle.sh"
+expect = ["re:predicted plan sizes equal on 4/4 start snapshots", "re:(?s)battle 485:\\nstates 100: model equals callcap \\(changed bytes, both sides\\) 100/100", "re:'power_kind4': 1", "re:(?s)battle 260:\\nstates 100: model equals callcap \\(changed bytes, both sides\\) 100/100", "re:'magnet_move_cmd8': 2", "re:99/100  \\[control radius\\]"]
+cite = "README.md \"Conquest battles\"; py/README.md"
+minutes = 1
