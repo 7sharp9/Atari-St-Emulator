@@ -1,9 +1,32 @@
 # Final Fight (Capcom CPS1, 1989), reverse-engineering workspace
 
-First arcade subject in this repo. Target set: MAME `ffightuc` (Final Fight, USA 900613), a clone of
-`ffight`. MAME 0.289 is the emulator and oracle; the F# core is not involved. The ST tooling that
-carries over is the 68000 disassembler (`tools/disassemble.py`, `--rom <flat image> --base 0`) and the
-method (census, callcap, gates, claims need a match count).
+Final Fight is a Capcom arcade game (board: CPS1) in which one or two players choose a fighter (Guy, Cody or Haggar)
+and fight the enemy fighters and bosses of a series of stages, using moves, weapons and pickups, against a TIME
+limit, with lives and a continue scene. It is the repo's first arcade subject and does not run on the ST emulator:
+the target is MAME's `ffightuc` set (Final Fight, USA 900613, a clone of `ffight`), and MAME 0.289 is the emulator
+and oracle (see `../GLOSSARY.md`); the F# core is not involved. The ST tooling that carries over is the 68000
+disassembler (`tools/disassemble.py`, `--rom <flat image> --base 0`) and the method (census, callcap, gates, claims
+need a match count).
+
+**What this doc set has established.** The program ROM's task kernel, per-frame loop, object pools, hit and damage
+rules, enemy and boss handlers, player moves, stage and area transitions, two-player rules and the CPS1 graphics
+decode are documented, each claim tagged with how it is known (the tags are explained at the top of `kernel.md`).
+What is still unread or never run is listed under "Next".
+
+**Where to find what.**
+
+- How do I run the game under MAME and drive it with scripted input? "Running", "Driving the game", "Harness facts".
+- What does the CPS1 board do (memory map, chips, inputs)? `hardware.md`; "Hardware and boot" below.
+- How does the game schedule its work each frame? `kernel.md` (the task kernel), `frame.md` (the in-level frame, object pools, health, hit boxes, damage).
+- How do the enemies decide what to do? `ai.md`. How do the bosses fight? `boss.md`.
+- What can the player do, and how do lives, score and the continue scene work? `player.md`.
+- How do the second player and player-versus-player work? `twoplayer.md`.
+- How does the game move between areas and stages? `transitions.md`.
+- Where do the stage's objects come from? `placement.md`.
+- How are the sprites and backgrounds drawn and decoded? `graphics.md`.
+- Which script reproduces a result? "Scripts".
+
+Terms used here are defined in `../GLOSSARY.md`.
 
 ## ROMs (not committed)
 
@@ -174,7 +197,7 @@ and the original cold drive (`ff_gameplay`) still giving `79ed3cc1...0b2c` after
 
 ## Next
 
-1. Natural versions of what pass 5 poked that are still open: pool 8 kinds `$d`, `$e`, `$2b`, kind 8's push, the stage 3 lift unpoked; the stage 5 elevator, the bosses of stages 1 to 5, the carrier's `+3` steps and the spawn census are done (`boss.md` "Natural fights", `placement.md`). The census leaves 39 placement entries unseen: a `$3e88` hit log over the same replays would split cap refusals from matcher misses.
+1. Natural versions of the cases so far reached only by poke that are still open: pool 8 kinds `$d`, `$e`, `$2b`, kind 8's push, the stage 3 lift unpoked; the stage 5 elevator, the bosses of stages 1 to 5, the carrier's `+3` steps and the spawn census are done (`boss.md` "Natural fights", `placement.md`). The census leaves 39 placement entries unseen: a `$3e88` hit log over the same replays would split cap refusals from matcher misses.
 2. What is still unread: terrain codes 6 to 38 (the codes 6, 7, 8 of the stage 2 curb and door are seen, `placement.md`) and the lift lookup `$8a28`; the shaker site `$184b2` (the ending now plays: read the scene objects; SODOM's `$426d8` and ABIGAIL's `$4d550` now run in played fights); glass kinds 11, 13, 14; pool 8 kinds `$35`-`$3a`, `$13`, `$14`, `$33`, `$26`-`$29`; the Z80 control commands `$f1`-`$f6` and the silent sound ids (need the Z80 code).
 3. Paths no run took (each section of `ai.md`, `boss.md` and `twoplayer.md` lists its own): DAMND's attack A2 and hit types 2, 4 to 8, the grounded-death variants, thrown flight `$6c96`, entrance types 9 and 11 to 14, Haggar's chain-end back grab, PvP hard boxes and clash.
 4. Read the Z80 program (control commands, music ids by ear), then finish graphics (gameplay dumps of stages 4 and 6 and stage 1 areas 0, 2, 3; player scripts reached through pointer tables; held weapons), then Ghouls'n Ghosts only after 1 to 3.

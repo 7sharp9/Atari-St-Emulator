@@ -3,8 +3,25 @@
 Captive (Antony Crowther, Mindscape, 1990; the in-game banner reads "COPYRIGHT RATT 1990 CAPTIVE A
 MINDSCAPE PRODUCT") is a real-time dungeon crawler: four droids, run by remote control from a cell, raid
 procedurally generated bases on a series of planets. The ST version is an Amiga port: every program
-file on the disk is an Amiga hunk executable, loaded by the game's own file system and OS (`trap #9`).
+file on the disk is an Amiga hunk executable (the Amiga's program file format), loaded by the game's own file system and operating system, which programs enter with the 68000 `trap #9` instruction.
 The reason to reverse it is the base generator, which the game keeps as its own module, `fed_MapGen`.
+
+This doc set has established the base generator ported whole and checked against the game's own module, the
+creature AI, the universe generator, and the game's own operating system and copy protection. The ST version
+reaches planet surfaces and the inside of bases in the emulator (see "Milestones").
+
+## Where to find what
+
+| question | document |
+|---|---|
+| How is a base laid out: floors, lifts, rooms, doors and keys, items and creatures? | [`mapgen.md`](mapgen.md) |
+| How do the creatures decide where to go, how does the player get into a base, and how does a base end? | [`ai.md`](ai.md) |
+| How are the planets, moons and landing sites made, and how is the first-person view drawn? | [`world.md`](world.md) |
+| How does the game load files and launch its modules, and what did the crack change? | [`system.md`](system.md) |
+| What does each algorithm look like as a picture? | `py/infographics/` (below) |
+| Which disk was used, and how was it booted and driven? | "Provenance", "Milestones" |
+
+Terms used here are defined in `../GLOSSARY.md`.
 
 ## Topic docs
 
@@ -15,7 +32,7 @@ The reason to reverse it is the base generator, which the game keeps as its own 
 | `world.md` | the universe (50 planets, 100 moons and a station from one 16-bit LCG seeded by the mission number, a coordinate table that keeps dots off the map grid, syllable names, targets and landing sites), the main loop and raster list, the first-person view cone of pre-drawn mirrored pieces, the picture sheets, `Case.pic` |
 | `system.md` | the `trap #9` OS in the low-RAM loader (files, heap, per-unit RLE), the volume block, the module launcher, the resident monitor, the Copylock in `fed_MapGen`, the Medway Boys crack, the READ TRACK emulator gap |
 
-Every generator in the game uses the same LCG, `x = x*$5e5 + $29` mod 65536, with its own state and output
+Every random-number generator in the game is the same linear congruential generator (LCG), `x = x*$5e5 + $29` mod 65536, with its own state and output
 rotation: the universe (`world.md` section 1), the bases (`mapgen.md`) and the creatures (`ai.md`).
 
 `py/infographics/` draws one explanatory figure per algorithm (the creature trail, the digger, the universe, the

@@ -1,20 +1,34 @@
-# impossamole — booted through a Replicants crack menu into real Amazon-world gameplay
+# Impossamole (Gremlin Graphics / Core Design, 1990)
 
-First pass. *Impossamole* — Gremlin Graphics / Core Design, 1990. The opening-description
-"isometric platformer" was an unverified guess; the first gameplay screen actually reached
-(`coldboot_amazon_gameplay.png`, below) is a plain side-view platform scene (terraced hillside, a
-ruined pillar) with no isometric projection visible. Leave the genre unlabelled until a room with an
-actual diamond/2.5D grid turns up, rather than repeating the guess. (Passes 79-81 reported no hero
-sprite visible in this emulator's own render of that scene, and framed it as a confirm→load bug in
-this repo's F# core; the 82nd pass retracted that — the hero renders fine here too, matching real
-Hatari exactly, from a fresh cold boot. The negative result was specific to one long-lived, reused
-snapshot lineage whose own original boot (undocumented, now lost) evidently skipped a one-time
-resource load early in the crack's own loading sequence — see "Real-hardware cross-check" and "Why no
-hero sprite is visible" below.)
-The copy in hand is a cracked scene release: a "Replicants"-badged boot menu leading into an
-"E-Motion"/"R.AL" trained-and-packed version. No `\AUTO\` folder; the disk boots directly
-(executable boot sector, checksum `$1234`) into the crack's own menu code, not straight into the
-game.
+Impossamole is a side-view platform game (a terraced hillside and a ruined pillar in its first scene; no
+isometric or 2.5D room has turned up). The player moves a mole hero through five worlds, each one long map
+played one room at a time. The hero jumps over water and traps, hits enemies with a short-range swipe, buys
+upgrades from a shop and fights a boss at the end of a world. Health is the only resource: 18 points with no
+regeneration.
+
+This doc set has established how a level is built (one tile map of connected rooms with a collision layer),
+how enemies and pickups are spawned and behave, the Amazon world's route, boss and shop on real input, the
+asset formats of all five worlds, and the cheats and packers. The Amazon is the world driven in most
+detail. The copy studied is a scene crack with a boot menu, so a cold boot first reaches the crack's menu and
+needs a key press to start the game.
+
+## Where to find what
+
+| question | where |
+|---|---|
+| How do I boot it and give it input? | "The disk image", "How it was run" and "Past the title screen" below |
+| How is a level stored and how do rooms connect? | "The level is one tile map of connected rooms" below; `worlds.md` "Rooms and routes" |
+| How do enemies, pickups and spawn types work? | "Spawn types" below |
+| How does the Amazon boss behave, and how is the boss room reached? | "Boss" and "The route to the boss room on real input" below |
+| What does the shop sell? | "The shop" below |
+| How are tiles, sprites, palettes and collision categories stored? | [`graphics.md`](graphics.md) |
+| What differs between the five worlds? | [`worlds.md`](worlds.md) |
+| What cheats, keys, packers and sound engines does it have, and what did the crack add? | [`secrets.md`](secrets.md) |
+| Which script reproduces a result, and from which snapshot? | [`py/README.md`](py/README.md) |
+| What does the game do, restated without addresses? | "Design digest" below |
+| Which traps in the emulator or the snapshots can mislead? | "Known traps" below |
+
+Terms used here are defined in `../GLOSSARY.md`.
 
 ## Topic documents
 
@@ -25,6 +39,13 @@ game.
 | `worlds.md` | the five worlds: loader, per-world files and banks, categories 5-8, rooms and routes, bosses, per-world tables |
 | `secrets.md` | cheats and their effects, the Space smart bomb and other keys, the crack's trainer and protection, dead content, the LSD!/Huffman packers, the random number generator, the two sound engines |
 | `py/README.md` | every script, its start snapshot and expected output |
+
+The copy studied is a cracked scene release: a "Replicants"-badged boot menu leading into an
+"E-Motion"/"R.AL" trained-and-packed version. No `\AUTO\` folder; the disk boots directly
+(executable boot sector, checksum `$1234`) into the crack's own menu code, not straight into the
+game. A long-lived snapshot lineage once showed no hero sprite, which looked like an emulator bug; a fresh cold
+boot renders the hero and matches the real Hatari emulator exactly (see "Real-hardware cross-check" and "Why no
+hero sprite was visible" below).
 
 ## Design digest
 
@@ -213,7 +234,7 @@ traps" below, rather than re-opening this specific timing search.
 two separate `kbd` REPL calls (make, then break) with a real `s <n>` step count between them, not
 one `kbd <make> <break>` call — see CLAUDE.md.
 
-## Program classification: hand-written 68000 assembly, not compiled C (89th pass)
+## Program classification: hand-written 68000 assembly, not compiled C
 
 The loaded game image (post-crack-unpack, read from any gameplay snapshot) has **zero `4e56` (LINK
 A6) words across the entire ~260KB span this workstream has explored** (`$2000`-`$42e00`, covering
@@ -595,7 +616,7 @@ walkable/ladder/etc category the sensor byte actually stores. Not yet live-teste
 classify as which category (the table's actual contents), and the ladder-climb (`$c812`/`$227f3:=4`)
 and jump/attack (`$c742`/`$227f3:=2`) states these sensors gate — both still read statically only.
 
-## Past the first screen: a hazard/death-reload cycle, and jumping over it (82nd pass, item 6)
+## Past the first screen: a hazard/death-reload cycle, and jumping over it
 
 Driving from the fresh cold-boot `at_gameplay_final.snap` (the lineage above, hero sprite bank
 populated) with plain held-right (`kbd ff`/`kbd 08`, no release) for the first time past the single
@@ -1254,7 +1275,7 @@ nothing moved, not because an arc returned the hero to the same place. Reaching 
 maneuver that gets the hero up onto the crossbar top and, per the retraction above, off it again before
 slot 8 arrives — not yet found by any trial in this pass.
 
-## The level is one tile map of connected rooms (99th pass)
+## The level is one tile map of connected rooms
 
 The scroll limit `$227b8 = $1020` is not the end of the level, it is the end of the *first room*. The
 Amazon (world index `$bb76 = 3`) is a single 1680-column x 24-row tile map at `$31800` (`amazon_level_map.png`,
@@ -1363,7 +1384,7 @@ live at a time:
 - Object slots are live-spawned: at camera `$5ac` the array holds different objects than at `$46c`, so the
   slot numbers used for the twin-tree screen do not carry over.
 
-### The route to the boss room on real input (104th pass)
+### The route to the boss room on real input
 
 From `pass103/room188.snap` (room `188..285`, reached by real input) to the boss room, every input is a joystick packet; the driver reads the hero
 state each tick (`py/route/route_driver.py`: per tick about 8000 steps it reads x, y, busy flag, `$227f3`, `$227b4/6/8`, health and the
@@ -1487,7 +1508,7 @@ process to the same snapshot, and the live route was run twice from scratch with
   from the `$25000` map first (totems and pillars are 32 px, one hop; the temple slab leaves 8 px); `x` reads jitter by 2 px while the camera scrolls,
   so use `wx` progress with a tolerance for stall detection.
 
-### Boss (99th pass)
+### Boss
 
 - **The Amazon boss is the only kind-2 spawn record of its level** (every world has one, `worlds.md`): type byte `138`, column 1296 (block 324), `y=120`, in
   the dead-end room `318..326` (8 blocks, 256px, no exit of its own). `py/spawn_list.py <snap>` prints the whole
@@ -1559,7 +1580,7 @@ process to the same snapshot, and the live route was run twice from scratch with
 - **The other four `$22803 = $ff` writers** (`$014ad6`, `$015752`, `$016958`, `$0176a6`) sit in the other worlds' boss handlers
   (Klondike, Orient, Ice Land, Bermuda; `worlds.md`), each killed live with a poked shot position.
 
-### Spawn types (103rd pass)
+### Spawn types
 
 `py/spawn_types.py <snap> [--sheet out.png] [--check]` decodes the descriptor of every type in the spawn list and
 draws its frames (`graphics/amazon_spawn_types.png`, one row per type). A type byte indexes `$10474`; the
@@ -1685,7 +1706,7 @@ monkey throws after the third are static readings; the coconut script `$0161e8` 
 took chameleons and bees for other things (`graphics.md`), and read `spawn_types.py` frame lists ("reach") as belonging to one object although the lists are not delimited, which
 produced the monkey, leaf-bush and marker misreadings above.
 
-### The shop (104th pass)
+### The shop
 
 `$00e842` is one routine for two objects, and the mole is the shop keeper (`py/shop/route_driver.py --shop`, segments `seg5b`-`seg11b`, all
 replaying byte-identically; images `shop_mole_in_shaft.png`, `shop_room.png`, `shop_bubble_too_much.png`,

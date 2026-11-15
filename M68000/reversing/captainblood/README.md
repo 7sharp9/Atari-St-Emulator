@@ -1,16 +1,32 @@
 # captainblood: Captain Blood (ERE Informatique / Exxos, 1988), first look
 
-Captain Blood boots from the Zuul #40 compilation menu and runs: the title, the bridge, the galaxy map, hyperspace,
-the canyon flight, the planet scan and the UPCOM icon conversation with two races have been reached (the conversation
-by a labelled poke that skips the canyon flight, or by the ESC key in flight, see "Running it" and "Canyon flight"). This is the **French build**: the vocabulary is
-French, and the crack has overwritten the header text. The reason to reverse it is the conversation system: a
-120-word icon vocabulary, a rule list per alien race and a bit array of state; the rule interpreter is decoded and modelled in `rules.md`.
+Captain Blood is an Atari ST game in which the player moves between planets (a galaxy map, hyperspace, a canyon
+flight down to a landing, a planet scan) and talks to alien races by choosing icons from a 120-word vocabulary
+(the UPCOM icon conversation). The copy analysed is the **French build** from the Zuul #40 compilation disk: the
+vocabulary is French, and the crack has overwritten the header text.
 
-The engine is one hand-written 68000 image (33,852 bytes at `$adfc..$13238`; 0 LINK frames, 227 RTS, 366 BSR), so
-the route is trace and callcap, not a decompile.
+**What this doc set has established.** The conversation system is the reason to reverse the game: a 120-word icon
+vocabulary, a rule list per alien race and a bit array of state. The data file that holds them is parsed, and the
+rule interpreter is decoded and modelled in `rules.md`. The game boots from the compilation menu and has been driven
+through the title, the bridge, the galaxy map, hyperspace, the canyon flight, the planet scan and the conversation
+with two races (the conversation by a labelled poke that skips the canyon flight, or by the ESC key in flight, see
+"Running it" and "Canyon flight"). The engine is one hand-written 68000 image (33,852 bytes at `$adfc..$13238`;
+0 LINK frames, 227 RTS, 366 BSR), so the route is trace and callcap, not a decompile.
+
+**Where to find what.**
+
+- Which file is which, and how is the packed data read? "Provenance".
+- How do I get to each screen? "Running it", "Screens and input".
+- What do the 120 words and the race rules look like in the data? "The conversation data" below.
+- How does the game choose a reply? "The reply engine" and `rules.md`.
+- How is a planet's terrain and the galaxy generated? "Galaxy and terrain".
+- How does the canyon flight work? "Canyon flight".
+- What is not yet known? "Open".
+
+Terms used here are defined in `../GLOSSARY.md`.
 
 Evidence in this file is of three kinds. **Re-run from this directory:** the depacker, the `BLOOD.COM` parse, the
-hit-table dump and the speak census. **An agent's first pass, read from its logs and screenshots, not re-run:** the
+hit-table dump and the speak census. **Read from logs and screenshots, not re-run:** the
 boot narrative, the milestone drives, the depacked files' match against RAM, the clicks that name hit-table entries.
 **Read from code only:** marked "(read)".
 

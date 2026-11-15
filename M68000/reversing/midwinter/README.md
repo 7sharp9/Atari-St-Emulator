@@ -1,10 +1,32 @@
-# midwinter: Midwinter (Rainbird / Maelstrom Games, 1989)
+# Midwinter (Rainbird / Maelstrom Games, 1989)
 
-Mike Singleton's Midwinter: a war on a frozen island, played through 32 characters who ski,
-hang-glide, drive snow buggies and ride cable cars across fractal terrain (generated from a coarse
-height grid, `terrain.md`) drawn as filled 3D polygons. It is the repo's first 3D game. The emulator boots it from a French
-compilation disk, runs the menu, the title, the team and character screens and the first-person
-ski view with a Bomber attacking, all unmodified apart from one poke that stubs the menu's fullscreen VBL handler (below).
+Mike Singleton's Midwinter is a war on a frozen island, played through 32 characters who ski, hang-glide,
+drive snow buggies and ride cable cars across fractal terrain (generated from a coarse height grid,
+`terrain.md`) drawn as filled 3D polygons. It is the repo's first 3D game. The enemy army advances over the
+island between the player's turns, and the player's characters meet its units, fight them, sabotage them and
+recruit more characters.
+
+This doc set has established the island's terrain generator, the enemy army and its encounters, the attacks on
+the player, the player's weapons, sabotage, the period end and the endings, recruitment, and the terrain cell scan
+and one frame's pipeline from the 3D renderer. Each is a Python model compared with the real code. The rest of the
+renderer (clipping, polygon building, objects) and the vehicles' handling are not decoded yet. The emulator boots
+the game from a French compilation disk and runs the menu, the title, the team and character screens and the
+first-person ski view with a Bomber attacking, all unmodified apart from one poke (a value written into the
+game's memory by hand) that stubs the menu's fullscreen VBL handler (see "Driving it").
+
+## Where to find what
+
+| question | document |
+|---|---|
+| How is the program organised: vectors, interrupts, screens, frame loops, the cracked loader? | [`architecture.md`](architecture.md) |
+| How do the enemy army, encounters, attacks, weapons, sabotage, the period end and recruitment work? | [`ai.md`](ai.md) |
+| How is the island's height field generated? | [`terrain.md`](terrain.md) |
+| How is one 3D frame built: the cell scan, projection, edge scan and span fill? | [`graphics.md`](graphics.md) |
+| What does the game do, restated without addresses? | "Design digest" below |
+| Which disk, how to boot and drive it? | "Provenance", "Packing", "Driving it" below |
+| Which screenshot shows what, and what does each file hold? | "Milestones", "Files" below |
+
+Terms used here are defined in `../GLOSSARY.md`.
 
 ## Design digest
 

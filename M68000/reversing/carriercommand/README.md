@@ -1,10 +1,52 @@
-# carriercommand: Carrier Command (Realtime Games / Rainbird, 1988)
+# Carrier Command (Realtime Games / Rainbird, 1988)
 
-A real-time strategy and vehicle simulation: the player's carrier and the enemy's compete for a
-64-island archipelago, capturing islands, turning them into resource, factory or defence bases and
-supplying the carrier through the network they form. Reached in the emulator: the language menu, the title
-menu with its 3D attract scene, the Strategy game with the carrier at Vulcan and the Action game's opening. The game is hand-written
-assembly (1 `LINK` frame, about 920 `RTS`), so it is analysed from traces and callcaps, not a decompile.
+Carrier Command is a real-time strategy and vehicle simulation. The player's carrier and the enemy's carrier
+compete for a 64-island archipelago, capturing islands, turning them into resource, factory or defence bases and
+supplying the carrier through the network they form. The carrier launches craft: Mantas, which fly, and Walruses,
+which are driven, not flown. The game has two parts, the Strategy game and the Action game.
+
+This doc set has established how the enemy carrier chooses its next island and fights, how the player's carrier
+and craft move, how the island economy and supply network work, how the 3D renderer draws, and how the cracked
+copy's packer works. The Strategy game from the carrier's start at Vulcan and the Action game's opening are
+reached in the emulator. Parts not decoded are listed under "Not exercised in the emulator".
+
+## Where to find what
+
+| question | document |
+|---|---|
+| How does the enemy choose where to go, capture an island, attack and retreat, and what does difficulty change? | [`ai.md`](ai.md) |
+| How do the player's carrier, its autopilot, repairs, missiles, flares and the Manta and Walrus craft behave? | [`vehicles.md`](vehicles.md) |
+| Where do goods come from, and how are they routed between islands? | [`economy.md`](economy.md) |
+| How is the 3D world drawn without a 3D matrix? | [`render.md`](render.md) |
+| How is the cracked copy compressed, and how is it unpacked? | [`packer.md`](packer.md) |
+| What does the game do, restated without addresses? | "Design digest" below |
+| Which disk, how to boot and drive it, and which saved states exist? | "Provenance", "Running it", "Snapshots" below |
+| What are the hidden keys and the cheat? | "Hidden keys and leftovers" below; `ai.md` section 7 |
+
+Terms used here are defined in `../GLOSSARY.md`.
+
+## What stands out
+
+- The enemy's whole strategy is one additive score over the 64 islands plus an argmax, with a probable bug that
+  always treats island 4 as connected to its network.
+- Difficulty only tunes the island defences, and past `$8000` a signed compare turns it back to the easiest setting.
+- The enemy carrier only exists as a physical object while it is fighting.
+- Captured islands get a random type.
+- The carrier's autopilot steers in a straight line and runs aground.
+- Repair shares a fixed capacity among the systems at the top priority.
+- A missile is decoyed by whichever flare its scan meets last within 6000 units.
+- The economy routes goods as packets over an all-pairs distance matrix relaxed 8 rows per call.
+- The renderer patches its own span filler per colour and uses three layers of hidden-surface removal with no 3D
+  matrix anywhere.
+- The cheat phrase is "GROW OLD ALONG WITH ME", typed while paused.
+
+## Status and evidence
+
+Reached in the emulator: the language menu, the title menu with its 3D attract scene, the Strategy game with the carrier at Vulcan
+and the Action game's opening. The game is hand-written assembly (1 `LINK` frame, about 920 `RTS`), so it is analysed from traces and
+callcaps, not a decompile.
+
+Per topic document, what it covers and how it is proven:
 
 | Doc | Covers | Proof |
 |---|---|---|
@@ -14,17 +56,8 @@ assembly (1 `LINK` frame, about 920 `RTS`), so it is analysed from traces and ca
 | `render.md` | the 3D engine: sine table, chained 2D rotations, projection, depth tree plus BSP plus back-face culling, the self-modifying span filler, the model format | sine 4096/4096, rotations 360/360 and 120/120, projection 480/480, face test 120/120, spans 780/780 (2183/2183 over all 64 colour codes), BSP draw order 1264/1264 draws |
 | `packer.md` | Automation Packer V2.3r: the `LSD!` LZ77 format, the backwards in-place depack and its safety margin, ratios against modern compressors | depacker output identical to `tools/lsd_depack.py`; final read/write gap 218 bytes on all six packed files; margin while input remains 218 to 220 (219 for Carrier Command) |
 
-Gates: `uv run python tools/gates.py run carriercommand` (`gates.toml`, five gates, all PASS).
+To re-run every check in this directory: `uv run python tools/gates.py run carriercommand` (`gates.toml`, five gates, all PASS).
 
-What stands out: the enemy's whole strategy is one additive score over the 64 islands plus an argmax, with a
-probable bug that always treats island 4 as connected to its network; difficulty only tunes the island
-defences, and past `$8000` a signed compare turns it back to the easiest setting; the enemy carrier only exists
-as a physical object while it is fighting; captured islands get a random type; the carrier's autopilot steers
-in a straight line and runs aground; repair shares a fixed capacity among the systems at the top priority; a
-missile is decoyed by whichever flare its scan meets last within 6000 units; the economy routes goods as packets over an all-pairs distance
-matrix relaxed 8 rows per call; the renderer patches its own span filler per colour and uses three layers of
-hidden-surface removal with no 3D matrix anywhere; and the cheat phrase is "GROW OLD ALONG WITH ME", typed
-while paused.
 
 ## Design digest
 
@@ -225,7 +258,7 @@ and the Automation Packer belong to this copy, not the game ("Provenance", `pack
 
 ## Hidden keys and leftovers
 
-Proven against a no-key control from `c_s30` (`py/curio/hidden.py`, PNGs in `scratchpad/carrier/curio/`; the key table at `$794` holds one word per
+Proven against a no-key control, both runs starting from the snapshot `c_s30` (the Strategy game with the carrier at Vulcan; "Snapshots" below) (`py/curio/hidden.py`, PNGs in `scratchpad/carrier/curio/`; the key table at `$794` holds one word per
 scancode, so the addresses below decode to the keys named):
 
 | Keys | Handler | Effect | Count, keys against control |

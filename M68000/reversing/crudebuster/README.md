@@ -1,6 +1,32 @@
 # Crude Buster (Data East, 1990), reverse-engineering workspace
 
-Second arcade subject (after Final Fight). Target set: MAME `cbuster` (World FX), from the merged zip `cbuster.zip` (Dropbox `Daves/MAME games/`), copied to `~/mame-roms/cbuster.zip`;
+Crude Buster is a Data East arcade game with six levels (numbered 0 to 5) in which one or two players fight enemies
+and bosses, with lives, continues and a timer. This directory is its reverse-engineering workspace, the second arcade
+subject after Final Fight (`../finalfight/`). It does not run on the ST emulator: MAME 0.289 runs the game and is the
+oracle (see `../GLOSSARY.md`).
+
+**What this doc set has established.** Graphics (ROM formats, tilemap, sprite and palette hardware), sound (the
+HuC6280 sound program, command ids, sequencer and patch formats), the level flow and text engines, the player
+(controls, move table, grab and throw, hit geometry, damage), the enemy types of levels 0 to 5 and their bosses, and
+the memory map, boot and object pools are documented, with gates and scripts for each. Natural plays of levels 1 to 5
+by a bot are written up in `player/natural.md`.
+
+**Where to find what.**
+
+- How do the hardware, boot, memory map and object pools work? `architecture.md`.
+- What can a player do, and how are hits and damage worked out? `player/player.md`.
+- How do the enemies of levels 0 to 2 decide what to do? `enemies1/enemies1.md`. Levels 3 to 5, the bosses and the ending? `enemies2/enemies2.md`.
+- How do levels flow, what do the text engines and every string say, where do hit boxes and props come from? `world/world.md`, `world/strings.md`.
+- How are the graphics and the sound stored and decoded? `graphics.md`, `sound.md`.
+- Can a bot play through the levels, and what did it learn? `player/natural.md`.
+- Is there a one-page figure set? `infographic/`.
+- How do I run the game under MAME with scripted input? the "Setup" paragraph under the Files table, and its `cbmame.sh` and `lua/` rows.
+
+Terms used here are defined in `../GLOSSARY.md`.
+
+## Hardware and romset
+
+Target set: MAME `cbuster` (World FX), from the merged zip `cbuster.zip` (Dropbox `Daves/MAME games/`), copied to `~/mame-roms/cbuster.zip`;
 it also holds the clones `cbusterw`, `cbusterj`, `twocrude` (US) and `twocrudea`. `mame -verifyroms cbuster` reports "good". MAME 0.289 is the emulator and oracle. Hardware: 68000 + HuC6280,
 two DECO tilemap chips, DECO sprite chip, YM2203 + YM2151 + 2 OKI6295 (`architecture.md`). The 68000 program is encrypted in the ROM files and decrypted by MAME at load: all addresses here are of the
 decrypted image.
@@ -33,6 +59,6 @@ Attract cycle seen on a cold boot with no input: story crawl, title, two-player 
 
 ## Notes
 
-- Forcing the level-cleared flag (`$80040` bit 4) by poke reaches the next stage only if the bit is cleared again about 400 frames later (the interlude `$183c` loops while it is set; my first test left it set and hung at the stage card). `startlevel.lua` is the cleaner way to a given level.
+- Forcing the level-cleared flag (`$80040` bit 4) by poke reaches the next stage only if the bit is cleared again about 400 frames later (the interlude `$183c` loops while it is set, so a run that leaves it set hangs at the stage card). `startlevel.lua` is the cleaner way to a given level.
 - `tools/rdis.py` does not follow the longword state tables inside the type handlers; scan the linear listing (`tools/disassemble.py --rom <img> --base 0 --all 0 2d000`) before claiming a writer or caller.
 - Input names for `lua/lib.lua`: ports `:P1_P2` (`P1 Up`, `P1 Button 1`, `1 Player Start`, ...), `:COINS` (`Coin 1`); levels are read once per frame, hold several frames.

@@ -6,6 +6,23 @@ the whole game), loaded by a resident graphics/file/input library; no compiled-C
 Reversed with the trace + callcap method of the other games here; every claim in the topic docs carries
 a script and a match count, or is labelled INFERRED.
 
+**What this doc set has established.** The boot chain and the 556-byte trainer wrapper, the file format of the level
+maps, the drawing engine and every picture bank, hero movement and damage, the AI of all 19 enemy types, the sound
+system and the cheat and hidden features are documented and gated; the level-1 boss was killed by input alone. What
+was never played or run is listed under "Not exercised".
+
+**Where to find what.**
+
+- How does the game boot, and what is the trainer menu? `system.md`.
+- How is the picture drawn, and where do the tiles, sprites and screens come from? `graphics.md`.
+- How do the hero, collision, damage, urns, chests, the shop and the score work? `mechanics.md`.
+- How do enemies, shots and bosses behave? `ai.md`.
+- How does the sound work? `sound.md`.
+- Are there cheats or hidden features? `secrets.md`.
+- Which disk and files were studied? "Provenance". What did the emulator have to fix? "What it needed from the emulator".
+
+Terms used here are defined in `../GLOSSARY.md`.
+
 ## Provenance
 
 | item | value |

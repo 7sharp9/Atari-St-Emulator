@@ -1,4 +1,31 @@
-# populous — booted to gameplay, then taken apart
+# Populous (Bullfrog / Electronic Arts, 1989)
+
+Populous is played on an isometric grid of land. The player raises and lowers land corners, walkers
+settle flat ground and found towns whose size depends on how much flat land surrounds them, and the
+player spends mana on powers against a computer opponent (the "computer god") that terraforms its own corner. The
+title menu offers TUTORIAL, CONQUEST and CUSTOM games, and conquest levels have world names such as GENESIS; the
+game program has 99 level records.
+
+This doc set has established the graphics and asset formats, the terrain and world generator, the walker, combat,
+settlement and mana rules, the powers, and how the computer god decides and casts. Each is backed by a Python
+model compared with the real code (match counts are in the table below). The Populous II notes compare
+their findings against these.
+
+## Where to find what
+
+| question | document |
+|---|---|
+| How is the screen drawn: blocks, sprites, minimap, panels, palette? | [`graphics.md`](graphics.md) |
+| How are land heights stored, how does raising land work, how are worlds generated, and how do conquest levels progress? | [`terrain.md`](terrain.md) |
+| How do walkers move, merge and fight, how does a settlement grow, and what do mana and powers cost? | [`mechanics.md`](mechanics.md) |
+| How are trail effects, pause, save games, sound and the crack's key checks handled? | [`systems.md`](systems.md) |
+| How does the computer opponent choose and cast powers? | [`ai.md`](ai.md) |
+| What does the game do, restated without addresses? | "Design digest" below |
+| How was it booted, driven and analysed, and what did the emulator need? | "What it needed from the emulator", "Drive recipe", "Driving play", "How it was analysed" below |
+
+Terms used here are defined in `../GLOSSARY.md`.
+
+## Status and evidence
 
 *Populous* (© 1989 Bullfrog Productions / Electronic Arts), Atari ST, from the
 [cr Replicants] scene crack ("CRACKED BY DOM"). It runs from a cold boot through the

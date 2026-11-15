@@ -1,7 +1,20 @@
-# int_test — reversing-goal milestone 2 artefact
+# int_test: a 68000 integer-instruction test program
 
-First **real, third-party, disk-loaded** program run to completion on the emulator and
-reconstructed into a control-flow graph from the flow-event log alone.
+`int_test.tos` is a test program from the Hatari emulator project (GPL v2). It runs 30 small tests of the
+68000's integer instructions (ABCD, ADD and its variants, the shifts), prints `OK` or `FAILED` for each, and
+exits. It is not a game. It was used here because a correct emulator must pass every test: on this emulator it
+runs to completion and passes all 30. It was also the first third-party program loaded from a disk image, and
+its control-flow graph (which blocks of code ran and how they connect) was rebuilt from the emulator's log of
+calls and branches alone.
+
+Where to find what:
+
+- What does the program do, test by test? "The program" below.
+- How was the disk image made and the program run? "How the disk was built", "How it was run".
+- What do the call graph and flow graph show? "What the artefacts show".
+
+Terms used here are defined in `../GLOSSARY.md`. This directory was milestone 2 of the repo's early reversing
+goals (the only record is the commit message of the commit that added it).
 
 ## The program
 
@@ -11,7 +24,8 @@ executable: no resource file, no overlay, no protection, no native-feature calls
 walks a `tests[]` table of 30 functions (`tst_abcd_1` … `tst_shift_8`), printing
 `Test '<name>'\t: OK|FAILED\n` for each via `Cconws`, and returns `!(failures == 0)`.
 
-It exercised ABCD (which was the wall — see commit `f5ee4d2`), ADD/ADDI/ADDQ/ADDX and the
+It exercised ABCD (packed decimal add; the emulator had not implemented it, so the first run stopped at the
+program's first test until commit `f5ee4d2` added it), ADD/ADDI/ADDQ/ADDX and the
 shift group, and **passed every test** (`Pexec mode=0 returned d0=$00000000`).
 
 ## How the disk was built

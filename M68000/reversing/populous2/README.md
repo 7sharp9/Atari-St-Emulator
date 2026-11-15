@@ -1,4 +1,41 @@
-# populous2: booted to gameplay, first program map
+# Populous II: Trials of the Olympian Gods (Bullfrog / Electronic Arts, 1991)
+
+Populous II is played on an isometric landscape. The player raises and lowers the corners of the land, walkers
+settle the flat ground, and the player spends mana on powers against a computer god (Epimetheus in the first
+conquest battle). The title menu offers CREATE YOUR DEITY, CONQUEST GAME, CUSTOM GAME and LOAD GAME; the
+conquest game is a series of 1000 battles. It is the sequel to Populous and shares its world model in places;
+each point below says whether it matches `reversing/populous/` and how that was checked.
+
+This doc set maps the whole program and checks the main systems against the game's own code: the landscape and
+its cell maps, the object and entity records, the settlement land claim, the world generator, raise and lower
+from a click to the cell map, the computer god, the conquest battle records and the random numbers. Several of
+these are reproduced byte for byte by a model compared with the real code; each section's heading says how far
+it was checked. It is one document rather than several topic docs, and the "Not yet exercised" section lists
+what is still untouched.
+
+## Where to find what
+
+| question | section below |
+|---|---|
+| How does the game boot from this disk? | "Boot path", "Drive recipe: cold boot to gameplay" |
+| What runs every tick, and how are the mouse and keyboard read? | "The program": "Interrupts and input", "Main loop `$12524`" |
+| How is the land stored, and how are cells flat, sloped or owned? | "The landscape" |
+| What is a walker or other object, and what does each state do? | "Objects and entities" |
+| How far does a settlement claim land, and how does it grow? | "Settlement land claim `$25168`" |
+| How is a new world made from a seed? | "World generator `$1ebee`" |
+| What happens when the player clicks to raise or lower land, and what does it cost? | "Raise and lower" |
+| How does the computer opponent choose and cast powers? | "The computer god `$25652`" |
+| How is a conquest battle stored and set up? | "Conquest battles" |
+| Where does the random number come from? | "Random numbers" |
+| What has not been checked? | "Not yet exercised" |
+| Where do disks, hashes and files come from? | "Provenance", "Files" |
+
+Terms used here are defined in `../GLOSSARY.md`.
+
+Evidence labels: **verified** (an emulator check with a match count, script named), **traced**
+(seen in an emulator trace or FDC/GEMDOS log), **read** (read from the code, not yet driven).
+
+## Status and approach
 
 *Populous II: Trials of the Olympian Gods* (© 1991 Bullfrog Productions / Electronic Arts),
 Atari ST, from the WILD! compilation disk #29 ("CRACKED BY SPIKE OF WILD!"). It runs from a cold
@@ -9,12 +46,7 @@ Epimetheus. No emulator change was needed.
 
 The game is hand-written assembly, not compiled C like Populous (1): 5 `LINK` words in the
 220 KB image against 404 `RTS` and 181 `MOVEM` pushes, so there is no decompile route and the
-work goes through traces and `callcap`. It still shares Populous's world model in places; each
-point below says whether it matches `reversing/populous/` and how that was checked.
-
-Evidence labels: **verified** (an emulator check with a match count, script named), **traced**
-(seen in an emulator trace or FDC/GEMDOS log), **read** (read from the code, not yet driven).
-
+work goes through traces and `callcap`.
 ## Provenance
 
 **Disks and binaries are commercial and not committed.** Reproduce from the archive:
@@ -100,7 +132,7 @@ words are `$393fa`/`$393fc`. Two cold-boot runs gave byte-identical snapshots at
 and `p2_game_start` is byte-identical to the one reached interactively with GEMDOS tracing on.
 Each snapshot has a provenance sidecar, so `resume` remounts `wild29.st` by itself.
 
-## The program (first map)
+## The program
 
 Addresses are runtime absolute; the image is not relocated (it is built for `$1770`). Names are in
 `populous2.sym`.

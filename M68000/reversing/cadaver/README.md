@@ -1,9 +1,30 @@
-# Cadaver (Bitmap Brothers / Image Works, 1990) — reversing spike
+# Cadaver (Bitmap Brothers / Image Works, 1990)
 
-Isometric adventure/puzzle game. This is a spike (bounded exploratory pass), not the full
-milestone ladder used for PowerMonger/Super Sprint — it exists to get the game running and
-establish a known-good boot path, since that alone took three real emulator fixes. AI/UI content
-reversing (the actual goal) has not started yet; see "Next steps".
+Cadaver is an isometric adventure/puzzle game. The player guides one hero through a world of small rooms on
+one shared grid, one room live at a time: doors lead between rooms, and some need a key from the hero's
+rucksack or a lever pulled or a block pushed first. A panel of icons (take, drop, examine, operate, apply an
+item ...) opens on the object in front of the hero. Health is a budget that almost never regenerates, and
+gold and experience points are the score. Level 0 of the one-disk Empire build has 72 rooms and level 1 has 97.
+
+This doc set has established the room, door, object, script and inventory rules (the "Design digest" below),
+the graphics formats, and a road through level 0 to its treasury and beyond, driven with natural input. The
+game runs on this emulator from a cold boot to gameplay; booting it needed three emulator fixes. Level 0 of the
+Empire build is the main subject; level 1 and Disk 2 are covered where a line says so. Items still open are
+listed under "Next steps".
+
+## Where to find what
+
+| question | document |
+|---|---|
+| How do rooms, doors, locks, collisions, the icon panel and the health budget work, and how was level 0 walked end to end? | [`mechanics.md`](mechanics.md) |
+| What can the player not see: the keys and menus, the cost of saving, the script verbs and events that drive puzzles, the rank table, sound and the clock? | [`secrets.md`](secrets.md) |
+| How do the two bytecode interpreters work: the one that animates and moves objects, and the one that runs an object's verbs (lock, unlock, move, rucksack and chest operations)? | [`ai.md`](ai.md) |
+| How is the screen laid out, and how are the hero's and the props' sprites stored and drawn? | [`graphics.md`](graphics.md) |
+| What does the game do, restated without addresses? | "Design digest" below |
+| Which disk was used, how was it booted and driven, and what did the emulator need? | "Disk images", "Milestones reached", "What it needed from the emulator" and "How it was run" below |
+| What does each file in this directory hold? | "Files" below |
+
+Terms used here are defined in `../GLOSSARY.md`.
 
 ## Design digest
 
@@ -245,7 +266,7 @@ turned out not to need it.
 | `lever_hotspot_gone_3units_down.png` | 21st pass: screenshot at the snapshot above, proving the "LEVER" name-hotspot is gone 3 units below the baseline tile |
 | `room2_lever_south_boundary.snap` | 29th pass: live snapshot at the new south-approach hard-block tile (`x6-12,y16-22`), reached via Down×3 then Left×3 from `room2_tunnel_entry.snap` — a genuinely different route from the original Left-only approach; resume point behind `mechanics.md` section 3; untracked like the other `.snap` resume points |
 
-## Control flow (2nd pass, from `gameplay_empire.snap`)
+## Control flow, from `gameplay_empire.snap`
 
 Grounded via `ATARI_TRACE_EVENTS` + `tools/trace_cfg.py` over a REPL session that drove mouse
 clicks and cursor-key presses from the gameplay snapshot (`resume ... repl`, `watch` on candidate

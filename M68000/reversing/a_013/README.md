@@ -1,20 +1,29 @@
-# a_013 — a bootable multi-game menu disk, packed games and all
+# a_013: a bootable multi-game menu disk, packed games and all
 
-`A_013.ST` is a **bootable** "Automation"-style compilation disk: a custom 68k boot
-sector, an `\AUTO\MENU13.PRG` menu, and four crunched games. It is the first disk
-the emulator runs that is *booted* rather than loaded through a `\AUTO\*.PRG`. The
-delivery chain (boot sector → menu → game select → in-place LSD depack → running
-game) needs **no emulator code change** — the real TOS ROM does the sector-0
-`$1234` boot and the depackers are plain 68000.
+`A_013.ST` is an Atari ST floppy of four games behind a menu, each stored compressed: Super Hang-On (its title shows a
+rider and "SEGA"), Super Sprint (the racing game documented in `../supersprint/`), ST Karate (a fighting game: a
+fight screen with an energy, score, lives and level display) and Electronic Pool (Microdeal; a game of pool on a
+table seen from above). The disk is **bootable**: a custom 68000 boot sector, an `\AUTO\MENU13.PRG` menu and
+four crunched games, in the style of an "Automation" compilation (see `../GLOSSARY.md`). It is the first disk the
+emulator runs that is *booted* rather than loaded through a `\AUTO\*.PRG`.
 
-**Menu game 2, Super Sprint** (`SPSPRINT.WAS`) is a packed copy of the engine
-`../supersprint/` already drove, so it runs straight through to its attract loop
-and track-select. **Menu game 1, Super Hang-On** (`SPHANGON.WAS`) is a different
-engine and did need seven general 68000/ST fixes (commit after `5f33079`) to
-reach its title screen — see "Menu game 1: Super Hang-On" below. **Menu games 3
-and 4, ST Karate and Electronic Pool**, are two more distinct engines and both
-run into full gameplay with **no emulator code change at all** — see "Menu games
-3 & 4" below.
+**What this doc set has established.** The delivery chain (boot sector, menu, game select, in-place depack, running
+game) needs no emulator code change: the real TOS ROM does the sector-0 `$1234` boot and the depackers are plain
+68000. Super Sprint (`SPSPRINT.WAS`) is a packed copy of the engine `../supersprint/` already drove, so it runs
+straight through to its attract loop and track-select. Super Hang-On (`SPHANGON.WAS`) is a different engine and
+needed seven general 68000/ST fixes to reach its title screen; it stops after the title (see "Menu game 1: Super
+Hang-On"). ST Karate and Electronic Pool are two more distinct engines and both run into full gameplay with no
+emulator code change at all (see "Menu games 3 & 4").
+
+**Where to find what.**
+
+- How does the disk boot and reach a game? "The boot chain".
+- How are the games compressed, and why was no emulator change needed? "The LSD depacker", "Why no emulator change was needed".
+- Why does Super Hang-On stop after its title, and what was fixed to get there? "Menu game 1: Super Hang-On".
+- How are ST Karate and Electronic Pool controlled? "Menu games 3 & 4".
+- What is on the disk, and how do I reproduce a run? "The disk", "How it was run", "How the CFG was built".
+
+Terms used here are defined in `../GLOSSARY.md`.
 
 ## The disk
 

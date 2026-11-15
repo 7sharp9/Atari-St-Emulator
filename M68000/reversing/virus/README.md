@@ -1,8 +1,31 @@
 # virus: Virus (David Braben, 1988), first look
 
 Virus is a flight game over a procedural landscape: the player's craft takes off from a launch pad, flies over
-a patchwork of coloured tiles and shoots the infection. The version analysed is the Union crack (the
-`A-HA #[no number]` disk), which adds a trainer menu in front of the game. Reached in the emulator: the Union
+a patchwork of coloured tiles and shoots the infection. It is an Atari ST game. The version analysed is the Union crack (the `A-HA #[no number]` disk), which adds a trainer menu in front of the game (a cheat menu, see `../GLOSSARY.md`).
+
+**What this doc set has established.** The landscape is a 256x256 byte height map computed once per level from a sum of eight table
+sines, and levels 1 and 2 are the same routine with four instruction words patched; each of the 110 grid vertices
+costs two `divs`, not a reciprocal table; a tile's colour is the low two bits of its height byte (a cycling band),
+not a slope; the ship's whole tick is half-way attitude smoothing, 1/64 drag, thrust of a matrix column divided by
+8 and a gravity that rises with the wave.
+
+**Where to find what.**
+
+- How is the landscape generated, and why do levels 1 and 2 share code? "The landscape generator" below.
+- Where are the objects placed, and how does the random number generator work? "Object scatter and the RNG".
+- How is the picture drawn? "The renderer".
+- How does the ship move? "The flight model".
+- What do enemies do, when does a wave end, what spawns per wave? "The actor pool and the seeder"; [`behaviours.md`](behaviours.md).
+- What does attract mode do? "Demo mode and the autopilot"; [`demo.md`](demo.md).
+- What is still unknown? "Open questions".
+- Where is each thing in RAM? "Memory map".
+- How do I reproduce a result? "Running it", and "Gates" below.
+
+Terms used here are defined in `../GLOSSARY.md`.
+
+## What was reached, and how it is proved
+
+Reached in the emulator: the Union
 menu, the trainer menu, the title picture, the "Press R" page, the game on the launch pad at wave 1, and flight
 (thrust held, a real input run). The game is hand-written 68000 (no compiled-C idioms were met in the parts read), so it is analysed from snapshots, `bp`/`hits` runs and `callcap`, not a decompile.
 
@@ -18,12 +41,6 @@ about 5 s). The captures are rebuilt with `bash reversing/virus/drive.sh` then `
 | this file | provenance, the drive, memory map, landscape generator, object scatter and RNG, renderer, flight model, the seeder behaviour, landscape selection by wave | terrain 65455/65455 on three landscapes, objects 571/571 and 1774/1774, grid 330/330 on four frames, tiles 132/132, slope table 8064/8064, flight 119/119, seeder 447/447 |
 | [`demo.md`](demo.md) | the attract mode and its autopilot | see that doc |
 | [`behaviours.md`](behaviours.md) | the actor pool's behaviours (every enemy kind), wave completion and the per-wave spawn table, readers of the demo flag, the draw-list residue | wave ends 4/4 against the rule, residue poke 500/500, census of game 1 |
-
-What stands out: the landscape is a 256x256 byte height map computed once per level from a sum of eight table
-sines, and levels 1 and 2 are the same routine with four instruction words patched; each of the 110 grid vertices
-costs two `divs`, not a reciprocal table; a tile's colour is the low two bits of its height byte (a cycling band),
-not a slope; the ship's whole tick is half-way attitude smoothing, 1/64 drag, thrust of a matrix column divided by
-8 and a gravity that rises with the wave.
 
 ## Provenance
 

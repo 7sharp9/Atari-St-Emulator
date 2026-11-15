@@ -1,6 +1,25 @@
 # Lemmings (Psygnosis, 1990)
 
-Focus of the first workstream: lemming behaviour (`sessions/lemmings.md`).
+In Lemmings, lemmings come out of entrances and walk on their own. The player picks a skill icon (digger,
+blocker, basher, miner and others) and clicks a lemming to give it that skill; a lemming that reaches an exit is
+counted as saved, and traps kill it. The game has 140 levels on 100 maps, and access codes that jump to a level.
+
+This doc set has established how a lemming is stored and updated each frame, how a click assigns a skill (digger,
+blocker, basher, miner and the other skills are each driven in the emulator),
+how exits and traps behave, and the access codes, level list and ending. It also records how the cracked disk
+boots to level 1.
+
+## Where to find what
+
+| question | where |
+|---|---|
+| How is a lemming stored, how does the game update it each tick, how does a click assign a skill, and how do collisions, exits and traps work? | [`mechanics.md`](mechanics.md) |
+| What are the access codes and the levels, how does the game end, and what did the crack do? | [`extras.md`](extras.md) |
+| Which disk was used and how do I boot it to level 1? | "Provenance", "Boot to gameplay" below; `drive.txt` |
+| What did the emulator need? | "What it needed from the emulator" below |
+| What does each file and script do? | "Files" below |
+
+Terms used here are defined in `../GLOSSARY.md`. The session notes for this game are in `sessions/lemmings.md`.
 
 ## Provenance
 
@@ -52,7 +71,7 @@ scanline from Timer B; the logic is unaffected.
 
 Both are one commit (`emulator: MFP vector base from VR ...`). Net: `verify 5000000` PASS; the 30M
 diskless snapshot differs from HEAD in the two counter bytes only (`cmp -l`: 2 bytes); a PowerMonger
-20M resume differs in the three counter bytes only; `selftest tests/680x0` 1000051 pass, 0 fail, 9 skip.
+20M resume differs in the three counter bytes only; `selftest tests/680x0` (the emulator's 68000 instruction test suite) 1000051 pass, 0 fail, 9 skip.
 
 ## Files
 

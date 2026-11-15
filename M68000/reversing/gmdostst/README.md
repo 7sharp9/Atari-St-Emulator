@@ -1,8 +1,20 @@
-# gmdostst — reversing-goal milestone 3 artefact
+# gmdostst: a GEMDOS file and directory test program
 
-Second real, third-party, disk-loaded program run to completion on the emulator, and
-the first one that **writes to the floppy**: it exercises the FDC Write Sector path
-added in commit `53f6c1a`.
+`gmdostst.tos` is a test program from the Hatari emulator project (GPL v2). It calls TOS's file, directory and
+supervisor-mode services (GEMDOS) in three tests and prints `OK` or `FAILED` for each. It is not a game. On this
+emulator it runs to completion and passes every test. It is also the first program here that **writes to the
+floppy**: creating directories and files makes TOS read and rewrite the disk's FAT and directory sectors, so it
+exercises the emulator's floppy controller (FDC) Write Sector path, added in commit `53f6c1a`. Its control-flow
+graph (which blocks of code ran and how they connect) was rebuilt from the emulator's log of calls and branches.
+
+Where to find what:
+
+- What does each of the three tests call? "The program".
+- How was the disk image made and the program run? "How the disk was built", "How it was run".
+- What do the call graph and flow graph show? "What the artefacts show".
+
+Terms used here are defined in `../GLOSSARY.md`. This directory was milestone 3 of the repo's early reversing
+goals (the only record is the commit message of the commit that added it).
 
 ## The program
 

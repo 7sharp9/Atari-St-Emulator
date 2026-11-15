@@ -1,6 +1,37 @@
-# powermonger: the emulator bugs the cracks exposed, and what the analysis established
+# PowerMonger (Bullfrog / Electronic Arts, 1990)
 
-PowerMonger (© 1990 Bullfrog / Electronic Arts), driven from two scene cracks. The
+PowerMonger is a strategy game played on an isometric, height-mapped terrain view. The player does not steer
+a character: they pick an order (go, attack, get men, take or drop food, trade, set men to work, spy, offer an
+alliance, dismiss men ...) and click a target, and the order goes to a captain's group, whose lead walks there
+with the men following in formation. The computer's lords give their captains the same orders through the same
+code. The campaign has 195 lands, each with settlements that keep a food and manpower ledger, and a land ends
+by conquest or defeat.
+
+This doc set has established how the game works well enough to restate its rules (the "Design digest" below):
+the per-tick entity and commander AI, the order executor, the economy, the software terrain renderer and the
+system services (sound, save disk, serial link). Each topic doc backs its claims with a Python or F#
+reconstruction compared with the real 68000 code, or with the game driven through its own mouse UI. A
+from-scratch Godot port of the renderer is in `port/`.
+
+## Where to find what
+
+| question | document |
+|---|---|
+| How do the game's entities (people, animals, pigeons) and captains decide what to do each tick, and how does the opposing lord pick a target? | [`ai.md`](ai.md) |
+| Where do food, goods and manpower come from, and what makes a settlement revolt? | [`economy.md`](economy.md) |
+| What does each player order do, how is a land started and ended, how does the 195-land campaign work, and what did the developers call things? | [`strategy.md`](strategy.md) |
+| How is the terrain drawn (projection, rasteriser, sprites, camera, minimap, palettes)? | [`graphics.md`](graphics.md) |
+| How does the game play samples, save to disk and talk over the serial link? | [`system.md`](system.md) |
+| How would the renderer be rebuilt in a modern engine? | [`port/`](port/README.md) |
+| Which script reproduces a result? | [`py/README.md`](py/README.md) |
+| What does the game do, restated without addresses? | "Design digest" below |
+| How was the game booted and driven, and what did the emulator need? | "Drive recipe" and the "Bug" sections below |
+
+Terms used here are defined in `../GLOSSARY.md`.
+
+## Status, sources and evidence
+
+The game is run from two scene cracks (see the glossary). The
 [cr Replicants] build boots cold all the way into the **isometric battle view**: cracktro,
 ICE depack, title and credits, name entry, option menu, campaign world map, the "Between Pages
 1-5" mission briefing, and past the briefing's OK button into the height-mapped terrain view
@@ -8,11 +39,10 @@ ICE depack, title and credits, name entry, option menu, campaign world map, the 
 195-land campaign can be played through the real UI. The [cr Empire] build boots to its title
 and the "Pondering over the map..." screen and has not been driven further. Five emulator
 bugs the cracks exposed on the way (FDC self-test, shifter register gap, `SUBA.L` decode,
-`DIVU` / `DIVS` overflow and zero divide, Timer A) are documented below. Gameplay, mechanics, AI,
-economy, rendering and the system services are analysed in five topic documents, each backed
-by a Python or F# reconstruction diffed against the real 68000 through `callcap`, or (where
-noted) driven live through the game's own UI; "What runs, and what the analysis established"
-below is the overview by topic. The scripts are indexed in [`py/README.md`](py/README.md).
+`DIVU` / `DIVS` overflow and zero divide, Timer A) are documented below. "What runs, and what the
+analysis established" below is the overview by topic. The scripts are indexed in [`py/README.md`](py/README.md).
+
+The table below gives, per topic document, what it covers and how it is proven.
 
 | document | covers | proof |
 |---|---|---|

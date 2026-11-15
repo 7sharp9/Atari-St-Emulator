@@ -1,14 +1,28 @@
 # archipelagos: Archipelagos (Astral Software, 1989), first look
 
-Archipelagos is on The Medway Boys compilation disk #58 as "Archipelagos+", cracked and trained by The Mighty Clog,
-original supplied by Jobil. The game's text credits Paul Carruthers and Ian Downend. This directory reaches the title,
-the archipelago map and first-person play, locates the island generator and proves it: a Python model rebuilds the
-game's 256 x 256 island map cell for cell on five islands (see "The island generator"). One creature's step and its blood
-footprint are modelled and gated (see "The creature and its blood"); the other object kinds are not decoded.
+Archipelagos is an Atari ST game (the game's text credits Paul Carruthers and Ian Downend) played in first person on
+islands, with an archipelago map screen as well. Its own messages show a timed, dangerous game: "SOLVED IN", and "YOU
+WERE KILLED BY" a lost soul, running out of time, a twisted necromancer, a pod, quicksand and others (the full list
+is under Provenance). The copy analysed is "Archipelagos+" on The Medway Boys compilation disk #58, cracked and
+trained by The Mighty Clog, original supplied by Jobil.
 
-The engine is one hand-written 68000 image (a 50,774-byte PRG, text only, no symbol table, 0 LINK frames) with dead
-instructions interleaved with the live code, so the `disassemble.py --all` listing mis-syncs in places. Trust a live
-trace (`ATARI_TRACE=1` for a few hundred steps) or `callcap` over a static read.
+**What this doc set has established.** This directory reaches the title, the archipelago map and first-person play,
+locates the island generator and proves it: a Python model rebuilds the game's 256 x 256 island map cell for cell on
+five islands. One creature's step and its blood footprint are modelled and gated; the other object kinds are not
+decoded. The program is one hand-written 68000 image (a 50,774-byte PRG, text only, no symbol table, 0 LINK frames)
+with dead instructions interleaved with the live code, so the `disassemble.py --all` listing mis-syncs in places.
+Trust a live trace (`ATARI_TRACE=1` for a few hundred steps) or `callcap` over a static read.
+
+**Where to find what.**
+
+- How is an island's height map built? "The island generator"; which island is shown? "Island number".
+- What does the creature do and what is its blood footprint? "The creature and its blood".
+- Why does the disk not load on this emulator without two patches? "The emulator gap and the two pokes".
+- How does the game load from disk? "Disk layout, and why `extract_disk.py` is wrong for it", "Load chain".
+- How do I reproduce a run? "Running it". Where is each thing in RAM? "Memory map".
+- What is not yet known? "Open".
+
+Terms used here are defined in `../GLOSSARY.md`.
 
 Evidence is of three kinds. **Gated from this directory** (`uv run python tools/gates.py run archipelagos`, one gate,
 15 s after the drive): the island model, `$16166`, the RNG. **Observed once, not gated:** the boot drive, the loader

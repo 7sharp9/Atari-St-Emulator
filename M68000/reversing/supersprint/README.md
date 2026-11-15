@@ -1,19 +1,32 @@
-# supersprint — a real 1986 commercial game, driven into a live race
+# supersprint: Super Sprint (Atari Games 1986; Atari ST version by Software Studios)
 
-The first **commercial** disk-loaded program the emulator runs, as opposed to the GPL
-Hatari test binaries in `../int_test/` and `../gmdostst/`. Super Sprint's `\AUTO\SSPRINT.PRG`
-loads through the real TOS 1.00 ROM, pulls in its data files, runs its
-intro/credits sequence and double-buffered attract loop, and — with IKBD input
-(injected 55th pass, wired to the live window's arrow keys 56th pass) — leaves
-attract, walks its track-select / "PREPARE TO RACE" menu, starts an actual Track 1
-race, and lets a window player drive the joystick car a full lap. No instruction
-wall. A race-start crash seen after holding a key on the PREPARE-TO-RACE screen was an emulator MFP bug, fixed in commit `6a1d544`
-(`secrets.md`, "Prepare-screen crash").
+Super Sprint is a racing game, first an Atari Games arcade machine (1986); the version analysed is the Atari ST conversion by
+Software Studios, published by Electric Dreams. The player drives a joystick-controlled car round a track against
+computer-driven cars (the "drones"), over several races with an upgrade shop. The copy analysed is a cracked scene
+release (see "The program").
+
+**What this doc set has established.** The program is compiled C (263 `LINK A6` frames), so a Ghidra decompile exists;
+five areas were reversed from it and proved against the emulator with differential tests (every count is in the doc's
+proof table, the scripts are under `py/`). It loads through the real TOS 1.00 ROM, pulls in its data files, runs an
+intro/credits sequence and a double-buffered attract loop, and, with IKBD (keyboard and joystick) input, leaves attract, walks
+its track-select / "PREPARE TO RACE" menu, starts a Track 1 race, and lets a window player drive the joystick car a
+full lap. No missing CPU instruction stopped it. A race-start crash seen after holding a key on the PREPARE-TO-RACE
+screen was an emulator MFP bug, since fixed (`secrets.md`, "Prepare-screen crash").
+
+**Where to find what.**
+
+- How does a car move, how do the drones decide, what does the shop sell, how is a lap counted? `mechanics.md`.
+- Where do the track shapes, walls and surfaces come from in the data files? `tracks.md`.
+- How is the picture drawn and how are the sprites and fonts stored? `graphics.md`.
+- How does the music and sound work? `sound.md`.
+- Are there cheats or hidden modes, and what is the high-score file format? `secrets.md`.
+- How do I look at the graphics in RAM? `gfxview.md`.
+- How was the program loaded, driven into a race and played? "The program", "What it needed from the emulator", "How it was run", "Driving it into a race", "Playing it from the live window".
+- What was never run in the emulator? "Not exercised in the emulator".
+
+Terms used here are defined in `../GLOSSARY.md`.
 
 ## Topic docs
-
-The program is compiled C (263 `LINK A6` frames), so a Ghidra decompile exists; five areas were reversed from it and
-proved against the emulator with differential tests (every count is in the doc's proof table, the scripts are under `py/`).
 
 | doc | covers | headline proof |
 |---|---|---|
@@ -44,7 +57,7 @@ python tools/disassemble.py --rom scratchpad/supersprint/ss.img --base 0xa304 --
 `(**(code **)(unaff_A5 + 0xNN))()`: look the offset up in `supersprint.sym`. `$11b24` is the C-data initialiser (its long run of table
 stores is the quickest way to see the table shapes) and `$13816` is `main`. The disk files are extracted with `tools/extract_disk.py`.
 
-## The MFP Timer B raster split (built 61st pass, verified 63rd)
+## The Timer B raster split on the menu screens
 
 On the **menu and results screens** (select track, options, hi-score, prepare, winner's circle; **not in the race**, `graphics.md`)
 Super Sprint installs an MFP Timer B event-count ISR (`$f9ea`, vector `$120`,
@@ -114,7 +127,7 @@ same Pexec(0) path `int_test` and `gmdostst` already use.
 
 ## What it needed from the emulator
 
-### To reach attract (52nd pass)
+### To reach attract mode
 
 Two commits, both plain addressing-mode gaps, both routed through the shared EA
 decoder (`x.ResolveEa` / `x.ReadEa` / `x.WriteEa`) — the same migration the
@@ -127,7 +140,7 @@ instruction-counted timing already models.
 | `2d466ce` | `jsr $cc(a5)` (JSR eamode 5); later `mulu.w #4,d1` (MULU immediate) | JSR/JMP and the MULU.w/MULS.w source operand onto the shared EA decoder |
 | `ccbae25` | `addq #n,(d8,An,Xn)` (ADDQ eamode 6) | ADDQ/SUBQ onto the shared EA decoder (new `x.AddSubQ` helper) |
 
-### To reach a race (55th pass)
+### To reach a race
 
 No instruction walls. Two peripheral-behaviour gaps:
 
@@ -176,7 +189,7 @@ and the attract loop polls the joystick table for a fire press.
 - `gameplay.png` — the overhead Track 1 attract demo (drone cars mid-lap): correct
   playfield, cars, barriers, trees, shadows, `TRACK 1` / `DRONE LAP` text.
 
-## Driving it into a race (55th pass)
+## Driving it into a race
 
 The IKBD handler at `$104b6` decodes the IKBD "joystick event reporting" packet
 format: a `$FE` (joystick 0) or `$FF` (joystick 1) header byte, then one state
@@ -207,7 +220,7 @@ So a run driven purely by injected IKBD packets (`kbd` in the REPL, or
 
 The road/sky palette is flat, not banded — see the raster-split caveat at the top.
 
-## Playing it from the live window (56th pass)
+## Playing it from the live window
 
 The 55th pass left the human car sitting on the grid: the SDL2 window fed the
 keyboard and mouse into IKBD but never sent a joystick report, and the keyboard
