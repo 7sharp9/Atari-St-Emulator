@@ -111,6 +111,9 @@ rest of the renderer (clipping, polygon building, objects) and the vehicles' han
 
 - Five sites have no roads, so the walk never reaches them; three of them are handed to the enemy at the start, and
   the other two can never fall: nothing else takes a site. (A 2, A 4)
+- The terrain's roughness is a 16-bit word that overflows from an average height of 3,471, so above it the noise is
+  inverted and shrinks: the highest ground is smoother than the slopes below it, on 107,439 of the finest level's
+  2,560,000 cells (whether intended is not known). (T 1)
 - The attack odds measure the player's distance from the Enemy Headquarters' map coordinates read at terrain scale,
   a point off the island beyond its far corner, so "attacks grow near the headquarters" survives only as a direction
   (inferred intent). (A 4)
@@ -252,7 +255,7 @@ team, previous, next and S.O.S, and Decisions' ski icon (x 128) starts the first
 | `graphics.md` section 5a, `py/scan/` | the cell scan `$16cf6`: `scan_model.py` reproduces the game's cell list for 40 headings and 6 camera cells (6900/6900 cells in order, 46/46 headings; broken control 6405/6900), `run.sh` captures fresh and runs it; `order_check.py` measures the model's nearer-first inversions |
 | `graphics.md`, `py/pipeline/` | the 3D view for one frame: the landscape build and draw-list walk, the buffers, projection, edge scan and span fill; `run.sh` rebuilds the frame from `s_3d_6.snap` and runs `proj_check.py` (190/190 vertices), `cam_check.py` (4/4), `polys.py` (90 polygons, 5 objects), `edge_model.py` (713/713 rows) and `fill_model.py` (110/110 fills, 90/90 terrain polygons from the model's edges) |
 | `terrain.md`, `py/terrain/` | terrain model `terrain_gen.py`, its gate `gate_terrain.py`, `render_terrain.py` |
-| `fs/` | the terrain in F# (`dotnet fsi fs/terrain.fsx`, commands in its header): `Heritage.fsx` reads the 68000's memory, `Island.fsx` the domain model (the whole island as a value), `Faithful.fsx` the RAM transcription; `gate`, `--break`, `domain`, `same` against `gate_terrain.py`'s snapshots; `Render.fsx`/`Drone.fsx` draw `map`, `levels` (the whole island at every subdivision), `zoom`, a `drone` fly-over, the `reveal` orbit of the central peak, `skier` (the snapshot's own camera, lens and palette, for comparison with the game's screen) and a planned `ski` descent with its `skiline` figure (our renderer, camera and light, not the game's) |
+| `fs/` | the terrain in F# (`dotnet fsi fs/terrain.fsx`, commands in its header): `Heritage.fsx` reads the 68000's memory, `Island.fsx` the domain model (the whole island as a value), `Faithful.fsx` the RAM transcription; `wraps.fsx <gatedir>` which of `mid`'s 16-bit behaviours change the island (terrain.md section 1); `gate`, `--break`, `domain`, `same` against `gate_terrain.py`'s snapshots; `Render.fsx`/`Drone.fsx` draw `map`, `levels` (the whole island at every subdivision), `zoom`, a `drone` fly-over, the `reveal` orbit of the central peak, `skier` (the snapshot's own camera, lens and palette, for comparison with the game's screen) and a planned `ski` descent with its `skiline` figure (our renderer, camera and light, not the game's) |
 | `terrain_island.png`, `terrain_local.png` | the whole island after the first subdivision; the shaded local grid of `d_ski.snap` |
 | `gates.toml` | the promoted gates for `tools/gates.py` |
 | `*.png` | milestone screenshots |

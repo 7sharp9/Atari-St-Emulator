@@ -33,7 +33,8 @@ let readGrid (ram: byte[]) (addr: int) (size: int) : Grid =
 
 /// A new cell from four parents. There is no random number generator: the seeds are summed, the sum's
 /// low 16 bits are the noise and its carry leaks into the height (the game adds the four longwords),
-/// the displacement grows with the height, so peaks are rougher than lowland, and `shift` halves the
+/// the displacement grows with the height until the 16-bit roughness overflows at an average of 3,471,
+/// after which it is inverted and shrinks, so the highest ground is smoother (terrain.md section 1), and `shift` halves the
 /// noise at each finer level. The new seed is the sum XORed with the first parent's seed.
 let mid (shift: int) (a: Cell) (b: Cell) (c: Cell) (d: Cell) : Cell =
     let seeds = int a.Seed + int b.Seed + int c.Seed + int d.Seed

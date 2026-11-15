@@ -67,8 +67,14 @@ disp   = ((s.lo as int16) >> shift) * int16(avg * 8 + 5000) >> 16
 height'= avg + disp                     16-bit wrap throughout
 ```
 
-The displacement scales with the height of the point (higher ground gets rougher) and with a pseudo-random factor
-that is the seed sum, so it is a pure function of the parents. `shift` is 4 for the whole-island round and for the
+The displacement scales with a roughness that rises with the height of the point and with a pseudo-random factor
+that is the seed sum, so it is a pure function of the parents. The roughness `avg * 8 + 5000` is a 16-bit word: from
+an average height of 3,471 it overflows to negative, so above that the noise is applied inverted and shrinks as the
+ground rises, to zero near 7,567. Higher ground is rougher only up to 3,470; the highest ground is smoother. Of the
+16-bit behaviours in `mid`, three shape the island and two never fire (`fs/wraps.fsx <gatedir>`, each removed in turn
+against `Island.levels` on the finest level, 2,560,000 cells): computing the roughness without the wrap changes
+107,439 cells by up to 3,442; dropping the seed carry into the height 510,508 cells by up to 478; reading the noise
+unsigned 2,554,747; the wraps on the height sum and on the displacement change none. `shift` is 4 for the whole-island round and for the
 first zoom, then one more for each later zoom (4, 4, 5, 6, 7): `$199ec` refines before it increments it. Each step halves
 the amplitude: a fractal (diamond-square) refinement whose noise comes from the data. A model with 4 to 8 matches the
 game's first level and only 633 of 64,512 interior cells of the final windows.
