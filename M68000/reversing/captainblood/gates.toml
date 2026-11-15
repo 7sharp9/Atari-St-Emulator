@@ -10,3 +10,13 @@ cwd = "py/rules"
 expect = ["600/600", "300/300", "250/250", "200/200", "100/100", "1750/1750"]
 cite = "rules.md (proof)"
 minutes = 1
+
+# Needs scratchpad/captainblood/canyon_1.snap and q16_d.snap (with sidecars). Captures canyon/main_loop.snap fresh.
+# The `ROUTE` line is printed from the two arms' own `hits` on $d8c8, so swapped arms print `esc d8c8=0` and fail.
+[[gate]]
+name = "canyon"
+cmd = "{python} gate.py"
+cwd = "py/canyon"
+expect = ["re:model none : D0 match 52/52, branch match 52/52", "re:ROUTE esc d8c8=1 table=0xd5e4 control d8c8=0 table=0xd58a"]
+cite = "README.md (Canyon flight)"
+minutes = 1

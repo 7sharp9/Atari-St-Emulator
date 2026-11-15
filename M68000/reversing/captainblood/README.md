@@ -2,7 +2,7 @@
 
 Captain Blood boots from the Zuul #40 compilation menu and runs: the title, the bridge, the galaxy map, hyperspace,
 the canyon flight, the planet scan and the UPCOM icon conversation with two races have been reached (the conversation
-by a labelled poke that skips the canyon flight, see "Running it"). This is the **French build**: the vocabulary is
+by a labelled poke that skips the canyon flight, or by the ESC key in flight, see "Running it" and "Canyon flight"). This is the **French build**: the vocabulary is
 French, and the crack has overwritten the header text. The reason to reverse it is the conversation system: a
 120-word icon vocabulary, a rule list per alien race and a bit array of state; the rule interpreter is decoded and modelled in `rules.md`.
 
@@ -54,8 +54,9 @@ relative moves, clicks, settles and snapshots.
 
 `py/goto_planet.sh <bridge.snap> <x> <y> <prefix>` goes cockpit, galaxy map, target, hyperspace and "land". **Its
 last step pokes the land entry's handler long at `$d5c0` from `$10686` (the canyon flight) to `$d8c8`**, the contact
-setup the flight code reaches by `bra $d8c0`. An unsteered flight ends in a crash screen and a return to the cockpit,
-and whether a clean flight arrives at `$d8c8` is unproven, so every conversation result below is on a poked route.
+setup the flight code reaches by `bra $d8c0`. An unsteered flight ends in a shoot-down
+screen and a return to the cockpit (`$db16`), so the conversation results below were taken on this poked route. `$d8c8` is also
+reached with no poke by holding ESC in flight (`py/canyon/routes.py`, "Canyon flight").
 
 | milestone | snapshot (`scratchpad/captainblood/`) | picture |
 |---|---|---|
@@ -188,12 +189,59 @@ read, but in 10-sector multi-reads, so that is not evidence it is opened (`py/ga
 selects `$10a74 = $a0` instead of `$f8`; the reader of `$10a74` was not found. `$b8f6` writes back only status bits 0 to 3
 and sets bit 2, so bit 4 comes from the data file; `$fbb0` clears it for the current planet in the scan routine `$fb36`.
 - The canyon flight `$10686` seeds a generator at `$f35c` (multiplier `$b0a1`, state `$f384`) from the planet, so the
-  terrain is a function of position; the flight code is around `$10800..$11400` and is not read.
+  terrain is a function of position (read, not run; the flight is in "Canyon flight").
+
+## Canyon flight
+
+The flight is run from `$10686`: setup, then `trap #15` (vector `$beaa`: `jsr (A0)` then `rte`) runs the loop `$10b8a..$10d40` in
+supervisor mode, and `bra $d8c0` follows its return. `$d8c0` tests `$10642`: negative goes to `$db16` (cockpit), else `$d8c8`
+(the contact setup). The terrain is a 16 KB byte array at `$70400`; a path of 64 entries at `$10a8a` (4 bytes, first word the
+byte offset into the array, rows `$400` apart, the path column `$200` in a row) is the player's row sequence, and one render pass
+draws the profile of the rows ahead.
+
+| routine | what (named from its body) |
+|---|---|
+| `$10bde` `canyon_main_loop` | per pass: collision check, row advance, `$10d8c` rows, `$10a0a`, `$107b4`, key byte `$c5c2` |
+| `$10c24` `canyon_collision_cmp` | `cmp.w 26(A6),D0`, D0 = `((T[o]+T[o+1])>>1)+1`; D0 above the altitude goes to the bump `$10c2c` |
+| `$10c2c` `canyon_bump` | `$10a4a += 1`, speed to 0, waits on Timer A flag `$11a94` (about 3M steps here), the loop goes on; not fatal |
+| `$10d14` `canyon_exit_land` | `$11568` touchdown, `$10642` cleared, `rts`: reached by key `$c5c2` = 1 or `$110f6` negative |
+| `$10d42` `canyon_exit_shot_down` | reached when the byte `$10a4a` is non-zero; leaves `$10642` = -1, so `$db16` |
+| `$11568` `canyon_touchdown` | altitude to max(altitude, terrain)+4, rows until `$10a50` = 2, then the ground scene (`$11624`..`$116ae`) |
+| `$10d8c` `canyon_draw_rows`, `$107b4` | wireframe profile of a row from `$70400`; the altitude gauge |
+| `$10a0a` `canyon_steer_path` | adds ramps of (x-110)*512 to 13 path entries; integrates the heading `$10a56` |
+| `$c746` `flight_packet_handler` | pointer to `$10a62`/`$10a64`, buttons to the speed `$10a54`, y to the altitude |
+| `$11348` row generator, `$113ca`/`$113fa` smoothing, `$11014` PRNG (`x*$3171-1` on `$1109e`) | **read only**: no model, no callcap gate |
+| `$11126`, `$111da`, `$11248` | landing pad spawn, its lateral test (`|$11120 - row offset| <= $48`), the ravine (read; the spawn and the start of the ravine were observed running, below) |
+
+Variables: `$10a4c` path index; `$10a54` speed 0..22 (right button +1, left -1 per tick, measured); `$10a56` heading; `$10a62`,
+`$10a64` pointer x, y inside the flight (relative moves, centre 110, 56; `$c6ce` is not updated); **`$10a66` the altitude** (a
+long, the word is its integer part; it is not a distance) and `$10a6a` its ceiling; `$10a74` the shoot-down limit (`$f8`, `$a0` for a
+planet with status bit 4); `$10a4b` the bump count; `$110e0` the pad-spawn accumulator (`$100` a row when straight); `$110f6`
+the ravine row counter (`$80` down; negative ends the flight through `$10d14`); `$10642` the exit state.
+
+**Proven.** The collision predicate: at `$10c24` D0 equals the model 52/52 and the branch (bump or not) 52/52; without the
++1 D0 0/52, a shifted column 7/52, a `>=` compare branch 12/52 (`uv run python reversing/captainblood/py/canyon/gate_collision.py 40 12`;
+the altitude word is poked at each stop, to D0 in 40 cases and D0-1 in 12, because the natural flight is above every row).
+The unpoked route: from `q16_d.snap` the click on "land" then ESC (`kbd 01`) held 200,000 steps in flight gives `$d8c8` 1 and the
+hit table `$d5e4` (the conversation); the same 18.2M steps with no key give `$d8c8` 0, `$db16` 1 (`routes.py esc`, `routes.py
+control`; also `gates.toml` `canyon`). The key must outlast a flight tick (60,000 steps) and the opening descent ignores it.
+**A flight with no input ends in a shoot-down, not a crash**: the altitude stays at the ceiling, above `$f8-3`, and after
+more than 8 such packets a missile counter `$10642` grows until `$80` is written to the byte `$10a4a` (about 13M steps after the
+click). A terrain hit is only a bump.
+
+**Observed, not modelled.** `fly2.py` (right button for speed, y by the terrain lookahead, x untouched, no poke) from `q16_d.snap`
+gets the pad spawned (`$10a86` = `$11154`) at 52.7M steps after the click and the ravine started (`$110f6` = 127) at 57.45M, with
+10 bumps. The ravine is walls of `$f0..$ff` bytes with a narrow slot that drifts; straight flight bumps at `$110f6` = 107 and a
+proportional x controller (`fly3` in the first pass, not promoted) reached 103 by 40M steps and no further. With `ww 110f6 ffff` on
+`fly2_landing.snap` (a labelled poke on the flight's own state) `$d8c8` is reached in 12M steps, `$d8c8` 0 without it.
+**Inferred:** ESC (scancode 1) as the game's own landing or skip key is not checked against the manual; that Timer A's long wait
+is the emulator's fixed-step timer; the ravine's wall and slot geometry (read from RAM dumps).
 
 ## Open
 
-1. A clean canyon landing, so the conversation is reached with no poke (flight loop `$10800..$11400`, speed byte
-   `$10a54`, distance word `$10a66`, the packet handler `$c746`); then the speak census again on that route.
+1. A steered canyon landing: mouse steering reaches the landing pad and the ravine's start but not its end
+   ("Canyon flight"); then the speak census again on that route (the ESC route reaches the conversation screen, the census on
+   it is not run).
 2. The rule language is modelled (`rules.md`). Open: the vocabulary flag bytes, what the state bits mean beyond the
    three read in `rules.md`, and driving races other than Izwals (3, 4 and 6 are decoded from the data only).
 3. The icons as a PNG tied to the vocabulary (the grid mapping `$dc54`, `$dc56`, `$e046`), then scripted sentences.
@@ -209,6 +257,10 @@ and sets bit 2, so bit 4 comes from the data file; `$fbb0` clears it for the cur
 | `py/blood_com.py` | parses a depacked `BLOOD.COM`: vocabulary, race table, each race's rule records by type |
 | `py/hittab.py` | dumps a snapshot's current hit-test table |
 | `py/drive.py` | pointer to (x, y) by exact relative moves, click, settle, snapshot and render |
+| `py/canyon/repl.py`, `gate.py` | a persistent REPL wrapper (`Repl`); the gate: the collision predicate 52/52 and the ESC route against its control, also `gates.toml` |
+| `py/canyon/gate_collision.py` | the flight's collision test at `$10c24` against the emulator: D0 52/52, branch 52/52, three broken controls fail |
+| `py/canyon/routes.py` | `esc`, `control`: `hits` on `$d8c8` from `q16_d.snap`; `landing`, `landctl`: the labelled `$110f6` poke from `fly2_landing.snap` |
+| `py/canyon/fly2.py` | closed-loop mouse flight (altitude from the terrain lookahead, right button for speed, x not moved) to the pad and the ravine |
 | `py/goto_planet.sh` | bridge to a planet's conversation screen, with the labelled `$d5c0` poke |
 | `py/census_speak.sh` | the reply engine under a mouth click against a no-click control |
 | `py/galaxy/arm.sh`, `runarms.sh` | the galaxy build from the title's key wait with a chosen key delay, hold and optional `_hz_200` poke; dump of `$ba4e`, `$ba46`, `$29b8`, `$4ba` to `scratchpad/captainblood/galaxy/arms/` |
