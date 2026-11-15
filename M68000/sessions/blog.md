@@ -45,22 +45,46 @@ Nothing running.
 
 ## Open, in priority order
 
-1. **Carrier Command: which figures become a post or series** (Dave's call); then copy the chosen PNGs into
-   `static/images/posts/carriercommand/` and draft with `dave-post`, unpacking each figure's section by
-   `WRITING.md`. "Today's relevance" per figure needs a cited source before naming any modern use.
-2. **Unsourced figure and README gaps** (each settled by reading the named section, or by Dave): BSP "clipping
+1. **Carrier Command: which figures become a post or series** (Dave's call; noted, not started). Proposed series
+   from rating each figure for interest, a current tie-in and a modern improvement:
+   - routing + octdist (how the economy and the enemy decide); hook: Carrier Command 2's 2026 console release
+     (Gematsu, Aug 2026). BGP leaks are not a fair tie-in (path-vector, not RIP).
+   - depacker; tie-in: zstd's in-place decompression margin and the kernel fix (Nick Terrell's backport
+     `038505c4`), which mirrors our 218-closest versus 219-binding finding. The packer belongs to the crack.
+   - 3D engine: span filler + BSP; tie-ins: 2026 Spectre "BTR" on self-modified code (The Hacker News, Sep 2026,
+     CCS 2026), Gaussian splatting still sorting rather than z-buffering. Modern-improvement section: .NET
+     struct-generic specialisation and a branch-free edge blend versus the game's opcode patching, as a
+     BenchmarkDotNet run checked against `span_gate.py` (not built).
+   - atan and takeoff: bland; a sidebar at most.
+   Every tie-in so far is from search-result summaries only: read each page before citing it. Then copy the chosen
+   PNGs into `static/images/posts/carriercommand/` and draft with `dave-post` by `WRITING.md`.
+2. **Carrier Command candidates not yet drawn** (survey agent, read from code, not driven; full report and
+   coverage scripts in `scratchpad/carrier/nuggets/report.md`). New, inferred: a hidden title-screen sample streamer
+   (`$21436`: boot sector "sample", Timer A 18,070 Hz, YM volumes as a DAC, Ctrl+M; Timer A setup and the compare
+   spot-checked); collision pairs scheduled by earliest possible contact (`$1b408`, `(d - 750) / (v1 + v2)`
+   spot-checked at `$1b754..$1b766`); a 16-opcode sound VM (`$1ff46`); saves as raw memory images (`$1a1c6`).
+   Proven, no figure: the crack's time bomb (README "Provenance"), difficulty wrapping to easiest (`ai.md` 6),
+   developer keys (README "Hidden keys"). Cheapest new proof: a synthetic "sample" disk at `c_eng`, per-interrupt
+   output N/N. Dave (2026-11-15): note only, do not progress yet.
+3. **Carrier Command doc problems for that workstream** (from the same survey; only the first is confirmed): README
+   line 59 says five gates, `gates.toml` has 7; README's Ctrl+A/B "sound code copies to `$2142a`" (it is FDC drive
+   select, copied by the streamer `$214ca`); `$2119e`'s buffer `$4f1ee` is also the format track buffer;
+   `vehicles.md` 5 "+48..+54 half-extents" (+54 read as a speed bound by the broad phase); `ai.md` 7 omits `$118c`;
+   `ai.md` 1 omits missiles = 12 from `$1ad7e`; the stray-write proof label still differs between `ai.md` 2 and
+   `economy.md` 3. Pass to the carriercommand session; not fixed here.
+4. **Unsourced figure and README gaps** (each settled by reading the named section, or by Dave): BSP "clipping
    routine" (`render.md` 4), octdist "free island" (`economy.md` 1/3), PowerMonger state `$9` "invent" vs "decide
    now" (`strategy.md`), Captive universe object 13 vs 14 (`world.md` 1), Final Fight "state 2" (`player.md`),
    Populous "papal magnets" (`mechanics.md`); premises for Captain Blood and Archipelagos, genre words for Final
    Fight and Crude Buster.
-3. **`gen_takeoff.py` has no cache**: add a JSON cache like `gen_span.py`'s `span_emu.json` so a text edit does not
+5. **`gen_takeoff.py` has no cache**: add a JSON cache like `gen_span.py`'s `span_emu.json` so a text edit does not
    run `stserver`.
-4. **Midwinter post and Paint It Black: Dave's writing**, then render-check every changed passage against its doc.
-5. **Stale claims, not fixed:** `reversing/black_tiger/secrets.md:48` and `IDEAS.md` line 18 say the emulator does
+6. **Midwinter post and Paint It Black: Dave's writing**, then render-check every changed passage against its doc.
+7. **Stale claims, not fixed:** `reversing/black_tiger/secrets.md:48` and `IDEAS.md` line 18 say the emulator does
    not keep the 6850's last byte (fixed in `5636dc5`); fix once Dave agrees.
-6. **Untested effects** (carriercommand workstream if pursued): whether `$1817e`'s stray write changes the enemy's
+8. **Untested effects** (carriercommand workstream if pursued): whether `$1817e`'s stray write changes the enemy's
    island choice; the octdist "3 of 11 picks change with true distance" counterfactual.
-7. Diary text left in deep README sections (Super Sprint Timer B, A_013 pool, cadaver "Next steps", impossamole
+9. Diary text left in deep README sections (Super Sprint Timer B, A_013 pool, cadaver "Next steps", impossamole
    table rows); belongs to each game's next session.
 
 ## Known traps
@@ -77,7 +101,7 @@ Nothing running.
 ## Waiting on Dave
 
 - Which Carrier Command figures to publish, as one post or a series (Open 1).
-- The gaps in Open 2, and whether to keep the two general-knowledge glosses (entropy coding, Bellman-Ford
+- The gaps in Open 4, and whether to keep the two general-knowledge glosses (entropy coding, Bellman-Ford
   relaxation) flagged in the Carrier Command facts files.
 - Crude Buster and Final Fight use "proven" for rule-against-game counts where `WRITING.md` would say observed;
   relabel or keep.
