@@ -1,6 +1,6 @@
 # Blog: handoff
 
-Updated 2026-11-15 by the session that ended at commit `feea809`.
+Updated 2026-11-15 by the session that ended at commit `85e6c1b`.
 
 The blog workstream curates and extends posts for 7sharp9.dev from the game research. Each game is
 reversed in its own workstream; this one reads their docs, checks the claims a post would rest on
@@ -11,34 +11,37 @@ today, not emulator bug fixes. Dave (2026-11-12): one infographic per interestin
 model, as post material (`IDEAS.md` entry 9). Dave (2026-11-15): the topic docs are compressed knowledge that game
 sessions build up; they are not rewritten for newcomers. Clarity is applied where the knowledge is published
 (figures, posts, README openings), by the rules in `reversing/WRITING.md`, every edit checked with
-`tools/docguard.py`.
+`tools/docguard.py`. The post shape that fits the blog: a game's algorithm ported to idiomatic F#, proven against the
+game, ending in a visual the game could not make (the Midwinter and Paint It Black drafts).
 
 ## Resume point
 
-- Last commit of this workstream: `feea809` (Carrier Command target gate declares its inputs; the game's
-  undeclared count is now 6/7). The session before it rated the seven Carrier Command figures and ran a read-only
-  survey for undrawn candidates (Open 1-3); nothing was drafted. Master is 7 commits ahead of origin (not pushed; 4 of them predate this session).
-- Infographics: Carrier Command PNGs in `M68000/scratchpad/carrier/infographics/` (gitignored; rebuild with
-  `reversing/carriercommand/py/infographics/README.md`); every other figure's PNG/HTML is committed next to its
-  game. Not yet copied into the blog repo. The rebuilt Lemmings page is only in
-  `scratchpad/lemmings/info/inside_lemmings.html`; its published artifact still shows the old text.
-- Blog repo `~/GitHub/7sharp9.github.io`: clean, level with its remote. The Midwinter post (`draft: true`) and Paint
-  It Black (10 TODOs) wait on Dave's writing. `IDEAS.md` is tracked now (Dave's `2342008`).
-- Uncommitted work left behind: none.
+- Last commit of this workstream: `85e6c1b` (Midwinter terrain gate declares its inputs). This session explored post
+  candidates other than Carrier Command; nothing was chosen. Master is 11 commits ahead of origin, the blog repo 3
+  (`add1f32`, `0486cc2`, `53a781e`, IDEAS.md only); neither pushed.
+- Working data (repo scratchpad, gitignored): `scratchpad/captive/infographics/data/route.json` + `route.txt`
+  (rebuild: `py/mapgen/full/route.py 0 100 -j 10 --json <file>`, about 15 min on 10 cores);
+  `scratchpad/midwinter/mockup/` (`Terrain.fsx` modern model, `IslandIdioms.fsx`, `deep.fsx <height>`,
+  `precision.fsx <level> <cells> <height>`, `compare.py`, `dronecmp.fsx`, PNGs); needs `scratchpad/midwinter/terrain/gate/`
+  (from `py/terrain/gate_terrain.py`). Carrier PNGs as before (`py/infographics/README.md`).
+- Blog repo: Midwinter post (`draft: true`) and Paint It Black (10 TODOs) wait on Dave's writing.
+- Uncommitted work left behind: none (the mockups are scratchpad exploration, not cited by any doc except IDEAS.md).
 
 ## Proven so far
 
-- Clarity pass: 25 figures and 19 READMEs, `docguard` on every changed file; every loss is an intended removal
-  (pass numbers, citations moved to Sources lines) or one of the corrections in `f6ac961`'s message. The six Design
-  digests are byte-identical. `tools/tests/docguard_check.sh` 7/7.
-- Carrier Command figures, each from emulator-confirmed data (`py/infographics/README.md`): BSP draw order 1264/1264
-  (`render.md` 4); routing matrix 41/41 and 129/129, hops 14/14 twice (`economy.md` 3-4); span filler 2183/2183
-  (`render.md` 5); octagonal distance 11.8% worst, picks 11/11 (`ai.md` 2); take-off 43/43 (`vehicles.md` 5); depack
-  margin 219 (`packer.md`); arctangent error 27 units (`vehicles.md` 2).
-- Midwinter post: F# port 70000/70000 cells, post-passes 10000/10000 (`terrain.md` 1, 6). Ski run cut on purpose
-  (2026-11-11): nearly all of it was ours over smooth slope.
-- Earlier: PowerMonger LLM commander no better than random (Haiku 8/30 vs placebo 7/30); Paint It Black's ~55
-  claims checked; Populous swamp edge on Hatari 75.9% vs ours 70.0% (`populous/systems.md` 1.3).
+- Captive keys (`captive/mapgen.md` "Locks and keys", "Can such a base be finished?", "Routes"; figure
+  `infographic_keys.png`, `py/infographics/keys.facts.md`): the sealed key is Captive 1.0's known bug
+  (captive.atari.org Bugs, fixed in 1.2 by a walk-through wall); on our (1.0-behaving) model 38 of 1,100 bases in
+  missions 1..100 unfinishable from the clipboards (not 27: a cascade through panels and clipboards behind sealed
+  doors), 1,100 with codes read off the panels; dig-order plan 1.53x the A* walk (median, 1,057 bases). Model only;
+  Phoopel is the only emulator-checked base.
+- Midwinter roughness overflow (`midwinter/terrain.md` section 1, `fs/wraps.fsx`): from average height 3,471 the 16-bit
+  roughness wraps, the highest ground is smoother; 107,439 of 2,560,000 finest cells. Of `mid`'s 16-bit behaviours
+  three shape the island, two never fire.
+- Midwinter modern model (`scratchpad/midwinter/mockup/Terrain.fsx`, `check_terrain.fsx`): equal to `Island.fsx` on
+  every cell of every level; lazy tiles build 121 for the game's window. Exploration, not committed.
+- Earlier: Carrier Command figures (`carriercommand/py/infographics/README.md`); Midwinter port 70000/70000;
+  PowerMonger LLM commander 8/30 vs 7/30; Populous swamp edge 75.9% Hatari vs 70.0% ours.
 
 ## Running
 
@@ -46,73 +49,49 @@ Nothing running.
 
 ## Open, in priority order
 
-1. **Carrier Command: which figures become a post or series** (Dave's call; noted, not started). Proposed series
-   from rating each figure for interest, a current tie-in and a modern improvement:
-   - routing + octdist (how the economy and the enemy decide); hook: Carrier Command 2's 2026 console release
-     (Gematsu, Aug 2026). BGP leaks are not a fair tie-in (path-vector, not RIP).
-   - depacker; tie-in: zstd's in-place decompression margin and the kernel fix (Nick Terrell's backport
-     `038505c4`), which mirrors our 218-closest versus 219-binding finding. The packer belongs to the crack.
-   - 3D engine: span filler + BSP; tie-ins: 2026 Spectre "BTR" on self-modified code (The Hacker News, Sep 2026,
-     CCS 2026), Gaussian splatting still sorting rather than z-buffering. Modern-improvement section: .NET
-     struct-generic specialisation and a branch-free edge blend versus the game's opcode patching, as a
-     BenchmarkDotNet run checked against `span_gate.py` (not built).
-   - atan and takeoff: bland; a sidebar at most.
-   Every tie-in so far is from search-result summaries only: read each page before citing it. Then copy the chosen
-   PNGs into `static/images/posts/carriercommand/` and draft with `dave-post` by `WRITING.md`.
-2. **Carrier Command candidates not yet drawn** (survey agent, read from code, not driven; full report and
-   coverage scripts in `scratchpad/carrier/nuggets/report.md`). New, inferred: a hidden title-screen sample streamer
-   (`$21436`: boot sector "sample", Timer A 18,070 Hz, YM volumes as a DAC, Ctrl+M; Timer A setup and the compare
-   spot-checked); collision pairs scheduled by earliest possible contact (`$1b408`, `(d - 750) / (v1 + v2)`
-   spot-checked at `$1b754..$1b766`); a 16-opcode sound VM (`$1ff46`); saves as raw memory images (`$1a1c6`).
-   Proven, no figure: the crack's time bomb (README "Provenance"), difficulty wrapping to easiest (`ai.md` 6),
-   developer keys (README "Hidden keys"). Cheapest new proof: a synthetic "sample" disk at `c_eng`, per-interrupt
-   output N/N. Dave (2026-11-15): note only, do not progress yet.
-3. **Carrier Command doc problems for that workstream** (from the same survey; only the first is confirmed): README
-   line 59 says five gates, `gates.toml` has 7; README's Ctrl+A/B "sound code copies to `$2142a`" (it is FDC drive
-   select, copied by the streamer `$214ca`); `$2119e`'s buffer `$4f1ee` is also the format track buffer;
-   `vehicles.md` 5 "+48..+54 half-extents" (+54 read as a speed bound by the broad phase); `ai.md` 7 omits `$118c`;
-   `ai.md` 1 omits missiles = 12 from `$1ad7e`; the stray-write proof label still differs between `ai.md` 2 and
-   `economy.md` 3. Pass to the carriercommand session; not fixed here.
-4. **Unsourced figure and README gaps** (each settled by reading the named section, or by Dave): BSP "clipping
-   routine" (`render.md` 4), octdist "free island" (`economy.md` 1/3), PowerMonger state `$9` "invent" vs "decide
-   now" (`strategy.md`), Captive universe object 13 vs 14 (`world.md` 1), Final Fight "state 2" (`player.md`),
-   Populous "papal magnets" (`mechanics.md`); premises for Captain Blood and Archipelagos, genre words for Final
-   Fight and Crude Buster.
-5. **`gen_takeoff.py` has no cache**: add a JSON cache like `gen_span.py`'s `span_emu.json` so a text edit does not
-   run `stserver`.
-6. **Midwinter post and Paint It Black: Dave's writing**, then render-check every changed passage against its doc.
-7. **Stale claims, not fixed:** `reversing/black_tiger/secrets.md:48` and `IDEAS.md` line 18 say the emulator does
-   not keep the 6850's last byte (fixed in `5636dc5`); fix once Dave agrees.
-8. **Untested effects** (carriercommand workstream if pursued): whether `$1817e`'s stray write changes the enemy's
-   island choice; the octdist "3 of 11 picks change with true distance" counterfactual.
-9. Diary text left in deep README sections (Super Sprint Timer B, A_013 pool, cadaver "Next steps", impossamole
-   table rows); belongs to each game's next session.
+1. **Choose the next post.** Candidates measured against the blog's shape: Midwinter (already drafted; possible new
+   sections from the mockups: the roughness overflow, the modern model, subdividing past level 5 with wider arithmetic,
+   `drone_compare.png`); Populous "God Only Knows" (fits best after Midwinter; prior-art check not done); Cadaver's
+   script language as a computation expression (`IDEAS.md` 2; prior art unchecked); PowerMonger symbol table (a method
+   post, no algorithm; no prior art found in three searches); Captive (weak: the bug is documented). Settle by Dave's
+   choice after a prior-art read of each fan site (bugs and release pages included).
+2. **Captive, if pursued:** emulator-check a sample of the 38 bases (at least 2 of the 11 cascade ones), as
+   `py/phoopel/enter13.repl`; the strict `<` key rule in the model (expect 0 sealed, 0 unfinishable); whether the
+   site's 4,380 matches our census (its range is unstated); this disk's version string (inferred 1.0).
+3. **Carrier Command** (Dave: set aside 2026-11-15): series proposal, survey candidates and doc problems as in
+   `e97590c`'s session file text (`git show e97590c:M68000/sessions/blog.md`).
+4. Unsourced figure and README gaps (BSP "clipping routine", octdist "free island", PowerMonger state `$9`, Captive
+   universe object 13 vs 14, Final Fight "state 2", Populous "papal magnets", premises for Captain Blood and
+   Archipelagos).
+5. `gen_takeoff.py` has no cache; stale emulator claims in `black_tiger/secrets.md:48` and `IDEAS.md` line 18 (fixed
+   in `5636dc5`), fix once Dave agrees; diary text in deep README sections (each game's next session).
 
 ## Known traps
 
+- A web-fetch agent briefed with a page cap reads only what it is pointed at: the captive.atari.org Bugs page was
+  missed the first time. Name the bugs and release pages.
+- `route.py`'s A* over every lock blew up (11 bases unfinished in 94 min); it is restricted to the needed locks, and a
+  `Pool.map` that lost a worker hung with no output: it now streams with `imap_unordered` and saves rows before the
+  summary.
 - The local Hugo is v0.148.1; the site needs 0.162 or later, so `hugo --buildDrafts` fails.
 - `docguard` reports a token's delta, not its meaning: a gained number in a new README opening is usually a fact
-  copied from lower in the doc; check it is there before accepting.
-- Three PowerMonger figures (`clock_stall`, `cmdai_decision`, `order_pipeline`) have no generator: the SVG is the
-  source. PNGs: `rsvg-convert -b white -w 1800`.
-- `gen_routing.py drive` takes about 5 minutes; `gen_takeoff.py` always drives `stserver` from `c_s30`.
-- `gen_depack.py` panel F needs lz4, gzip, zstd and xz on PATH.
-- `tools/gates.py run <game> -k <gate>` runs one gate; `run <game>/<gate>` looks for a directory and fails.
-- In zsh, a multi-path `$VAR` passed to `git commit --` needs `${=VAR}` (CLAUDE.md "zsh").
+  copied from lower in the doc.
+- Three PowerMonger figures have no generator (the SVG is the source); PNGs: `rsvg-convert -b white -w 1800`.
+- `tools/gates.py run <game> -k <gate>` runs one gate; `run <game>/<gate>` fails.
 
 ## Waiting on Dave
 
-- Whether the proposed Carrier Command series stands (Open 1), and when to progress the survey candidates (Open 2).
-- The gaps in Open 4, and whether to keep the two general-knowledge glosses (entropy coding, Bellman-Ford
-  relaxation) flagged in the Carrier Command facts files.
-- Crude Buster and Final Fight use "proven" for rule-against-game counts where `WRITING.md` would say observed;
-  relabel or keep.
-- Republish the Lemmings artifact from the rebuilt page; the Black Tiger stale-claim fix; upgrading Hugo.
+- Which post next (Open 1).
+- His Midwinter draft line 50 says "peaks are rougher than lowland"; true only to average height 3,470
+  (`terrain.md` section 1). His text to change.
+- Keep the Captive keys figure in its box-art style, or redo it in the house style; whether the Captive post is
+  dropped.
+- Carried: the Carrier Command series, the Open 4 gaps, "proven" vs "observed" in Crude Buster and Final Fight, the
+  Lemmings artifact republish, the Black Tiger stale claim, upgrading Hugo.
 
 ## Next session
 
-`/resume blog`. Ask Dave whether the proposed Carrier Command series (Open 1) stands and when to progress the survey
-candidates (Open 2); until he says, nothing there is started. For the first post chosen, read each tie-in source
-page before citing it, copy the PNGs into the blog repo and scaffold with `dave-post`, quoting numbers from the
-figure's `.facts.md` and running `tools/docguard.py` on anything touched. If Dave has written into the Midwinter
-post instead, re-check every changed passage against `terrain.md`.
+`/resume blog`. Ask Dave which post (Open 1). Before recommending one, read his latest posts' structure and the
+candidate's fan sites (bugs and release pages too). For Midwinter, the mockups in `scratchpad/midwinter/mockup/` are
+the starting point (re-run `check_terrain.fsx` first). For Populous, start with the prior-art check, then port the
+generator to F# against `populous/terrain.md`.
