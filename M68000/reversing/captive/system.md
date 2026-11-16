@@ -216,14 +216,16 @@ word at PC-4 is `$cf47`: that is how the untraced FDC routine on the stack (`$1f
 
 1. Selects drive A, side 0, through PSG port A (`$1fcf2`-`$1fd06`).
 2. Points DMA at the buffer `$1fd5e`, sets a count of 31 sectors and issues READ TRACK (`$e0`), with a timeout and a
-   force-interrupt (`$d0`). This happens three times (`$1fb86`, `D1 = 2`).
-3. Scans each buffer for an `$a1`,`$fe` ID-address mark (`$1fb92`-`$1fb9e`). Here it finds none (section 7) and
-   returns -1.
+   force-interrupt (`$d0`), up to three times (`$1fb86`, `D1 = 2`).
+3. Scans the buffer for an `$a1`,`$fe` ID-address mark (`$1fb92`-`$1fb9e`). With READ TRACK modelled (section 7) it
+   finds one on the first read, then reads sectors 5 and 6 of track 0 twice each with single-sector Read Sector
+   commands; on the older FDC, which returned no track, it found none and returned -1 after three reads.
 4. Turns the motor off (`$1fcde`).
 5. Fills the track buffer with `x = x * 17 + 1` from `$a17d19` (`$1fa86`). The module ships with these same bytes:
    the RAM diff below shows no change there.
 6. At `$1ff62` it adds the key D0 to the long at the saved A3, `add.l D0,(A6)`. A run to `$1ff66` shows A6 = `$1f280`
-   and D0 = 0 (proven, REPL `u 1ff66 800000`).
+   and D0 = 0 on both FDC models: from `mg_entry.snap` it is reached after 1,135,900 steps with READ TRACK and 603,059
+   without (proven, REPL `u 1ff66 30000000` then `r`, with `--disk-a` the crack's `tmb097.st`).
 
 **Stage 3** (`$1ff74`, the same chained key) runs the wrapper's copy-and-clear routine on the stack, with every length 0
 (`$2001c`-`$20030`). It calls fn 60, and the trace handler then clears the trace bit and returns to `$20040`.
@@ -262,9 +264,11 @@ On the cracked disk the stored value is already `$00002c76`. The Copylock fails,
 Inferred: the original disk's key is `$2c76 - $99d30000` = `$662d2c76`. That the original stub at `$222` was
 `movem.l (A7)+,D0-A6` is inferred from the saving `movem.l D0-A6` at `$206` and the tail the crack provides at `$16c`.
 
-## 7. Emulator gap: READ TRACK
+## 7. READ TRACK on a `.ST`
 
-The emulator does not model the FDC's READ TRACK command (`$e0`). Proven: `ATARI_TRACE_FDC=1` over the
-Copylock shows `cmd $e0 (other) ... transferred=0`, then the code's own `$d0` force-interrupt after its timeout.
-On this cracked `.ST` the result does not matter, because the crack expects the Copylock to fail. An original disk
-image (with a protection track) could never pass its Copylock here.
+The emulator synthesises READ TRACK (`$e0`) from the image: the standard-format raw track with gaps, `$a1` syncs, ID and
+data marks and CRCs (`DEVELOPING.md`, "Running a program off a disk image"). Proven: `ATARI_TRACE_FDC=1` over the
+Copylock shows `rtrk ... -> 6240 bytes` and `READ-TRACK moved=6240 status=$00`; the build before it showed
+`cmd $e0 (other) ... transferred=0`. A `.ST` holds only standard sectors, so whatever the Copylock looks for on its protection track is
+not there: it still fails and still adds 0, which is what the crack expects (section 5, step 6); an original disk could not
+pass it here either.

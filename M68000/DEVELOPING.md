@@ -531,7 +531,14 @@ directories and write files (`Dcreate`/`Fcreate`/`Fwrite`/`Fseek`), and so is
 Write Track (`$Fx`): the track stream is parsed for its ID and data fields and
 each 512-byte sector lands in the image, enough for a game's own formatter
 (PowerMonger's FORMAT, `reversing/powermonger/system.md`; Hatari does not do
-this for `.ST`). Writes hit the in-memory image only - the host `.ST` file is never modified, so runs stay
+this for `.ST`). Read Track (`$Ex`) is synthesised from the image as Hatari's
+`FDC_ReadTrack_ST` builds it: 60 x `$4e`, then per sector 12 x `$00`, `$a1 $a1 $a1 $fe`,
+track, side, sector, size 2, CRC, 22 x `$4e`, 12 x `$00`, `$a1 $a1 $a1 $fb`, the 512
+bytes, CRC, 40 x `$4e`, then `$4e` up to 6,250 bytes (CRC-CCITT preset `$ffff`; ID CRC of
+track 0 side 0 sector 1 is `$ca6f`). It is synchronous with INTRQ at once like the sector
+commands, and the DMA takes it in 16-byte bursts, so 6,240 bytes reach RAM and the tail
+stays in the FIFO. A protection track (long sectors, weak bits, odd IDs) is not in a `.ST`
+and cannot be read back. Writes hit the in-memory image only - the host `.ST` file is never modified, so runs stay
 deterministic and committed disk artefacts stay byte-stable. `ATARI_TRACE_FDC=1`
 logs every FDC register/command write and every sector read/write to stderr
 (compare against `tools/hatari_trace.py --trace fdc`).

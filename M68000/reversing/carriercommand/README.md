@@ -319,8 +319,11 @@ Read from code, not driven:
   `$1e462` subtracts D0 from the hull `20(A1)` and on underflow zeroes it and runs `$1c788`, `$18ea2` (forced, hull poked to 100:
   damage 10 gives 90, damage 5000 gives 0, 2/2); `$19e1c` is the pitch version of the heading helper `$19e0a` (inferred from the
   bodies; a forced call returned values that mean nothing without a caller's D1). `$2119e` is a WD1772 Read Track (`$e0`) with DMA to the
-  game's 6,400-byte noise buffer `$4f1ee` (`$509e` fills it from the random generator); its forced call never returned (the emulator
-  reported a stuck loop at `$201d0`), so what it reads is not known. "Unreferenced" rests on static scans (direct `bsr`/`bra`/`jsr`/`jmp`
+  game's 6,400-byte noise buffer `$4f1ee` (`$509e` fills it from the random generator). Forced through `stserver` from `c_s30.snap`
+  with A5 = `$ffff8604`, A6 = `$ffff8606` (its callers' FDC registers) and drive A selected in PSG port A, it returns in 41 steps
+  with the raw track in the buffer: 60 x `$4e`, 12 x `$00`, `$a1 $a1 $a1 $fe` and nine ID fields (the emulator's synthesised
+  track, `DEVELOPING.md`). An earlier forced call, on the FDC without Read Track and with its registers not recorded, stuck at `$201d0`. What the game does with the track is not
+  known. "Unreferenced" rests on static scans (direct `bsr`/`bra`/`jsr`/`jmp`
   at every even address of the image, 24-bit longword literals, absolute-base jump tables; a relative-table scan returned only matches
   in instruction bytes) and a hits census of 16 snapshots at 100M steps each (about 1,385 main loops each, 20,849 in all, all candidates 0
   against a main loop of 20,849 as positive control; `leftovers.py census`). The played stretches were idle, with no bombing or

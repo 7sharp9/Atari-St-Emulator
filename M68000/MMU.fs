@@ -986,6 +986,69 @@ type MMU(rom: byte array, ?flatTestBus: bool) =
                     fdcDrive (int track) fdcSide dmaAddr (fst result) (snd result))
         result
 
+    ///WD1772 Read Track ($Ex) on a sector image: the raw track a standard format leaves (Hatari
+    ///src/fdc.c FDC_ReadTrack_ST, the layout of its FDC_TRACK_LAYOUT_STANDARD_* gaps). From the
+    ///index pulse: 60 x $4e (GAP1), then per sector 1..N: 12 x $00, $a1 $a1 $a1 $fe, track, side,
+    ///sector, 2 (512 bytes), CRC; 22 x $4e, 12 x $00, $a1 $a1 $a1 $fb, the 512 data bytes, CRC;
+    ///40 x $4e (GAP4); then $4e up to `trackBytes` (an 11-sector track runs past it, as in
+    ///Hatari). The CRC is CCITT ($1021, preset $ffff) over the marks and the field, as the chip
+    ///writes it. The $a1 sync bytes read back as $a1 (their missing clock bit is not visible in
+    ///the data). The DMA moves the stream in 16-byte bursts, so a tail shorter than a burst stays
+    ///in its FIFO and never reaches RAM; the transfer stops early when the DMA sector count runs
+    ///out. Returns the bytes that reached RAM, or -1 when there is no track to read (no image,
+    ///not drive A, a side or track the image does not have).
+    let crcCcitt (crc: uint16) (b: byte) =
+        let mutable c = crc ^^^ (uint16 b <<< 8)
+        for _ in 0 .. 7 do
+            c <- if c &&& 0x8000us <> 0us then (c <<< 1) ^^^ 0x1021us else c <<< 1
+        c
+    let readTrackStream (track: byte) =
+        match diskA with
+        | Some bytes when fdcDriveA () && fdcSide < diskASides ->
+            let first = (int track * diskASides + fdcSide) * diskASectorsPerTrack * 512
+            if first < 0 || first + diskASectorsPerTrack * 512 > bytes.Length then None
+            else
+                let s = ResizeArray<byte>(trackBytes + 1024)
+                let fill (n: int) (v: byte) = for _ in 1 .. n do s.Add v
+                let addWithCrc (field: byte[]) =
+                    let mutable crc = 0xFFFFus
+                    for b in field do
+                        s.Add b
+                        crc <- crcCcitt crc b
+                    s.Add (byte (crc >>> 8))
+                    s.Add (byte crc)
+                fill 60 0x4euy
+                for sector in 1 .. diskASectorsPerTrack do
+                    fill 12 0x00uy
+                    addWithCrc [| 0xa1uy; 0xa1uy; 0xa1uy; 0xfeuy; track; byte fdcSide; byte sector; 2uy |]
+                    fill 22 0x4euy
+                    fill 12 0x00uy
+                    let off = first + (sector - 1) * 512
+                    addWithCrc (Array.append [| 0xa1uy; 0xa1uy; 0xa1uy; 0xfbuy |] (Array.sub bytes off 512))
+                    fill 40 0x4euy
+                while s.Count < trackBytes do s.Add 0x4euy
+                Some (s.ToArray())
+        | _ -> None
+    let tryReadTrack (track: byte) (dmaAddr: uint32) =
+        let result =
+            match readTrackStream track with
+            | None -> -1
+            | Some stream ->
+                let n = (min stream.Length (int dmaSectorCount * 512)) &&& ~~~15
+                for i in 0 .. n - 1 do
+                    if not (isNull writeHooks) then
+                        fire writeHooks ((dmaAddr + uint32 i) &&& maxMemory) 1 (uint32 stream.[i]) true AccessSource.Dma
+                    match translateRamAddress (dmaAddr + uint32 i) with
+                    | Some idx -> store ram (int idx) stream.[i]
+                    | None -> ()
+                if watchRange.IsSome && n > 0 then
+                    checkWatchDma dmaAddr n (sprintf "read track t%d" (int track))
+                        (fun a -> match translateRamAddress a with Some idx -> ram.[int idx] | None -> 0uy)
+                n
+        fdcLog (sprintf "rtrk  drive=%d track=%d side=%d dma=$%06x -> %d bytes"
+                    fdcDrive (int track) fdcSide dmaAddr result)
+        result
+
     ///A bus read: `PeekByte` plus the read hooks. The RAM fast path is repeated here so an unhooked
     ///RAM read pays one null test and no call.
     member x.ReadByte (address: uint32) =
@@ -1454,6 +1517,37 @@ type MMU(rom: byte array, ?flatTestBus: bool) =
                     dmaNoError <- ok
                     mutations <- mutations + 1UL
                 fdcLog (sprintf "cmd   $8604<-$%02x  WRITE-TRACK consumed=%d status=$%02x" input consumed status)
+                if ok then
+                    fdcIrq <- true
+                    fdcIrqPending <- 0
+                else
+                    fdcIrq <- false
+                    fdcIrqPending <- fdcIrqSlowSteps
+                fdcStartMotor fdcIrqPending
+            | 0uy when input &&& 0xF0uy = 0xE0uy ->
+                //Type III Read Track ($Ex): see tryReadTrack. Synchronous like the sector commands:
+                //the stream is in RAM on this write and INTRQ asserts now; the DMA address advances
+                //by the bytes that reached RAM and the sector count by the 512-byte blocks they
+                //cover. No track to read (no image, drive B, a missing side or track) falls back to
+                //the Record-Not-Found stub with the slow bucket, as before.
+                let dmaAddr =
+                    (uint32 dmaAddrHighByte <<< 16) ||| (uint32 dmaAddrMidByte <<< 8) ||| uint32 dmaAddrLowByte
+                let moved = tryReadTrack fdcTrack dmaAddr
+                let ok = moved >= 0
+                if moved > 0 then
+                    let advanced = (dmaAddr + uint32 moved) &&& 0xFFFFFEu
+                    dmaAddrHighByte <- byte (advanced >>> 16)
+                    dmaAddrMidByte <- byte (advanced >>> 8)
+                    dmaAddrLowByte <- byte advanced
+                    dmaSectorCount <- byte (max 0 (int dmaSectorCount - (moved + 511) / 512))
+                    mutations <- mutations + 1UL
+                let status = if ok then 0uy else fdcCommandStatus input
+                if status <> fdcStatus then mutations <- mutations + 1UL
+                fdcStatus <- status
+                if dmaNoError <> ok then
+                    dmaNoError <- ok
+                    mutations <- mutations + 1UL
+                fdcLog (sprintf "cmd   $8604<-$%02x  READ-TRACK moved=%d status=$%02x" input moved status)
                 if ok then
                     fdcIrq <- true
                     fdcIrqPending <- 0
