@@ -649,6 +649,7 @@ type AtartSt(romPath: string, ?diskAPath: string, ?monitor: string) =
         if instructionsPerLine > 0UL && stepCount % instructionsPerLine = 0UL then
             mmu.HblTick(int ((stepCount % instructionsPerFrame) / instructionsPerLine))
             mmu.FdcTick(int instructionsPerLine)
+            mmu.IkbdTick(int instructionsPerLine)
             match frameDir with
             | Some _ ->
                 //Which visible scanline this crossing marks, within the current frame.
@@ -1276,7 +1277,7 @@ type AtartSt(romPath: string, ?diskAPath: string, ?monitor: string) =
         use fs = IO.File.Create(path)
         use w = new IO.BinaryWriter(fs)
         w.Write("A68S".ToCharArray())
-        w.Write(12uy) //format version - v2 adds the 5 FDC state bytes after TbdrReadCount, v3 adds the 3 DMA address counter bytes after those, v4 adds the MMU memory-config byte after those, v5 adds SSP after USP, v6 adds stepCount after MemConfig, v7 adds the keyboard ACIA control byte + IKBD RX FIFO after stepCount, v8 makes the Ym2149 array the 16-register PSG file and adds the PSG select + read-data bytes at the end, v9 appends the latent future-determining device state (pending-IRQ slots, tbCounter, FDC INTRQ countdown, DMA sector count, IKBD reporting mode, absolute mouse, joystick) - see MmuSnapshot, v10 adds the Timer A live-decrement state (Tacr/Tadr/TadrReload/TadrReadCount) after TbdrReadCount, v11 adds Timer C+D live-decrement state (Tcdr/TcdrReload/TcdrReadCount/Tddr/TddrReload/TddrReadCount) after that, v12 appends the keyboard ACIA receive data register (KbdAciaRdr) after JoyState1
+        w.Write(13uy) //format version - v2 adds the 5 FDC state bytes after TbdrReadCount, v3 adds the 3 DMA address counter bytes after those, v4 adds the MMU memory-config byte after those, v5 adds SSP after USP, v6 adds stepCount after MemConfig, v7 adds the keyboard ACIA control byte + IKBD RX FIFO after stepCount, v8 makes the Ym2149 array the 16-register PSG file and adds the PSG select + read-data bytes at the end, v9 appends the latent future-determining device state (pending-IRQ slots, tbCounter, FDC INTRQ countdown, DMA sector count, IKBD reporting mode, absolute mouse, joystick) - see MmuSnapshot, v10 adds the Timer A live-decrement state (Tacr/Tadr/TadrReload/TadrReadCount) after TbdrReadCount, v11 adds Timer C+D live-decrement state (Tcdr/TcdrReload/TcdrReadCount/Tddr/TddrReload/TddrReadCount) after that, v12 appends the keyboard ACIA receive data register (KbdAciaRdr) after JoyState1, v13 makes MFP bytes $0F/$11 the in-service registers (zeroed when reading an older snapshot) and appends the IKBD byte gap (IkbdGap, i32) after KbdAciaRdr
         for v in [| cpu.D0; cpu.D1; cpu.D2; cpu.D3; cpu.D4; cpu.D5; cpu.D6; cpu.D7
                     cpu.A0; cpu.A1; cpu.A2; cpu.A3; cpu.A4; cpu.A5; cpu.A6; cpu.A7
                     cpu.USP; cpu.SSP; cpu.PC |] do w.Write(v: int)
@@ -1330,7 +1331,8 @@ type AtartSt(romPath: string, ?diskAPath: string, ?monitor: string) =
         w.Write(snap.MouseLeftDown); w.Write(snap.MouseRightDown); w.Write(snap.MousePrevReadButtons)
         w.Write(snap.JoyState0); w.Write(snap.JoyState1)
         w.Write(snap.KbdAciaRdr) //v12
-        //Optional trailing section, after the v12 byte and without a version bump: "DSKA", u8 1,
+        w.Write(snap.IkbdGap) //v13
+        //Optional trailing section, after the v13 int and without a version bump: "DSKA", u8 1,
         //u64 FNV-1a of the disk-A image as mounted, i32 count, then per sector i32 byte offset +
         //512 bytes (its current contents). Written only when the run wrote to the disk, so every
         //other snapshot stays byte-identical to the plain v12 layout. An older build stops reading
@@ -1420,6 +1422,11 @@ type AtartSt(romPath: string, ?diskAPath: string, ?monitor: string) =
         let vidArr = readArr()
         let ymArr = readArr()
         let mfpArr = readArr()
+        //v1-v12 builds stored ISRA/ISRB ($0F/$11) as plain bytes, so they hold whatever the program
+        //last wrote (`move.b #$df,$fffa11` leaves $df) rather than in-service bits: zero them.
+        if version < 13uy && mfpArr.Length > 0x11 then
+            mfpArr.[0x0F] <- 0uy
+            mfpArr.[0x11] <- 0uy
         let tbcr = r.ReadByte()
         let tbdr = r.ReadByte()
         let tbdrReload = r.ReadByte()
@@ -1496,6 +1503,8 @@ type AtartSt(romPath: string, ?diskAPath: string, ?monitor: string) =
         //v1-v11 snapshots predate the ACIA receive data register - default to 0, what a read of
         //an empty FIFO returned when they were captured.
         let kbdAciaRdr = if version >= 12uy then r.ReadByte() else 0uy
+        //v1-v12 snapshots predate IKBD byte pacing: the FIFO head is at the ACIA.
+        let ikbdGap = if version >= 13uy then r.ReadInt32() else 0
         mmu.RestoreRam
             { Ram = ramArr; VideoDisplayRegisters = vidArr; Ym2149 = ymArr; MfpRegisters = mfpArr
               PsgSelectedReg = psgSelectedReg; PsgReadData = psgReadData
@@ -1507,7 +1516,7 @@ type AtartSt(romPath: string, ?diskAPath: string, ?monitor: string) =
               FdcSector = fdcSector; FdcData = fdcData
               DmaAddrHigh = dmaAddrHigh; DmaAddrMid = dmaAddrMid; DmaAddrLow = dmaAddrLow
               MemConfig = memConfig
-              KbdAciaControl = kbdAciaControl; IkbdRxFifo = ikbdRxFifo; KbdAciaRdr = kbdAciaRdr
+              KbdAciaControl = kbdAciaControl; IkbdRxFifo = ikbdRxFifo; KbdAciaRdr = kbdAciaRdr; IkbdGap = ikbdGap
               VblPending = lat.VblPending; MfpPending = lat.MfpPending; MfpVector = lat.MfpVector
               TimerCPending = lat.TimerCPending; TimerBPending = lat.TimerBPending; TimerAPending = lat.TimerAPending
               TbCounter = lat.TbCounter

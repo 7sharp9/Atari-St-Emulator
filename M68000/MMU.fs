@@ -26,7 +26,7 @@ type MmuSnapshot =
       FdcSelectedReg: byte; FdcStatus: byte; FdcTrack: byte; FdcSector: byte; FdcData: byte
       DmaAddrHigh: byte; DmaAddrMid: byte; DmaAddrLow: byte
       MemConfig: byte
-      KbdAciaControl: byte; IkbdRxFifo: byte[]; KbdAciaRdr: byte
+      KbdAciaControl: byte; IkbdRxFifo: byte[]; KbdAciaRdr: byte; IkbdGap: int
       // --- latent future-determining device state (see the type doc above) ---
       VblPending: bool; MfpPending: bool; MfpVector: int
       TimerCPending: bool; TimerBPending: bool; TimerAPending: bool
@@ -329,6 +329,14 @@ type MMU(rom: byte array, ?flatTestBus: bool) =
     ///(TOS doesn't block waiting for it - the diskless boot already reaches the desktop without
     ///one). Callers inject real make/break scancodes and 3-byte mouse packets via EnqueueIkbd.
     let ikbdRxFifo = System.Collections.Generic.Queue<byte>()
+    ///Steps until the next queued IKBD byte reaches the ACIA (0 = the FIFO head is there now). The
+    ///6301 sends at 7812.5 baud, 10 bits a byte: 1.28 ms, 768 steps at 600 steps/ms (12,000 steps
+    ///per 20 ms frame). A packet queued at once is delivered one byte per gap, counted from the CPU's
+    ///read of the previous byte (no overrun is modelled). A handler that reads one byte and returns
+    ///while GPIP bit 4 is high sees each byte on its own interrupt, as on hardware: Carrier Command's
+    ///`$1794c` loops on GPIP with A0 reused by the byte parser, so a second byte already waiting sent
+    ///it reading RAM forever. Advanced by `IkbdTick`.
+    let mutable ikbdGap = 0
     let mutable kbdAciaControl = 0uy //last value written to $FFFC00; bit 7 = RX interrupt enable
     ///The 6850's receive data register: the last byte the CPU took from the FIFO. A real MC6850
     ///keeps returning it on every read of $FFFC02 until the next byte arrives; a read clears only
@@ -343,7 +351,7 @@ type MMU(rom: byte array, ?flatTestBus: bool) =
     ///matching the real 6850's IRQ output, and is what GPIP bit 4 and the ISR's `btst #7` test.
     let keyboardAciaStatus () =
         let mutable sr = 0x02uy
-        if ikbdRxFifo.Count > 0 then
+        if ikbdRxFifo.Count > 0 && ikbdGap <= 0 then
             sr <- sr ||| 0x01uy
             if kbdAciaControl &&& 0x80uy <> 0uy then sr <- sr ||| 0x80uy
         sr
@@ -404,7 +412,7 @@ type MMU(rom: byte array, ?flatTestBus: bool) =
     ///`member`s. Mirrors RaiseInterrupt 6 $46's pending/vector/mutation bookkeeping.
     let ikbdReply (bytes: byte list) =
         for b in bytes do ikbdRxFifo.Enqueue b
-        if not mfpPending || mfpVector <> 0x46 then
+        if ikbdGap <= 0 && (not mfpPending || mfpVector <> 0x46) then
             mfpPending <- true
             mfpVector <- 0x46
         mutations <- mutations + 1UL
@@ -520,7 +528,7 @@ type MMU(rom: byte array, ?flatTestBus: bool) =
     ///game did: Cadaver's Rob Northen protection stub (`reversing/cadaver`) busy-polls TADR directly
     ///(`cmp.b (A2),D3 / bne` on $fffffa1f) as a hardware-timing anti-debug check with no interrupt
     ///involved at all - a frozen TADR is provably-stuck to this emulator's loop detector. Every other
-    ///MFP register (GPIP, AER, DDR, interrupt enable/pending/in-service/mask, vector register, Timer
+    ///MFP register (GPIP, AER, DDR, interrupt enable/pending/mask, vector register, Timer
     ///C/D control and data, USART control/status/data, etc.) is still backed by plain read/write
     ///storage - accurate for what the CPU sees on a bare register access (their special behavior -
     ///interrupts actually firing, the USART actually shifting bits, timers actually counting - is
@@ -531,6 +539,19 @@ type MMU(rom: byte array, ?flatTestBus: bool) =
     ///silently dropped writes.
     let tbdrDecrementPeriod = 700u
     let mfpRegisters = Array.create (int (mfpEnd - mpf68901) + 1) 0uy
+    ///In-service registers ISRA ($FFFA0F, channels 15-8) and ISRB ($FFFA11, channels 7-0), kept in
+    ///`mfpRegisters` so snapshots and RestoreRam carry them. In software end-of-interrupt mode (VR
+    ///bit 3, which TOS sets with VR=$48) acknowledging a channel sets its bit; a set bit holds off
+    ///that channel and every lower one (their pending slots stay pending) until the handler clears
+    ///it (`bclr #6,$fffa11`, or a direct write: written 0s clear, 1s leave the bit). In automatic EOI
+    ///mode no bit is set, and writing VR with bit 3 clear clears both registers (Hatari mfp.c does
+    ///the same). Only the four modelled MFP sources take part: Timer A 13, Timer B 8, ACIA 6, Timer C 5.
+    let mfpIsraIdx = int (0xFFFA0Fu - mpf68901)
+    let mfpIsrbIdx = int (0xFFFA11u - mpf68901)
+    let mfpVrIdx = int (0xFFFA17u - mpf68901)
+    ///True when an in-service bit at `channel` or above holds that channel's request off.
+    let mfpInServiceBlocks (channel: int) =
+        ((int mfpRegisters.[mfpIsraIdx] <<< 8) ||| int mfpRegisters.[mfpIsrbIdx]) >>> channel <> 0
     let mutable tbcr = 0uy
     let mutable tbdr = 0uy
     let mutable tbdrReload = 0uy
@@ -1041,24 +1062,17 @@ type MMU(rom: byte array, ?flatTestBus: bool) =
         | a when a = memConfig -> memConfigByte
         | a when a = 0xFFFC00u -> keyboardAciaStatus () //keyboard ACIA control/status
         | a when a = 0xFFFC02u -> //keyboard ACIA receive data - pop one byte from the IKBD FIFO into RDR
-            if ikbdRxFifo.Count > 0 then
+            if ikbdRxFifo.Count > 0 && ikbdGap <= 0 then
                 let b = ikbdRxFifo.Dequeue()
                 kbdAciaRdr <- b
                 mutations <- mutations + 1UL
-                //The 6850 keeps its IRQ line asserted while RDRF stays set. On real hardware IKBD
-                //bytes arrive ~1.28 ms apart so each is its own MFP channel-6 edge; EnqueueIkbd
-                //instead delivers a whole packet at once. Re-raise the interrupt while bytes
-                //remain so a handler that reads exactly one byte per interrupt - Super Sprint's own
-                //IKBD ISR at $104b6, which does not loop like TOS's - still sees every byte of a
-                //multi-byte packet ($FE/$FF + joystick state, 3-byte mouse packets). The final
-                //byte leaves the FIFO empty and withdraws a request still pending: the 6850's IRQ
-                //is a level that drops when RDRF clears, so a handler that loops on GPIP bit 4 and
-                //drains the burst in one entry (Cadaver's $1535a, which reads $FFFC02 with no
-                //status test) is not entered again to read the latched last byte as a new key.
-                if ikbdRxFifo.Count > 0 && kbdAciaControl &&& 0x80uy <> 0uy then
-                    x.RaiseInterrupt 6 0x46
-                elif ikbdRxFifo.Count = 0 && mfpPending && mfpVector = 0x46 then
-                    mfpPending <- false
+                //The read clears RDRF, so the 6850's IRQ (a level) drops and a request still pending
+                //is withdrawn. The next byte arrives one serial byte time later (`ikbdGap`), and
+                //IkbdTick raises its interrupt then: a handler that reads one byte per interrupt
+                //(Super Sprint's $104b6) sees every byte of a packet, and one that loops on GPIP bit
+                //4 (TOS's $fc281c, Cadaver's $1535a) leaves between bytes and is entered again.
+                if ikbdRxFifo.Count > 0 then ikbdGap <- 768
+                if mfpPending && mfpVector = 0x46 then mfpPending <- false
                 b
             else kbdAciaRdr //RDRF clear: the register still holds the last byte (see kbdAciaRdr)
         | Acia ->
@@ -1293,6 +1307,17 @@ type MMU(rom: byte array, ?flatTestBus: bool) =
                 if input &&& 0x01uy = 0uy then timerBPending <- false
                 if input &&& 0x20uy = 0uy then timerAPending <- false
             elif input &&& 0x20uy = 0uy then timerCPending <- false
+        | a when a = 0xFFFA0Fu || a = 0xFFFA11u ->
+            //ISRA / ISRB: software clears in-service bits; a write can never set one (see mfpIsraIdx).
+            let i = int (address - mpf68901)
+            store mfpRegisters i (mfpRegisters.[i] &&& input)
+        | a when a = 0xFFFA17u ->
+            //VR: leaving software end-of-interrupt mode clears every in-service bit (as Hatari's
+            //MFP_VectorReg_WriteByte does).
+            store mfpRegisters mfpVrIdx input
+            if input &&& 0x08uy = 0uy then
+                store mfpRegisters mfpIsraIdx 0uy
+                store mfpRegisters mfpIsrbIdx 0uy
         | Mfp -> store mfpRegisters (int (address - mpf68901)) input
         | a when a = fdcModeSelect ->
             let selected = (input >>> 1) &&& 0x3uy
@@ -1472,7 +1497,9 @@ type MMU(rom: byte array, ?flatTestBus: bool) =
             //Keyboard ACIA control register. Bits 1-0 = 11 is a master reset (flush the receiver);
             //bit 7 is the RX interrupt enable that keyboardAciaStatus / GPIP bit 4 depend on. TOS
             //writes $03 (reset) then $96 (÷64, 8N1, RX interrupt on) at boot.
-            if input &&& 0x03uy = 0x03uy then ikbdRxFifo.Clear()
+            if input &&& 0x03uy = 0x03uy then
+                ikbdRxFifo.Clear()
+                ikbdGap <- 0
             if input <> kbdAciaControl then mutations <- mutations + 1UL
             kbdAciaControl <- input
         | a when a = 0xFFFC02u ->
@@ -1549,6 +1576,7 @@ type MMU(rom: byte array, ?flatTestBus: bool) =
         mix ((b vblPending) ||| ((b mfpPending) <<< 1) ||| ((b timerCPending) <<< 2)
              ||| ((b timerBPending) <<< 3) ||| ((b timerAPending) <<< 4))
         mix (uint64 (uint32 mfpVector))
+        mix (uint64 (uint32 ikbdGap))
         h
 
     ///Adds a memory hook, replacing any with the same `Id` (see `MemHook`; DEVELOPING.md, "Memory
@@ -1764,6 +1792,15 @@ type MMU(rom: byte array, ?flatTestBus: bool) =
                 if not fdcIrq then
                     fdcIrq <- true
                     mutations <- mutations + 1UL
+    ///Counts down `ikbdGap` at the FdcTick cadence; when the next queued IKBD byte arrives, the
+    ///ACIA's RDRF and IRQ (with RX interrupts enabled) go up and channel 6 is requested.
+    member x.IkbdTick(steps: int) =
+        if ikbdGap > 0 then
+            ikbdGap <- ikbdGap - steps
+            if ikbdGap <= 0 then
+                ikbdGap <- 0
+                mutations <- mutations + 1UL
+                if ikbdRxFifo.Count > 0 && kbdAciaControl &&& 0x80uy <> 0uy then x.RaiseInterrupt 6 0x46
     ///Asserts MFP Timer A (channel 13, level 6, vector $4D -> $134). Gated on Timer A being armed
     ///(TACR mode bits non-zero) and its channel enabled+unmasked in IERA/IMRA bit 5 - TOS leaves
     ///Timer A off (the classic "free" application timer), games turn it on. Super Hang-On's intro
@@ -1781,12 +1818,13 @@ type MMU(rom: byte array, ?flatTestBus: bool) =
     ///currently-asserted source: 0 = Timer A, 1 = MFP/ACIA, 2 = Timer B, 3 = Timer C, 4 = VBL,
     ///5 = none. `PendingInterruptLevel` / `PendingInterruptVector` / `AcknowledgeInterrupt` all
     ///dispatch on this so the three can never drift out of sync. Allocation-free (checked every
-    ///`Cpu.Step()`).
+    ///`Cpu.Step()`). An MFP source held off by an in-service bit (`mfpInServiceBlocks`, channels
+    ///13, 6, 8, 5) is skipped but stays pending; the in-service test runs only for a pending source.
     member private x.TopPendingInterrupt =
-        if timerAPending then 0
-        elif mfpPending then 1
-        elif timerBPending then 2
-        elif timerCPending then 3
+        if timerAPending && not (mfpInServiceBlocks 13) then 0
+        elif mfpPending && not (mfpInServiceBlocks 6) then 1
+        elif timerBPending && not (mfpInServiceBlocks 8) then 2
+        elif timerCPending && not (mfpInServiceBlocks 5) then 3
         elif vblPending then 4
         else 5
     member x.PendingInterruptLevel =
@@ -1808,12 +1846,18 @@ type MMU(rom: byte array, ?flatTestBus: bool) =
     ///Called by `Cpu.Step()` once it has decided to actually take the pending interrupt (i.e. it
     ///cleared the current IPL mask) - clears only the slot being taken (the highest one), so a
     ///lower still-pending source stays pending, matching real interrupt-acknowledge behaviour.
+    ///In software end-of-interrupt mode an MFP acknowledge also sets that channel's in-service bit.
     member x.AcknowledgeInterrupt() =
+        let sei = mfpRegisters.[mfpVrIdx] &&& 0x08uy <> 0uy
         (match x.TopPendingInterrupt with
          | 0 -> timerAPending <- false
+                if sei then mfpRegisters.[mfpIsraIdx] <- mfpRegisters.[mfpIsraIdx] ||| 0x20uy
          | 1 -> mfpPending <- false
+                if sei then mfpRegisters.[mfpIsrbIdx] <- mfpRegisters.[mfpIsrbIdx] ||| 0x40uy
          | 2 -> timerBPending <- false
+                if sei then mfpRegisters.[mfpIsraIdx] <- mfpRegisters.[mfpIsraIdx] ||| 0x01uy
          | 3 -> timerCPending <- false
+                if sei then mfpRegisters.[mfpIsrbIdx] <- mfpRegisters.[mfpIsrbIdx] ||| 0x20uy
          | 4 -> vblPending <- false
          | _ -> ())
         mutations <- mutations + 1UL
@@ -1852,7 +1896,7 @@ type MMU(rom: byte array, ?flatTestBus: bool) =
             added <- true
         if added then
             mutations <- mutations + 1UL
-            x.RaiseInterrupt 6 0x46
+            if ikbdGap <= 0 then x.RaiseInterrupt 6 0x46
 
     ///Move the 6301's internal absolute mouse cursor by (dx,dy). Outside absolute mode it also
     ///streams the matching relative packet(s) ($F8|buttons, dx, dy); a delta larger than one signed
@@ -1968,6 +2012,7 @@ type MMU(rom: byte array, ?flatTestBus: bool) =
           DmaAddrHigh = dmaAddrHighByte; DmaAddrMid = dmaAddrMidByte; DmaAddrLow = dmaAddrLowByte
           MemConfig = memConfigByte
           KbdAciaControl = kbdAciaControl; IkbdRxFifo = ikbdRxFifo.ToArray(); KbdAciaRdr = kbdAciaRdr
+          IkbdGap = ikbdGap
           VblPending = vblPending; MfpPending = mfpPending; MfpVector = mfpVector
           TimerCPending = timerCPending; TimerBPending = timerBPending; TimerAPending = timerAPending
           TbCounter = tbCounter
@@ -2032,6 +2077,7 @@ type MMU(rom: byte array, ?flatTestBus: bool) =
         memConfigByte <- snapshot.MemConfig
         kbdAciaControl <- snapshot.KbdAciaControl
         kbdAciaRdr <- snapshot.KbdAciaRdr
+        ikbdGap <- snapshot.IkbdGap
         ikbdRxFifo.Clear()
         for b in snapshot.IkbdRxFifo do ikbdRxFifo.Enqueue b
         vblPending <- snapshot.VblPending

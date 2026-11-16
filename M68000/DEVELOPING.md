@@ -145,15 +145,29 @@ an unread byte. A game that polls `$fc02` directly while TOS's ISR is installed 
 key the ISR already took (Black Tiger `$a562`, Midwinter `$172c`/`$a4e4`). The register is in the
 snapshot (format v12).
 
-`EnqueueIkbd` drops a whole packet in at once, where real bytes arrive 1.28 ms apart, so the channel-6
-interrupt is treated as the 6850's level: a read of `$FFFC02` that leaves bytes in the FIFO raises it
-again (Super Sprint's one-byte-per-interrupt ISR `$104b6` sees every byte of a packet), and a read that
-empties the FIFO withdraws a request still pending. Without the second half, an ISR that loops on GPIP
-bit 4 and drains the packet in one entry was entered once more with the FIFO empty and read the
-latched last byte as a new key: Cadaver's `$1535a`, which reads `$FFFC02` with no status test, took the
-state byte of a `kbd ff 08` joystick report as a make code, and the hero did not move (from
-`scratchpad/cadaver/s96/r6/s3_flask.snap`, `kbd ff 08` then `s 300000`: x lead 29 stayed 29, against
-41 with the two bytes enqueued 300 steps apart; 41 both ways after the fix).
+`EnqueueIkbd` queues a whole packet at once, but the ACIA sees one byte at a time, as the 6301's 7812.5-baud
+line delivers them 1.28 ms apart: after a read of `$FFFC02` that leaves bytes queued, the next reaches the
+ACIA (RDRF, GPIP bit 4, the channel-6 request) 768 steps later (`ikbdGap`, counted by `IkbdTick` once per
+line and kept in the snapshot from format v13). The gap runs from the read, not from the previous byte's
+arrival, so no overrun is modelled. The channel-6 interrupt is the 6850's level: a read clears RDRF and
+withdraws a request still pending, and the next byte's arrival raises it again. Super Sprint's
+one-byte-per-interrupt ISR `$104b6` sees every byte of a packet; an ISR that loops on GPIP bit 4 (TOS
+`$fc281c`, Cadaver's `$1535a`) leaves between bytes and is entered once per byte, so it never reads the
+latched last byte as a new key (Cadaver once took the state byte of a `kbd ff 08` joystick report as a make
+code: from `scratchpad/cadaver/s96/r6/s3_flask.snap`, `kbd ff 08` then `s 300000`, x lead 29 stayed 29,
+against 41 with the two bytes enqueued 300 steps apart). Carrier Command's `$1794c` needs the gap: its byte
+parser reuses A0, so a second byte waiting when it loops back sends it reading RAM forever
+(`reversing/carriercommand/README.md`, "Mouse input").
+
+The MFP in-service registers ISRA/ISRB (`$FFFA0F`/`$FFFA11`) are modelled for the four MFP sources
+(Timer A channel 13, Timer B 8, ACIA 6, Timer C 5). In software end-of-interrupt mode (VR bit 3; TOS writes
+VR=$48) taking a channel's interrupt sets its bit, and a set bit holds that channel and every lower one off
+(their requests stay pending, and the VBL, not an MFP source, is unaffected) until the handler clears it:
+writes clear the bits written as 0 and cannot set one, and writing VR with bit 3 clear clears both (Hatari
+`mfp.c`). TOS's Timer C handler `$fc2f1e` holds bit 5 until its `bclr #5,$fffffa11` at `$fc2f7a`, after the
+etv_timer call. Snapshots older than format v13 load with both registers 0. The arbitration order among
+pending MFP sources is still Timer A, ACIA, Timer B, Timer C, not the 68901's channel order (Timer B above
+the ACIA).
 
 `ATARI_TRACE_IKBD=1` logs every completed command and every state change to
 stderr (survives `ATARI_NOTRACE`) - use it to see which input mode a program

@@ -350,13 +350,17 @@ menu is up by 80M (`language.png`). `drive.txt` presses 1 (English), waits 60M s
 game (`strategy.png`). Both the cold boot and the drive are deterministic: rerunning them reproduces `c80.snap`
 and `c_s30.snap` byte for byte.
 
-**Mouse input needs a workaround.** The game's ACIA handler (`$1794c`) lowers the interrupt mask to 5 on entry.
-The emulator raises the next IKBD interrupt as soon as a byte is read and does not model the MFP in-service
-register, which on hardware holds off a second channel-6 interrupt until the handler clears it
-(`bclr #6,$fa11.w` at `$1797a`). A `mouse move` packet's three bytes therefore nest three handlers deep and are
-processed last byte first, and the pointer never moves. `drive.txt` sends each packet byte on its own `kbd`
-call with 3,000 steps between them (header `$f8`, `$fa` with the left button down). Keyboard input is one
-byte per key and works normally. This is an emulator gap, not fixed yet.
+**Mouse input.** The game's ACIA handler (`$1794c`) lowers the interrupt mask to 5 on entry, reads one byte,
+and loops back to the status read while GPIP bit 4 is low; the byte parser it calls (`$17986`) reuses A0, so a
+second byte already waiting sends it reading RAM forever (loop at `$17966`/`$17978`). On hardware the next IKBD
+byte arrives 1.28 ms later, after the handler has cleared its in-service bit (`bclr #6,$fa11.w` at `$1797a`) and
+returned. The emulator models both (MFP in-service registers, and one IKBD byte per 768 steps:
+`M68000/DEVELOPING.md`, "IKBD command interpreter"), so plain `mouse move` and `mouse down`/`up` work: from
+`c_eng.snap`, `mouse move 0 -55` and 400,000 steps take the pointer (`$476`/`$478`) from (160,100) to (160,45),
+the `c_mv.snap` position, where a build without them left it at (160,100); and `drive.txt` with its mouse bytes
+replaced by `mouse move 0 -55`, `mouse down l`, `mouse up l` reaches the Strategy game (`$1244 = $ff`; 0 on the
+older build). `drive.txt` still sends each packet byte on its own `kbd` with 3,000 steps between, the form that
+made `c_mv.snap` and `c_s30.snap` before these were modelled.
 
 ## Snapshots
 
