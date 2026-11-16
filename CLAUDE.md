@@ -188,9 +188,7 @@ before spawning agents. The ones most often missed:
     with `bash`, or `setopt nonomatch`. An unquoted `grep --include=*.fs` or `ps aux | grep [d]otnet` fails the same way ("no matches found"), and the pipe then prints nothing, which reads as "no process": quote it.
 - A waiter `until ! pgrep -f 'run.sh x'` matches its own shell's command line and never exits: bracket one
   character (`pgrep -f 'run[.]sh x'`), or wait on the background task's own notification.
-- A new script that a gate's runner calls as `"$d/foo.sh" || exit 1` needs `chmod +x` (git records the mode): without
-  it the runner stops there and `gates.py` reports CHANGED with the later counts "missing", which reads as a model
-  failure (`reversing/archipelagos/py/run_gate.sh`).
+- A script a gate runner calls as `"$d/x.sh" || exit 1` needs `chmod +x`, else `gates.py` says CHANGED, counts "missing".
 - macOS has no `timeout`: `... | timeout 60 dotnet ...` fails before running, and a following
   `grep -c` prints 0, the same as "no hits". Print the raw output and a positive control before
   counting, and bound runs with step counts.
