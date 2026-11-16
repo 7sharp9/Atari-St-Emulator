@@ -274,25 +274,48 @@ poke is too late for N up to 100: `$1b142` has already loaded island 1's block i
 that one (a map-screen poke of 6 rebuilds island 1). `py/capture_pictures.sh` pokes N at the entry of `$1b142`
 instead, after the code-word screen.
 
-## Over all island numbers (model census)
+## Over all island numbers (model census, checked live on 42 islands)
 
 `py/census.py` runs the model for every N from 1 to 9,999 from the disk image and `isl/ent1.snap` alone (about 6 min
-on 10 cores; `--summary` reprints from `scratchpad/archipelagos/census/census.json`). It is a model result: its
-set-up reproduces the gated captures of islands 6, 99, 150, 4321 and 15 cell for cell, but
-the census itself is not run in the emulator.
+on 10 cores; `--summary` reprints from `scratchpad/archipelagos/census/census.json`). The census is a model result.
+`py/gate_census_live.py` checks its three findings in the emulator: the game builds 42 islands under `stserver`
+(N > 100 poked at `$1d566` on the map screen, `n2.snap`; N up to 100 poked at the `$1b142` entry from `n0.snap`),
+each from the `$15a20` entry to the `$15b8e` breakpoint, 42 of 42 reached, and the model runs on each entry
+snapshot. Its output is in `scratchpad/archipelagos/census_live/gate.log`; it runs in the `islands` gate (about 2 min).
 
 - **No writes outside the map.** The circle and rectangle stamps address the map with 16-bit signed offsets that can
-  leave it, but none of the 9,979 procedural islands changes a byte outside `$3000..$12fff`: every stamp starts at
-  least 22 cells from an edge (the range square above 100, the tables of the disk islands), and the largest stamp
-  has radius 25. Control: island 150's block with the stamps forced onto rows 0..3, all circles, changes 1,503
-  bytes from `$1708` (below the map, the stack's region) to `$130fd` (the game's code).
+  leave it, but in the model none of the 9,979 procedural islands changes a byte outside `$3000..$12fff`: by the
+  range tables every stamp starts at least 31 cells from an edge (island 81's table; 32 in the stamps it draws;
+  above 100 the range square keeps them 49 or more from it), and the largest stamp has radius 25.
+  **Live, 11 of 11 islands**: 150, 4321, the largest stamp counts above 100 (145 and 132, 59 stamps, which also
+  gives the largest start squares), the largest stamp sizes `P_c` (140 and 163, 199 and 198), 119, and the disk
+  islands whose stamps start nearest an edge in the model (81, 93, 28, 79), each under write watches on
+  `$1700..$2fff` and `$13000..$148ff` (no event dropped). The builder's code is `$15a20..$1663f`: its procedural
+  path calls nothing outside it (read; the two calls out, `bsr $134f8` and `jsr (A0)`, are on the picture path). On
+  none of the 11 does it make a byte write in either range; all its writes there (71,130 to 329,543 per island) are
+  word pushes into its own stack below the entry SP (`$2fce..$2fe3`; `$2fd2..$2fe7` on the disk islands, whose SP is
+  `$2fe8`). Its other state (the seed `$16978`, the work words `$16a30..$16a52`, the ring queue `$1e0fe`) lies
+  outside both ranges. The remaining writes in the ranges come from 65 to 68 PCs outside the builder, every one of
+  which also writes there in an idle window as long as the longest build (14,883,706 steps, no input) on the map
+  screen or the code-word screen; each (PC, address) pair the idle windows lack is a stack address (`$2f82..$2fde`).
+  That is interrupt-time code pushing onto the builder's deeper stack. Control, the same harness: island 150 with
+  the range table `$1698c` poked to `03 ff 00 00` and the thresholds `$16980/2/4` to 0, 0, 100 at the `$15a20` entry
+  (stamps on rows 0..3, all circles; poke). The builder then makes 361 byte writes outside the map at 355 addresses,
+  `$17d6..$130fd`, from the circle outline (`$15e0c..$15e34`) and the fill (`$15e90`). The first 71 equal the
+  model's out-of-map writes in order. Write 72 (`$2fd6`, the fill) is the first into the builder's own pushes, so from
+  there the flood follows the live stack, which the model's entry copy does not hold, and the game halts on a double
+  bus fault after 8,329,623 steps, before `$15b8e`. The model, run to the end, makes 1,820 writes outside the map
+  (from `census.py`'s RAM it changes 1,503 bytes, `$1708..$130fd`).
 - **64 parameter sets above 100.** `$16050` scales only the seed's low byte, and the low byte of `s = 5s + 1 mod
   65536` depends only on the low byte before it; the seed `4N + $1388` therefore gives the same nine fields for N and
-  N + 64, and islands 101 to 9,999 have 64 distinct parameter sets. The islands still differ: the build seed
-  `4N + $3039` differs, and the walks take their directions from the seed's top two bits. Land overlap (cells land
-  in both over cells land in either) is 0.36 to 0.46 for N against N + 64k (1000/1064, 1000/1128, 1000/1192,
-  5000/5064), against a median of 0.36 (maximum 0.56) for N against N + 1 over 1000..1062.
-- **No progression after 100.** Medians over the procedural islands:
+  N + 64, and islands 101 to 9,999 have 64 distinct parameter sets (model). The islands still differ: the build seed
+  `4N + $3039` differs, and the walks take their directions from the seed's top two bits. **Live, 4 pairs**
+  (150/214, 4321/4385, 9000/9064, 1000/1064): the 21 words at `$1697a` at the `$15a20` entry agree in 20 of 21,
+  differing only in `$1698a`, the build seed; the game's maps agree in 58,923, 62,272, 51,494 and 52,953 of 65,536
+  cells; the model matches all eight maps 65536/65536. Land overlap (cells land in both over cells land in either,
+  model) is 0.36 to 0.46 for N against N + 64k (1000/1064, 1000/1128, 1000/1192, 5000/5064), against a median of
+  0.36 (maximum 0.56) for N against N + 1 over 1000..1062.
+- **No progression after 100.** Medians over the procedural islands (model):
 
 | islands | stamps | land cells | land pieces (4-connected) | largest piece |
 |---|---|---|---|---|
@@ -310,6 +333,11 @@ the census itself is not run in the emulator.
   the map as land, and from there the figures are flat. The share of stamps allowed to touch finished land
   (`[$16988]`) has a median of 80% over islands 1 to 20 and about 50% over the later disk islands; above 100 it is
   10% to 89% by N with no trend. What else grows with N in play (creatures, timers) is not decoded.
+  **Live sample, 25 of 25** islands match the game's map 65536/65536: five per range above 100 (213, 270, 358, 545,
+  682; 1590, 2126, 2445, 2688, 2871; 3323, 4065, 4255, 5113, 5965; 6497, 8764, 9238, 9459, 9845; drawn with seed
+  1989) and five disk islands that are not pictures (23, 47, 48, 78, 89). With the islands of the two findings above,
+  42 of 42 live builds match (stamps over them: walk 640, wander 586, circle 369, rect 123). The medians themselves
+  are model figures over all 9,999.
 
 ## The code-word screen
 
@@ -393,10 +421,11 @@ what happens to the player when the creature arrives.
 | `py/creature/gate_creature.py`, `py/creature/gate_creature_idle.py`, `py/creature/run_gate.sh` | the callcap gate (300 poked states) and the watch-log gate (2 natural, 40 poked events); `run_gate.sh` runs both |
 | `py/capture_pictures.sh`, `py/gate_pictures.py` | captures of islands 15, 25, 85, 6, 99 (N poked at `$1b142`) and their gate: picture path, buffer, disk blocks |
 | `py/census.py` | the model over N = 1 to 9,999: out-of-map writes (with an edge control), parameter sets, N vs N + 64, medians by range |
+| `py/gate_census_live.py` | the census findings in the emulator (`stserver`): write watches outside the map on 11 islands plus the poked edge control, the `$1697a` block and maps of 4 N / N + 64 pairs, and the model against 42 live maps; output under `scratchpad/archipelagos/census_live/` |
 | `py/render_pictures.py` | draws `picture_islands.png` from the model and the disk image |
 | `picture_islands.png` | the 20 picture islands as the game builds them |
 | `py/render_buf.py` | render a 320 x 200 screen at an explicit buffer base |
-| `gates.toml` | the gates for `tools/gates.py` (`islands`, `creature`; PASS 11 s and 15 s) |
+| `gates.toml` | the gates for `tools/gates.py` (`islands`, `creature`; PASS 134 s and 14 s) |
 | `archipelagos.sym` | names, one per line |
 | `title.png` | the title screen (obelisk, berry trees) |
 | `map_screen.png` | the archipelago map after the code-word screen (text noisy) |

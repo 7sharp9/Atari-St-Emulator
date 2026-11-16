@@ -1,17 +1,23 @@
 # Archipelagos' gates, for tools/gates.py (`uv run python tools/gates.py run archipelagos`).
 # Needs scratchpad/archipelagos/tmb58.st (the disk image, converted from the MSA, never committed) and the
 # snapshots `py/run_drive.sh` writes there (about a minute). The gate captures fresh entry/exit snapshots with its
-# own emulator runs (about 15 s), so a changed emulator changes the counts. The broken-model control lines
-# print in the same output and are not expected counts.
+# own emulator runs (about 15 s, then about 2 min for the live census under stserver), so a changed emulator
+# changes the counts. The broken-model control lines print in the same output and are not expected counts.
 
 [[gate]]
 name = "islands"
 cmd = "bash run_gate.sh"
 cwd = "py"
-expect = ["65536/65536", "9/9", "11792/11792", "2048/2048", "21/21"]
-cite = "README.md, 'The island generator', 'Island number'"
-inputs = ["scratchpad/archipelagos/tmb58.st", "scratchpad/archipelagos/n0.snap", "scratchpad/archipelagos/n2.snap"]
-minutes = 1
+expect = ["65536/65536", "9/9", "11792/11792", "2048/2048", "21/21",
+          're:reached \$15b8e: 42/43; watch events dropped: 0',
+          're:no builder write outside the map other than its stack: 11/11 islands',
+          're:equal the model.s for the first 71 of 361; the first write into the builder.s own pushes \(\$2fce\.\.\$2fe3 in island 150.s build\) is write 72',
+          're:(?s)(words equal 20/21 \(differ: \$1698a\).*){4}',
+          're:all live builds \(findings 1-3\): 42/42 islands match 65536/65536']
+cite = "README.md, 'The island generator', 'Island number', 'Over all island numbers'"
+inputs = ["scratchpad/archipelagos/tmb58.st", "scratchpad/archipelagos/n0.snap", "scratchpad/archipelagos/n2.snap",
+          "server/bin/Debug/net8.0/stserver.dll"]
+minutes = 3
 
 [[gate]]
 name = "creature"

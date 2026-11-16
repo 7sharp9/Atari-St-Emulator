@@ -4,6 +4,8 @@
 #   $16166: 9/9 parameter fields for N=150 and N=4321; control 2/9
 #   RNG $16622: s = 5s + 1, 11792/11792 successive seeds; control 0
 #   pictures and disk blocks (gate_pictures.py): N = 15, 25, 85 65536/65536 and 2048/2048; N = 6, 99 21/21 and 65536/65536
+#   census, live (gate_census_live.py, stserver): no builder write outside the map 11/11; control 71 of 361 in order;
+#   N vs N + 64 20/21 words; 42/42 islands 65536/65536
 d=$(cd "$(dirname "$0")" && pwd)
 "$d/capture_islands.sh" || exit 1
 "$d/gate_islands_only.sh"
@@ -11,3 +13,4 @@ d=$(cd "$(dirname "$0")" && pwd)
 uv run python "$d/gate_rng.py"
 "$d/capture_pictures.sh" || exit 1
 uv run python "$d/gate_pictures.py"
+uv run python "$d/gate_census_live.py"
