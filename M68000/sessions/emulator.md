@@ -14,8 +14,8 @@ in-service registers with paced IKBD bytes, and gated both.
 - Working data: none. The pre-change build used as the control is `/private/tmp/claude-501/fdc/base/` (a 404b3c5
   build, outside the repo and not durable): rebuild one with `git worktree add` at `4419e9f` and
   `dotnet build -c Debug M68000.fsproj -o <dir>`.
-- Uncommitted work left behind: none. Agent worktree branches `worktree-agent-a488c6300f4cef75c` (FDC) and
-  `worktree-agent-ab3a60938446e1b09` (MFP, locked) are merged by cherry-pick; their worktrees are still on disk.
+- Uncommitted work left behind: none. The two agent worktrees and their branches (FDC tip `1df1410`, MFP tip
+  `0a4c7f7`) were removed after `git merge-tree` showed master already holds both.
 
 ## Proven so far
 
@@ -71,8 +71,6 @@ Nothing running.
 ## Waiting on Dave
 
 - Push: `master` is 15 commits ahead of `origin/master` with this file's commit, only on this Mac.
-- Remove the two merged agent worktrees (`.claude/worktrees/agent-a488c6300f4cef75c`, `agent-ab3a60938446e1b09`,
-  the second locked) and their branches.
 - Stale in other workstreams' handoffs (not edited here): `sessions/archipelagos.md` Open 1 (the emulator gap, now
   fixed and gated) and its "Both loader pokes applied" snapshots; `sessions/carriercommand.md` Open 6 (`$2119e` now
   returns); `sessions/captive.md` Open 5 (Read Track now modelled); for supersprint, `sound.md:58` and `secrets.md:97`
