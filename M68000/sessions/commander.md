@@ -44,9 +44,13 @@ All in `reversing/powermonger/commander/README.md`; every gate re-run from its p
   7/21/1/1, rollout deciding per 20M 7/17/1/5. All search arms beat scripted 28/30 or more (p < 1e-6); no two search
   arms separable.
 - **The LLM's 20M order interval is not why it never wins**: the rollout at the LLM's cadence wins 7/30 (5M: 4/30) and
-  beats the LLM from 24/30 (p = 0.001); the difference is the 40M look-ahead. Build 7df69a2.
-- **The LLM adds nothing over a random proposer** on land 2: its candidates win the rollout's 40M score more often
-  (207/712 against 92/633) but the outcomes do not differ (8 against 7 wins).
+  beats the LLM from 24/30 (p = 0.001); the two still differ in candidate orders and in the 40M scoring, which no arm separates. Build 7df69a2.
+- **No advantage shown for the LLM over a random proposer** on land 2 (30 starts, not an equivalence): its candidates
+  win the rollout's 40M score more often (207/712 against 92/633, each on its own arm's states) but the wins are 8
+  against 7.
+- **The pending word (word 4) is not a delivery signal** (README "Orders by carrier pigeon"): `Scripted` and the
+  rollout fork still skip on it, but it is 0 in 17,824/17,824 land-2 group rows and non-zero in 6/2889 (scripted) and
+  6/2277 (rollout) on rand1, all at 0M and 5M. Only `llm.py` reads route and pigeons in flight (`pig.order_status`).
 - **Land 2's only second-group source** (README "A second side-1 group", `captains.py`): `$041a`, alive in 13 of 30.
 - **Wall following against A*** (README "Wall following against A*", `bug2/`; data `scratchpad/pm_bug2/`): the
   census's 4230 stuck pairs hold 2417 reachable ones whose line crosses water (2202 distinct pairs, 133 men, six
@@ -146,7 +150,7 @@ The PowerMonger traps in `sessions/powermonger.md` apply.
 
 ## Waiting on Dave
 
-- **Close step 4 on the LLM?** Recommendation: yes, recorded as "the LLM adds nothing over a random proposer on
+- **Close step 4 on the LLM?** Recommendation: yes, recorded as "no advantage shown for the LLM over a random proposer on
   land 2, and its 20M order rate is not the limit (the rollout at 20M wins 7 of 30); search wins 4 to 8 of 30". The 130-start Haiku comparison is not worth funding after the placebo.
 
 ## Next session

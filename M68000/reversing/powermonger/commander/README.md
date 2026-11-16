@@ -140,7 +140,15 @@ was dead-sender). The excess executions after side 3's captain died in the LLM r
 `$6b38` entries). `pigeon/pig.py <snap>` prints each group's route (none, direct, pigeon, never) and its pigeons in
 flight. For the policies: do not order a `never` group (the order cannot arrive and leaks a pool record), send once
 and wait while a pigeon to the group is in flight, start a stall timer at delivery, and ignore the pending word.
-Poking the sender word to 0 would deliver every order at once, but it changes the game's rules, so the harness does
+Only the LLM's validator does this (`llm.py`, `pig.order_status`: a `never` group is not orderable, and the prompt
+carries `order_route` and `orders_in_flight`). `Scripted`, and with it the rollout's fork test, still skip a group
+whose word 4 is non-zero (`raw_w4`), cover the flight time with the fixed 20M `WAIT`, and have no check for a `never`
+group. In the measured arms that skip almost never fired: word 4 is 0 in all 17,824 commanded-group rows of the six
+land-2 arms' decision logs (side 1 has only group 0, whose route is direct), and on rand1 side 3 it is non-zero in 6
+of 2889 rows for scripted and 6 of 2277 for the rollout, group 1 at 0M and 5M from starts o3..o5 (the AI's own
+pre-take pigeon, cleared when it landed; `raw_w4` is the fifth field of each `groups` row in `decisions.jsonl`). The
+`never` case is not measured in those arms. A dataset built from the logs has to take delivery state from
+`pig.order_status`, not from word 4. Poking the sender word to 0 would deliver every order at once, but it changes the game's rules, so the harness does
 not do it.
 
 **Observation (`observe.py`).** A per-decision JSON summary of a snapshot or RAM image, every
@@ -184,7 +192,7 @@ from about 400M, and **a captain group with no men does not dissolve**, so its o
 captain test nor `$d2c8` fires; without the retire rule the land ran on for 1.6G more steps (one run). The loop retires
 on ratio 4 or on a side with no lord and no man.
 
-The scripted baseline (`Scripted`) orders a group when it is alive, has no pending word and is idle (state 0, 1, 6)
+The scripted baseline (`Scripted`) orders a group when it is alive, its word 4 is 0 (a test that almost never fires: "Orders by carrier pigeon") and it is idle (state 0, 1, 6)
 or unchanged for 8 decisions, then leaves it 20M steps. In order: a group camped 20 ticks at a target lord that is now
 its own follows the AI's `$6762`/`$67d0` chain (after a fight with a lord get food at posture 4, after state 2 get men
 at posture 3, after state 3 equip at posture 2, after state `$a` invent at posture 3); a group under 22 men, empty ones
@@ -228,8 +236,9 @@ groups for the test. Gate (`gate_move.sh`, `ab.py`, same snapshot and 120M steps
 straight walk crosses water to a goal on the same land the direct order never arrives and the legs arrive in all 8
 (21M to 67M steps, no re-plans; `Map.simulate_walk` called the direct verdict right in 9/9 boat-free pairs);
 p10 arrives both ways through the detour sweep; b1 (a boat lead) arrives straight. p9 does not arrive: its group's
-pending word stayed set, so the first orders were not taken (open). Two `--move` runs on side 1 over 400M steps are
-identical. The Mover does not yet wait on a set pending word.
+sender was dead, so no order to it could fly ("Orders by carrier pigeon"; the pending word it showed was stale).
+Two `--move` runs on side 1 over 400M steps are identical. The Mover does not check a group's route or its pigeons
+in flight before sending a leg.
 
 **Rollouts (`rollout.py`, `loop.py --policy rollout`).** `rollout(snap, side, cands, N)` runs each candidate (an
 action list, poked `gap` steps apart after an `m` read, as the loop does) in its own emulator, at most `par` at once,
@@ -393,14 +402,18 @@ random orders matched to Haiku's valid-order mix in the hybrid arm (how many per
 with targets from the observation's lord cells, through the same validation, candidate slot and deduplication. Haiku's
 proposals are better moves by the rollout's own 40M score: its candidate scored best at 207 of the 712 decisions it was
 offered at (29%), the random one at 92 of 633 (15%). The land outcomes do not follow: placebo 7 wins against Haiku's 8.
-Whatever the hybrid gains over the rollout, if anything, comes from an extra candidate outside the generator, not from
-the model choosing it, and a locally better move at the 40M horizon does not make a land-2 win more likely. 
+These 30 starts show no advantage of Haiku's proposals over random ones; they do not show the two equal (6 against 5
+on the starts only one won allows a real difference either way). If the hybrid gains anything over the rollout, an
+extra candidate from outside the generator is enough to account for it, and winning the 40M score more often did not
+come with more land-2 wins. The 29% and 15% are each measured on the states its own arm visited, not on the same
+decisions.
 
 The LLM decides every 20M (about 113 ticks) and the rollout every 5M, so the rollout deciding every 20M tests whether
 the LLM's order rate is what keeps it from winning. It is not: the slow rollout wins 7 of 30 (o2 o14 o19 o22 o23 o25
 o26), against 4 at 5M (above the 5M rollout from 17 starts, below from 12, sign p = 0.46; starts only one won: 7
-against 4, McNemar p = 0.55), and beats the LLM alone from 24 of 30 (p = 0.001). At the same cadence the difference
-between 0 wins and 7 is the 40M look-ahead, not how often orders are given. Telling 13%
+against 4, McNemar p = 0.55), and beats the LLM alone from 24 of 30 (p = 0.001). At the same cadence the rollout
+policy wins 7 and the LLM 0, so how often orders are given is not what separates them. The two still differ in both
+the candidate orders and the 40M scoring, and no arm here separates those. Telling 13%
 from 27% at 80% power would need about 130 starts per arm (normal approximation, unpaired). The hybrid arm cost $3.33
 for 1143 Haiku calls (47 orders dropped as invalid); the placebo made 968 calls to its generator (3 invalid). Runs:
 `scratchpad/cmd15/l2s30/<arm>/o<k>`; scored by
@@ -545,7 +558,7 @@ system prompt is a rules digest written from these docs (order set, posture, eat
 retire, conquest by settlement residents, the invent throttle, the pigeon delay); the user message is a compact JSON
 of the side's groups, its lords and the enemy's (men at home, residents, distance and A* reachability per group) and
 visible enemy groups. The reply is strict JSON, `{"orders":[{"group","order","x","y","posture","to_group"}],
-"retire","why"}`, validated per order (group alive with no pending word, one order per group, town orders aimed at
+"retire","why"}`, validated per order (group alive and not on a `never` route, one order per group, town orders aimed at
 the right side's lord, no water centre for go to and supply, reachability for boatless groups) and an invalid order is
 dropped with its reason logged. Every prompt, reply and raw CLI output is stored by hash under `<work>/llm/`; backend
 `replay:<dir>` answers from such a log. `llm.py selftest` checks parse, validation and replay offline (15/15).
@@ -573,8 +586,8 @@ o0 to 100M: 20 of 20 decisions with the same observation hash and actions, the s
 (`scratchpad/cmd14/hybgate/stub0`). Live on Haiku over the same 100M (5 calls, about $0.02) the `llm` candidate won
 at 0M (a tie on score broken on lords) and at 20M, where the rollout would not have forked (0.953 against `none`'s
 0.816), and lost at 60M and 80M; `--replay` of its log ends byte-identical (`cmd14/hybgate/haiku`). On land 2 side 1 over 30
-starts it wins 8 against the plain rollout's 4 and a random proposer's 7 (`--backend rand`): Haiku adds nothing these
-starts can see ("Land 2 as a rate").
+starts it wins 8 against the plain rollout's 4 and a random proposer's 7 (`--backend rand`): no advantage of Haiku's proposals
+that these starts can see ("Land 2 as a rate").
 
 **Evaluation design.** What the measurements above say about how to run the next ones:
 
@@ -607,7 +620,7 @@ starts can see ("Land 2 as a rate").
 | 1 | Injection gate: an order written into a state-2 slot of an AI side runs like a natural one, and `$6522` issues nothing for that side | `gate_inject.sh` 7/7 (above) | done |
 | 2 | A* reachability tool over the terrain planes | sampler port 4128/4128 against `$1648e` (`gate_sampler.py`); the census's 4230 stuck pairs classified (`classify_stuck.py`): 2417 reachable with water on the line, each with a verified waypoint path; one waypoint followed live where the control stays stuck (`live_check.py`); cheaper in-game rules scored against it ("Wall following against A*") | done |
 | 3 | Observe/act harness driving the REPL, scripted baseline commander | observe/act/step built and gated; every player order gated from an AI or the local slot (`gate_orders.sh` 57/57, `gate_ungated.sh` 52/52, `gate_local.sh`); `loop.py` deterministic and replayable, a land played to its verdict on side 1 twice with identical logs and snapshots (`gate_loop.sh`, `gate_loop_side1.sh`) | done |
-| 4 | LLM commander | land outcomes against the original AI on the same seeds, sides swapped. Measured on rand1 side 3 over six starts ("Policies against the game's AI"): rollout ahead of the AI on lords from 5 of 6 starts, the LLM not separable under three prompts, scripted behind from 6 of 6. On land 2 side 1 over 30 starts ("Land 2 as a rate"): scripted and the Haiku LLM win 0, the rollout 4, the hybrid (LLM proposes, rollout scores) 8, the same with a random proposer 7, the rollout deciding only as often as the LLM 7; no two search arms separable | rollout done; LLM measured: adds nothing over a random proposer on land 2 |
+| 4 | LLM commander | land outcomes against the original AI on the same seeds, sides swapped. Measured on rand1 side 3 over six starts ("Policies against the game's AI"): rollout ahead of the AI on lords from 5 of 6 starts, the LLM not separable under three prompts, scripted behind from 6 of 6. On land 2 side 1 over 30 starts ("Land 2 as a rate"): scripted and the Haiku LLM win 0, the rollout 4, the hybrid (LLM proposes, rollout scores) 8, the same with a random proposer 7, the rollout deciding only as often as the LLM 7; no two search arms separable | rollout done; LLM measured: no advantage shown over a random proposer on land 2 (30 starts, one land) |
 | 5 | State-space forecaster | prediction error against rollouts and against the rule recurrence. Built: exact rollouts (`rollout.py`, `gate_rollout.sh` 20/20) | in progress |
 
 ## Wall following against A*
