@@ -2,7 +2,8 @@
 
 ## Resume point
 
-- Last commit of this workstream: `77254ad` wall following against A* (`bug2/`, promoted from a subagent by an
+- Last commit of this workstream: the second-group pass (`captain_trace.py`, `captain_rout.py`, `captain_take.py`), after
+  `2463b49` (pending word and LLM wording). Before them: `77254ad` wall following against A* (`bug2/`, promoted from a subagent by an
   overseer session on 2026-11-14; no emulator arm was run for it beyond one live pair). Before it: `52a1013` rollout
   at the LLM's 20M cadence wins land 2 7/30. Before that: `24cc325` hybrid placebo (`--backend rand`) wins land 2 7/30 against the Haiku
   hybrid's 8/30; merged build repeats scripted o0..o5 exactly. Earlier this pass: `52ef030` (search arms at 30 starts,
@@ -11,7 +12,8 @@
   7df69a2, which went into `bin/` after 01:39; hybrid_rand and rollout_e20 (cmd15) on 7df69a2. `bin/`'s mtime
   (23:10:04) is the obj/ compile time, kept by the copy, not the install time.
   `cmd15/rebase` shows the merge does not move these games (665/665 decision hashes, 6/6 end steps). `bin/` is 7df69a2.
-- Working data: `M68000/scratchpad/cmd15/` (README: `rebase`, `l2s30` with all six arms linked), `cmd14/` (README),
+- Working data: `M68000/scratchpad/cmd16/` (`rout`, `take`: rebuilt by `captain_rout.py`, `captain_take.py` from
+  `cmd11/so/scripted/o1/decisions.jsonl`), `M68000/scratchpad/cmd15/` (README: `rebase`, `l2s30` with all six arms linked), `cmd14/` (README),
   `cmd12/r1s3`, `cmd13/r1s3b`, `cmd9/`. Tables: `outcomes.py scratchpad/cmd15/l2s30 1 scripted llm_haiku rollout
   rollout_e20 hybrid_haiku hybrid_rand`; `pairs.py scratchpad/cmd13/r1s3b 3 --at 300,440`.
 - Start from: rand1 `scratchpad/pm142/rand1.snap` (side 3 testbed); land 2 `scratchpad/cmd3/l2build/l2_built.snap`,
@@ -51,7 +53,12 @@ All in `reversing/powermonger/commander/README.md`; every gate re-run from its p
 - **The pending word (word 4) is not a delivery signal** (README "Orders by carrier pigeon"): `Scripted` and the
   rollout fork still skip on it, but it is 0 in 17,824/17,824 land-2 group rows and non-zero in 6/2889 (scripted) and
   6/2277 (rollout) on rand1, all at 0M and 5M. Only `llm.py` reads route and pigeons in flight (`pig.order_status`).
-- **Land 2's only second-group source** (README "A second side-1 group", `captains.py`): `$041a`, alive in 13 of 30.
+- **Land 2's second-group lever** (README "A second side-1 group"): `$041a` is never in a `$550e` candidate mode in
+  the 30 replays (`captain_trace.py`, 0 of 163,661 samples; control fires on side 1's captain). Posture 4 in the 190M
+  field fight of scripted o1 keeps him alive and home in `$3c` from 279.4M; posture 2 and no order leave him dead at
+  198M (`captain_rout.py`, `scratchpad/cmd16/rout`). Home, he still leads 14 men or more in all 928 candidate-mode
+  samples. One attack on the Capital from there lost at 75M at both postures (`captain_take.py`, `cmd16/take`).
+  The chain works under the harness on land 1: 15 of 24 `pm123` side-1 logs get a group 1, 0 of 488 land-2 logs.
 - **Wall following against A*** (README "Wall following against A*", `bug2/`; data `scratchpad/pm_bug2/`): the
   census's 4230 stuck pairs hold 2417 reachable ones whose line crosses water (2202 distinct pairs, 133 men, six
   maps: `bug2/extract_pairs.py`). The game-rule movement model calls 3751/3957 census-stuck pairs stuck; a
@@ -68,10 +75,13 @@ Nothing running.
 
 ## Open, in priority order
 
-1. **Land 2, a second side-1 group** (`$041a`, alive in 13 of 30 cmd9-era end states): read whether his group still
-   has men; if he can be alive and groupless, aim the captain at the Capital then and `watch` `28(group)` of side 1's
-   slot 1 for the `$26d0` write. If he never is, land 2 has no second-group lever. This is the lever the search arms
-   lack: every loss is still the lone captain killed or the no-lord retire.
+1. **Land 2, a second side-1 group: empty group 1 and take the Capital.** Three conditions (Proven): `$041a` home
+   in `$8a`/`$3c`, alive (the captain at posture 4 in the field fight), and leading no men. Untried: (a) fight
+   group 1 at posture 4 until its men are routed and read his followers with `captain_trace.py` (0 followers in a
+   candidate mode is the target); (b) an attack on the Capital with enough men (it held 21 at home plus his 14 to
+   29; recruit first), `captain_take.py` reporting a second group. The posture-2 field-fight fix that keeps the
+   captain alive is what kills `$041a`, so (a) also needs the captain's survival read from the same runs
+   (`leadkill/standoff.py`). If (a) cannot empty the group with the captain alive, land 2 has no second-group lever.
 2. **Rollout food blindness**: inside a 40M horizon food costs nothing until it hits 0; try a longer horizon for
    get-food candidates or score food left against the eating rate. The placebo result says the 40M score picks
    locally better moves that do not win more, so the horizon or the score is the search's weak point. Deciding every
@@ -155,5 +165,7 @@ The PowerMonger traps in `sessions/powermonger.md` apply.
 
 ## Next session
 
-Open 1 (land 2's second group) from `cmd11/so/` end states and `captains.py`, unless Dave wants Open 3's K sweep
-first. Any new arm records its build (`bin/` is 7df69a2). The prompt that starts it is `/resume commander`.
+Open 1(a) from `scratchpad/cmd16/rout/p4` (posture 4 against group 1), unless Dave wants Open 2's longer-horizon
+arm or Open 3's K sweep first. An outside review (2026-11-16) proposed a learned continuation-value model on the
+rollout; the answer given was not before a diagnostic shows the spread between candidates exceeds the spread
+within one candidate under perturbed continuations (a 30-start arm is one state at p about 0.13 to 0.27). Any new arm records its build (`bin/` is 7df69a2). The prompt that starts it is `/resume commander`.

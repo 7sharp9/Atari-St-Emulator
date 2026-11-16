@@ -492,9 +492,33 @@ members (economy.md section 3). On land 2 there is one such man outside the two 
 `cmd3/l2build/l2_built.snap`): `$041a`, the captain of side 2's Capital (lord 2), who leads side 2's group 1. In the
 30 end states (`cmd11/so/*/o*/final.snap`) the Capital is side 2's in 29: he is alive in 13, dead in 13 (owner < 0,
 the dying-entity path, ai.md `$1623c`) and gone from its unit chain in 3. The one run that took the Capital, the
-rollout win, took it after he died, so no group came of it. The lever is therefore one timing: take the Capital
-while `$041a` lives and leads no group with members. Not yet tried; that he can be alive with his group gone is not
-checked (the 13 live end states do not say whether his group still has men).
+rollout win, took it after he died, so no group came of it. The chain does give side 1 a second group under the harness on land 1: 15 of the 24 side-1 logs started from
+`pm123` snapshots show a group 1 with no men (the scripted land-1 run from 145M, at (20,65)), against 0 of 488
+land-2 side-1 logs (every `decisions.jsonl` under `scratchpad/cmd*`).
+
+On land 2 three conditions have to hold at once, and the policies meet none of them:
+
+- **He has to be home in a candidate mode.** `$550e` takes only mode `$8a` or `$3c`. Over the 30 replays' object
+  samples (`captain_trace.py 041a scratchpad/cmd11/so/*/o*`, 163,661 samples 100k steps apart) he is in neither in
+  any sample: he is out leading group 1 from the start, and by the end he is dead or gone in 17 runs. The same
+  script finds side 1's own captain in `$8a` for the first 0.9M steps of two runs (control).
+- **The captain's posture in the field fight decides whether he lives.** `captain_rout.py` replays scripted o1 to
+  190M, where the captain is fighting group 1 and the logged decision sends the posture-2 fix, and then gives no
+  more orders: with posture 2, and with no posture order (the group was at 3), `$041a` is dead at 198M; with
+  posture 4 he is alive at 300M, back at the Capital in `$3c` from 279.4M (one start, three arms differing in that
+  one order; `scratchpad/cmd16/rout`). The field-fight fix that keeps the captain alive ("Side 2 on land 2, and
+  field-fight posture") is therefore also what kills the one man who could found a second group.
+- **His group has to be empty.** Home in `$3c` and then `$8a`, he still leads group 1 with 14 men or more in every
+  candidate-mode sample (207 in the posture-4 arm, 721 in the two arms below; followers are the live men whose word
+  28 is his offset, which matches the group record's 14 men at 300M), and `$5c2c` hands a lead whose group has
+  members to `$4bc8` instead of defecting him. He was not seen home with an empty group.
+
+One attempt to take the Capital from that 300M state (`captain_take.py scratchpad/cmd16/take
+scratchpad/cmd16/rout/p4/final.snap 44 99`: posture, then attack (44,99), no further orders, 31 men against 21 at
+home and his group) lost the land at 75.5M at posture 4 and at 74.5M at posture 2, the Capital still side 2's and
+no second group; his group had grown to 29 before the fight. That is one start and an uncommanded captain, so it
+bounds nothing about a stronger army. What is not tried: emptying group 1 at posture 4 (its men routed, not
+killed) before he gets home, and an attack on the Capital with enough men to take it.
 
 **Policies against the game's AI** (`seeds.sh scratchpad/cmd12/r1s3 scratchpad/pm142/rand1.snap 3 "0 1 2 3 4 5"
 "ai=--policy,none,--no-take scripted=--policy,scripted llm=--policy,llm,--every,20e6 rollout=--policy,rollout" 8
@@ -718,6 +742,9 @@ hand selector (a short look-ahead of both coasts), other maps, moving targets an
 | `outcomes.py <seeds out> <side> <arm> ...` | finished seeds.sh runs by land outcome (won, captain killed, no-lord retire, alive at budget), LLM cost, per-start sign and McNemar tests between arms |
 | `startpoke.py <snap> <out> <k> [tick\|rng]` | a start with the dice counter `$57fec` or the RNG seed shifted; neither moves the game's AI on rand1 |
 | `captains.py <snap>...` | every leader-flag man in a settlement: the men a revolt can turn into a new group |
+| `captain_trace.py <man hex> <run dir>...` | one leader-flag man over `--objs` replays: his modes, the samples in a `$550e` candidate mode (`$8a`, `$3c`) with his followers, the step he dies |
+| `captain_rout.py <out dir>` | three replays of a logged run that differ only in the posture order of one field-fight decision (2, 4, none), then `captain_trace.py` |
+| `captain_take.py <out dir> <snap> <x> <y>` | attack one lord from a snapshot at posture 4 and 2 with no further orders; reports a second side-1 group, the lord's side and `captain_trace.py` |
 | `leadkill/gate_leadkill.sh [pick] [r39] [goto] [win]` | how an enemy man reaches the captain's lead (scripted o1, `runs/l2_scripted_o1`): the target-pick replay 64/64, the retry-byte poke, the go-to arms; `win` the chases on the rollout win's lead over 315M..330M (`runs/l2_rollout`, about 4 minutes) |
 | `leadkill/model_pick.py <out>` | `$503c`/`$548a` replayed from REPL dumps at each `bp 5350`, compared with the game's pick |
 | `leadkill/chase_fate.py <watch> [lead]` | each chaser aimed at a lead and what ends the chase (engaged, diverted, re-pick, dead), from a `wfilter.py 46-49` watch |
