@@ -286,10 +286,11 @@ snapshot. Its output is in `scratchpad/archipelagos/census_live/gate.log`; it ru
 - **No writes outside the map.** The circle and rectangle stamps address the map with 16-bit signed offsets that can
   leave it, but in the model none of the 9,979 procedural islands changes a byte outside `$3000..$12fff`: by the
   range tables every stamp starts at least 31 cells from an edge (island 81's table; 32 in the stamps it draws;
-  above 100 the range square keeps them 49 or more from it), and the largest stamp has radius 25.
+  above 100 the range square keeps them 49 or more from it; `census.py --edges`), and the largest stamp has radius 25.
   **Live, 11 of 11 islands**: 150, 4321, the largest stamp counts above 100 (145 and 132, 59 stamps, which also
   gives the largest start squares), the largest stamp sizes `P_c` (140 and 163, 199 and 198), 119, and the disk
-  islands whose stamps start nearest an edge in the model (81, 93, 28, 79), each under write watches on
+  islands whose stamps start nearest an edge in the model (81, 93, 28 at 32, 37 and 49 cells; 79, a circle at 59;
+  `census.py --edges`), each under write watches on
   `$1700..$2fff` and `$13000..$148ff` (no event dropped). The builder's code is `$15a20..$1663f`: its procedural
   path calls nothing outside it (read; the two calls out, `bsr $134f8` and `jsr (A0)`, are on the picture path). On
   none of the 11 does it make a byte write in either range; all its writes there (71,130 to 329,543 per island) are
@@ -420,7 +421,7 @@ what happens to the player when the creature arrives.
 | `py/creature/creature_model.py` | model of the creature tick `$1a4e0` and its footprint, plus `capture_entry()` |
 | `py/creature/gate_creature.py`, `py/creature/gate_creature_idle.py`, `py/creature/run_gate.sh` | the callcap gate (300 poked states) and the watch-log gate (2 natural, 40 poked events); `run_gate.sh` runs both |
 | `py/capture_pictures.sh`, `py/gate_pictures.py` | captures of islands 15, 25, 85, 6, 99 (N poked at `$1b142`) and their gate: picture path, buffer, disk blocks |
-| `py/census.py` | the model over N = 1 to 9,999: out-of-map writes (with an edge control), parameter sets, N vs N + 64, medians by range |
+| `py/census.py` | the model over N = 1 to 9,999: out-of-map writes (with an edge control), parameter sets, N vs N + 64, medians by range; `--edges`, how near an edge the stamps start |
 | `py/gate_census_live.py` | the census findings in the emulator (`stserver`): write watches outside the map on 11 islands plus the poked edge control, the `$1697a` block and maps of 4 N / N + 64 pairs, and the model against 42 live maps; output under `scratchpad/archipelagos/census_live/` |
 | `py/render_pictures.py` | draws `picture_islands.png` from the model and the disk image |
 | `picture_islands.png` | the 20 picture islands as the game builds them |

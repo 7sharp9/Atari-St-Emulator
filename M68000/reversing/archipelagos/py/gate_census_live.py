@@ -41,7 +41,8 @@ ENTRY_SP = None   # read per run
 
 # 1: 150 and 4321; above 100 the largest stamp counts (145, 132: 59 stamps, so also the largest start squares,
 # side 3 * 59 - 20) and the largest stamp sizes P_c (140, 163), 119 (stamps nearest an edge above 100 after 132);
-# the disk islands whose stamps start nearest an edge in the model (81: 32 cells, 93: 37, 28, 79).
+# the disk islands whose stamps start nearest an edge in the model (81: 32 cells, 93: 37, 28: 49; 79, a circle at 59;
+# census.py --edges).
 F1 = [150, 4321, 145, 132, 140, 163, 119, 81, 93, 28, 79]
 F2 = [(150, 214), (4321, 4385), (9000, 9064), (1000, 1064)]
 rnd = random.Random(1989)

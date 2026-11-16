@@ -8,6 +8,8 @@ keyed to iteration 1: a centred square of side 3 * count - 20).
 
 usage: uv run python reversing/archipelagos/py/census.py [N ...]       (default 1-9999; a-b and a-b/step ranges)
        uv run python reversing/archipelagos/py/census.py --summary   (the summary from the last census.json)
+       uv run python reversing/archipelagos/py/census.py --edges     (how near an edge the stamps start: the range
+       tables' bound and the starts drawn, disk islands and 101-164 (every parameter set); picks gate_census_live's islands)
        J=<workers> (default 10). Writes scratchpad/archipelagos/census/census.json (CELLS=1 adds each map as hex),
        then prints the summary: out-of-map changes, the edge control, distinct parameter sets above 100 and
        whether N and N+64 share one, land overlap of N vs N+64 against N vs N+1, and medians by range of N.
@@ -78,6 +80,32 @@ def land_overlap(a, b):
     A = {i for i, c in enumerate(a) if c != 4}; B = {i for i, c in enumerate(b) if c != 4}
     return len(A & B) / len(A | B)
 
+class StartLog(im.Model):
+    """The model, recording each stamp's start cell as (distance to the nearest edge, shape)."""
+    def shape(self, D3, D4):
+        y, x = divmod(D3, 256); self.starts.append(min(x, y, 255 - x, 255 - y)); return super().shape(D3, D4)
+
+
+def edges():
+    disk = [n for n in range(1, 101) if n not in SPECIAL]
+    bound = []
+    for N in disk:                                                # the range table's own bound, per used entry
+        r = ram_for(N); tab = r[0x1698c:0x1698c + 24]; cnt = int.from_bytes(r[0x1697a:0x1697c], 'big')
+        for k in range(4):
+            if 1 <= int.from_bytes(tab[6 * k + 4:6 * k + 6], 'big') <= cnt:
+                y0, x0 = tab[6 * k + 2], tab[6 * k + 3]
+                bound.append((min(y0, x0, 255 - (y0 + tab[6 * k]), 255 - (x0 + tab[6 * k + 1])), N))
+    print('range-table bound, disk islands (distance, N):', sorted(bound)[:4])
+    for name, ns in (('disk', disk), ('101-164', range(101, 165))):
+        rows = []
+        for N in ns:
+            M = StartLog(ram_for(N)); M.starts = []; M.run(DISK); rows.append((min(M.starts), N))
+        print(f'stamp starts drawn, {name} (nearest-edge distance, N):', sorted(rows)[:6])
+    hi = [(ip.model(N)[0x1697a], ip.model(N)[0x1697c], N) for N in range(101, 165)]
+    print('above 100, most stamps (count, P_c, N):', sorted(hi, reverse=True)[:3],
+          '| largest P_c:', sorted(hi, key=lambda t: (t[1], t[0]), reverse=True)[:3])
+
+
 def parse(args):
     for a in args:
         if '-' in a:
@@ -115,6 +143,8 @@ def summary(rows, pool):
 
 if __name__ == '__main__':
     args = sys.argv[1:]
+    if args == ['--edges']:
+        edges(); sys.exit()
     os.makedirs(OUT, exist_ok=True)
     path = os.path.join(OUT, 'census.json')
     with Pool(int(os.environ.get('J', '10'))) as p:
