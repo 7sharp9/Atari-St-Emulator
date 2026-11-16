@@ -17,6 +17,7 @@ Trust a live trace (`ATARI_TRACE=1` for a few hundred steps) or `callcap` over a
 
 - How is an island's height map built? "The island generator"; which island is shown? "Island number". What are
   the picture islands? "Picture islands" (`picture_islands.png`).
+- Do later islands get bigger or more joined? Can a stamp write outside the map? "Over all island numbers".
 - What does the creature do and what is its blood footprint? "The creature and its blood".
 - Why does the disk not load on this emulator without two patches? "The emulator gap and the two pokes".
 - How does the game load from disk? "Disk layout, and why `extract_disk.py` is wrong for it", "Load chain".
@@ -260,7 +261,11 @@ and 15 of 21), and the model run on the block read from the disk gives 65536/655
 `$1697a`). Above 100, `$1611e` calls `$16166`, which computes the block from N alone: seed `4N + $1388`, then draws
 through the same `s = 5s + 1` for the count `rand * 40 / 255 + 20`, `P_c = rand * 100 / 255 + 100`, `P_e = P_c / 2`,
 thresholds `rand * 32 / 255 + 15` accumulated three times (the last capped at 100), `[$16986] = 100`, `[$16988] = rand *
-80 / 255 + 10`, and `[$1698a] = 4N + $3039`.
+80 / 255 + 10`, and `[$1698a] = 4N + $3039`. It then writes the range table (`$16222..$16272`, read): one entry, keyed
+to iteration 1, whose x and y ranges are both `3 * count - 20` and whose offsets are `(255 - range) / 2`, so every
+stamp of an island above 100 starts in a centred square of side 40 to 160 (the other three keys are 0 and never
+match). The range state left from the previous island is overwritten at iteration 1, so the island is a function of
+N alone.
 
 **Gate** (`py/gate_params.sh`, `island_params.py`): the model gives 9 of 9 fields for N = 150 and 9 of 9 for N = 4321;
 control (seed + 1) 2 of 9 for each. N is reached by a poke of `$1d566` on the map screen (`ww 1d566 0096`, `ww 1d566
@@ -268,6 +273,43 @@ control (seed + 1) 2 of 9 for each. N is reached by a poke of `$1d566` on the ma
 poke is too late for N up to 100: `$1b142` has already loaded island 1's block into `$1defe`, and `$1c700` copies
 that one (a map-screen poke of 6 rebuilds island 1). `py/capture_pictures.sh` pokes N at the entry of `$1b142`
 instead, after the code-word screen.
+
+## Over all island numbers (model census)
+
+`py/census.py` runs the model for every N from 1 to 9,999 from the disk image and `isl/ent1.snap` alone (about 6 min
+on 10 cores; `--summary` reprints from `scratchpad/archipelagos/census/census.json`). It is a model result: its
+set-up reproduces the gated captures of islands 6, 99, 150, 4321 and 15 cell for cell, but
+the census itself is not run in the emulator.
+
+- **No writes outside the map.** The circle and rectangle stamps address the map with 16-bit signed offsets that can
+  leave it, but none of the 9,979 procedural islands changes a byte outside `$3000..$12fff`: every stamp starts at
+  least 22 cells from an edge (the range square above 100, the tables of the disk islands), and the largest stamp
+  has radius 25. Control: island 150's block with the stamps forced onto rows 0..3, all circles, changes 1,503
+  bytes from `$1708` (below the map, the stack's region) to `$130fd` (the game's code).
+- **64 parameter sets above 100.** `$16050` scales only the seed's low byte, and the low byte of `s = 5s + 1 mod
+  65536` depends only on the low byte before it; the seed `4N + $1388` therefore gives the same nine fields for N and
+  N + 64, and islands 101 to 9,999 have 64 distinct parameter sets. The islands still differ: the build seed
+  `4N + $3039` differs, and the walks take their directions from the seed's top two bits. Land overlap (cells land
+  in both over cells land in either) is 0.36 to 0.46 for N against N + 64k (1000/1064, 1000/1128, 1000/1192,
+  5000/5064), against a median of 0.36 (maximum 0.56) for N against N + 1 over 1000..1062.
+- **No progression after 100.** Medians over the procedural islands:
+
+| islands | stamps | land cells | land pieces (4-connected) | largest piece |
+|---|---|---|---|---|
+| 1-20 | 10 | 1,542 | 1.5 | 1,287 |
+| 21-40 | 21 | 3,285 | 14 | 788 |
+| 41-60 | 35 | 4,141 | 23.5 | 730 |
+| 61-80 | 35 | 4,465 | 22 | 796 |
+| 81-100 | 30.5 | 4,618 | 24.5 | 918 |
+| 101-1,000 | 40 | 7,361 | 27 | 1,648 |
+| 1,001-3,000 | 39.5 | 7,264 | 26 | 1,629 |
+| 3,001-6,000 | 39 | 7,284 | 26 | 1,652 |
+| 6,001-9,999 | 40 | 7,256 | 27 | 1,635 |
+
+  The hand-set blocks of 1 to 100 ramp from one small island to about 25 pieces; island 101 steps to about 11% of
+  the map as land, and from there the figures are flat. The share of stamps allowed to touch finished land
+  (`[$16988]`) has a median of 80% over islands 1 to 20 and about 50% over the later disk islands; above 100 it is
+  10% to 89% by N with no trend. What else grows with N in play (creatures, timers) is not decoded.
 
 ## The code-word screen
 
@@ -350,6 +392,7 @@ what happens to the player when the creature arrives.
 | `py/creature/creature_model.py` | model of the creature tick `$1a4e0` and its footprint, plus `capture_entry()` |
 | `py/creature/gate_creature.py`, `py/creature/gate_creature_idle.py`, `py/creature/run_gate.sh` | the callcap gate (300 poked states) and the watch-log gate (2 natural, 40 poked events); `run_gate.sh` runs both |
 | `py/capture_pictures.sh`, `py/gate_pictures.py` | captures of islands 15, 25, 85, 6, 99 (N poked at `$1b142`) and their gate: picture path, buffer, disk blocks |
+| `py/census.py` | the model over N = 1 to 9,999: out-of-map writes (with an edge control), parameter sets, N vs N + 64, medians by range |
 | `py/render_pictures.py` | draws `picture_islands.png` from the model and the disk image |
 | `picture_islands.png` | the 20 picture islands as the game builds them |
 | `py/render_buf.py` | render a 320 x 200 screen at an explicit buffer base |
