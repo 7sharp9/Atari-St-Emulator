@@ -19,7 +19,7 @@ Trust a live trace (`ATARI_TRACE=1` for a few hundred steps) or `callcap` over a
   the picture islands? "Picture islands" (`picture_islands.png`).
 - Do later islands get bigger or more joined? Can a stamp write outside the map? "Over all island numbers".
 - What does the creature do and what is its blood footprint? "The creature and its blood".
-- Why does the disk not load on this emulator without two patches? "The emulator gap and the two pokes".
+- Why did the disk need two patches on this emulator, and why does it no longer? "The emulator gap and the two pokes".
 - How does the game load from disk? "Disk layout, and why `extract_disk.py` is wrong for it", "Load chain".
 - How do I reproduce a run? "Running it". Where is each thing in RAM? "Memory map".
 - What is not yet known? "Open".
@@ -97,7 +97,8 @@ ACIA through its own handler `$171dc`).
 | island 1 | `kbd 02`, `kbd 1c` (a character, Return), 3M + 10M steps | the archipelago map (`n2`, `map_screen.png`) |
 | play | space, 4M + 15M steps | first-person landscape, PC `$1c53e` (`m2`, `gameplay.png`) |
 
-Without the two pokes the run does not get past the loader (see below).
+On the current FDC model the two pokes are no longer needed: without them the run reaches the same `at1301c` and `m2`
+states (see below), and the game entry comes at 4,735,885 steps.
 
 ## Load chain
 
@@ -401,7 +402,6 @@ what happens to the player when the creature arrives.
 ## Open
 
 - The garbled text on the code-word and map screens, and what the code word is.
-- The emulator gap: an FDC read that a Force Interrupt ends at status `$80` would remove both pokes.
 - How the map screen sets N in play.
 - The other seven object kinds (counts `$1db2a..$1db36`, handlers `$1c99a`: trees, pods and the necromancer are
   candidates, not matched), what reads the creature's envelope `$1dbbe`, and the sprite's link to `$1db7e`.
