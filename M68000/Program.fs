@@ -1348,6 +1348,17 @@ type AtartSt(romPath: string, ?diskAPath: string, ?monitor: string) =
                 w.Write(d)
             Diag.result "--- state includes %d written disk-A sector(s) ---" sectors.Length
         | None -> ()
+        //Optional trailing section "FDCM", u8 1, i32 busy-search steps, i32 motor steps, u8 HDC
+        //select (MMU.fs fdcRevolutionSteps, dmaHdcSelected): written only while a countdown runs or
+        //the HDC is selected, so a snapshot of an idle FDC keeps the plain layout. An older build
+        //stops at the tag and resumes with all three clear.
+        let struct (fdcBusy, fdcMotor, hdc) = mmu.FdcTimers
+        if fdcBusy <> 0 || fdcMotor <> 0 || hdc then
+            w.Write("FDCM".ToCharArray())
+            w.Write(1uy)
+            w.Write(fdcBusy)
+            w.Write(fdcMotor)
+            w.Write(hdc)
         w.Flush()
         fs.Close()
         //The provenance sidecar (see `Provenance`). A failure to write it is reported, not raised:
@@ -1521,6 +1532,7 @@ type AtartSt(romPath: string, ?diskAPath: string, ?monitor: string) =
               TimerCPending = lat.TimerCPending; TimerBPending = lat.TimerBPending; TimerAPending = lat.TimerAPending
               TbCounter = lat.TbCounter
               FdcIrq = lat.FdcIrq; FdcIrqPending = lat.FdcIrqPending; DmaNoError = lat.DmaNoError
+              FdcBusySteps = 0; FdcMotorSteps = 0; DmaHdcSelected = false //the "FDCM" section below, when present
               DmaSectorCount = lat.DmaSectorCount; DmaScSelected = lat.DmaScSelected
               IkbdMouseMode = lat.IkbdMouseMode; IkbdMouseButtonAction = lat.IkbdMouseButtonAction
               IkbdJoystickReports = lat.IkbdJoystickReports
@@ -1531,7 +1543,9 @@ type AtartSt(romPath: string, ?diskAPath: string, ?monitor: string) =
               JoyState0 = lat.JoyState0; JoyState1 = lat.JoyState1
               DiskLogLength = mmu.DiskLogLength }
         //Optional "DSKA" section (see SaveState): the disk-A sectors the saved run had written.
-        if fs.Length - fs.Position >= 4L && String(r.ReadChars(4)) = "DSKA" then
+        //Then the optional "FDCM" section (FDC countdowns, see SaveState); either may be absent.
+        let mutable tag = if fs.Length - fs.Position >= 4L then String(r.ReadChars(4)) else ""
+        if tag = "DSKA" then
             let _sectionVersion = r.ReadByte()
             let baseHash = r.ReadUInt64()
             let n = r.ReadInt32()
@@ -1539,6 +1553,13 @@ type AtartSt(romPath: string, ?diskAPath: string, ?monitor: string) =
             match mmu.ApplyDiskWrites baseHash sectors with
             | Ok () -> Diag.result "--- %d written disk-A sector(s) restored from the snapshot ---" n
             | Error e -> eprintfn "WARNING: %s; resuming with the image as mounted" e
+            tag <- if fs.Length - fs.Position >= 4L then String(r.ReadChars(4)) else ""
+        if tag = "FDCM" then
+            let _sectionVersion = r.ReadByte()
+            let busy = r.ReadInt32()
+            let motor = r.ReadInt32()
+            let hdc = r.ReadBoolean()
+            mmu.SetFdcTimers busy motor hdc
         resetLoopDetector()
         parentSnapshot <- Some (IO.Path.GetFullPath path)
         Diag.result "--- state loaded from %s: PC=$%08x ---" path cpu.PC

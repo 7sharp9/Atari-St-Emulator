@@ -122,28 +122,26 @@ wants, then writes Force Interrupt (`$d0`). It then reads the status register an
 bne` (`$70476`, and the same pair in the game's copy at `$13574`): a good transfer must read back exactly `$80`. Any
 other status takes a retry path (five tries) and then gives up with the file partly read.
 
-**What the emulator returns.** `MMU.fs` runs a read command to completion in one write: ten sectors transfer, the
-eleventh finds no sector and the status is `$10` (Record Not Found), with no motor-on bit 7 ever set; Force Interrupt
-then sets status 0 (FDC trace: `READ-SECTOR multi=true count=12 transferred=10 status=$10`, then `$d0`, over and over
-for track 39 and then track 50). The test fails, the loader retries and gives up, the PRG is partly read, the
-relocator patches the wrong bytes and the game dies on an `ILLEGAL` opcode `$2e7d` at `$1301c` (vector 4, TOS bombs,
-double bus fault). Without POKE 2 only the credits screen is clean text: the font and later pictures never load.
+**What the emulator returns.** The FDC models the WD1772's search past the last sector and its motor-on bit
+(`DEVELOPING.md`, "Busy search and the motor-on bit"): the ten sectors transfer at once, the command then stays busy
+for 5 revolutions looking for sector 11, and the loader's Force Interrupt inside that window ends it with busy cleared
+and no error, so the status reads `$80` (FDC trace: `READ-SECTOR multi=true count=12 transferred=10 status=$01`, then
+`FORCE-INTERRUPT busy=true status=$00`, once per track from 39 on, 35 in all to the game's entry, no retry). The
+loader's `$70790` (and the game's `$13a36`) waits for the motor-on bit to drop, so the load to `bp 1301c` takes
+4,735,885 steps where the poked run on the older FDC took 1,238,371.
 
-**Real-hardware behaviour (inferred, not checked):** the controller is still reading when the loader's Force Interrupt
-arrives about 10 sectors in, well before the roughly second-long Record Not Found timeout, so the status the loader
-reads is `$80` (motor on, no error). The loader relies on that timing.
+**The pokes are no longer needed.** Proven with `drive.txt` run twice on the same build, once as written and once with
+its four `ww` lines removed: both reach `bp 1301c` after 4,735,885 steps, the title (`p3`) and the first-person view
+(`m2`, PC `$1c534`). `at1301c` differs only in the four POKE 1 bytes at `$7047a`; `m2` differs only in the four
+POKE 2 bytes at `$13578` and five bytes at `$2f43..$2f48`, below the stack pointer (`$2fdc`). Before this FDC model
+the unpoked run ended in an `ILLEGAL` opcode `$2e7d` at `$1301c` (the PRG partly read, the relocator patching the
+wrong bytes, a double bus fault), and the pokes below were what got past it. The snapshots under
+`scratchpad/archipelagos/` were made with the pokes on the older FDC.
 
 **The pokes** (`ww` is a word write; each replaces a 4-byte `bne` with two NOPs, so the retry path is never taken):
 
 - POKE 1: `ww 7047a 4e71` and `ww 7047c 4e71` once the track-1 code is in RAM (100,000 steps after the key release).
-  Controlled by the same snapshot with and without the poke: unpatched the run ends in the double bus fault, patched it
-  reaches the title.
-- POKE 2: `ww 13578 4e71` and `ww 1357a 4e71` at the game's entry (`bp 1301c`), after the relocator has run. Same
-  snapshot (`at1301c`) with and without: the credits text is readable with it (`p2` shows "ARCHIPELAGOS / BY PAUL
-  CARRUTHERS / AND IAN DOWNEND / PLEASE WAIT / CRACKED BY THE MEDWAY BOYS") and garbled without it.
-
-Nothing in this directory that follows the title is a played result in the sense that it needs these pokes. An emulator
-change that ends such a read at `$80` would make both unnecessary; it is not made here.
+- POKE 2: `ww 13578 4e71` and `ww 1357a 4e71` at the game's entry (`bp 1301c`), after the relocator has run.
 
 **Not explained:** text on the code-word screen and the map screen still renders as coloured noise in the PNGs, with
 both pokes in place. The glyph routine `$18c68` is correct on the credits screen. The cause is open (the font source is

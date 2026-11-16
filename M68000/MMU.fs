@@ -32,6 +32,8 @@ type MmuSnapshot =
       TimerCPending: bool; TimerBPending: bool; TimerAPending: bool
       TbCounter: int
       FdcIrq: bool; FdcIrqPending: int; DmaNoError: bool
+      ///WD1772 busy search window and motor spin-down countdowns (MMU `fdcRevolutionSteps`).
+      FdcBusySteps: int; FdcMotorSteps: int; DmaHdcSelected: bool
       DmaSectorCount: byte; DmaScSelected: bool
       IkbdMouseMode: byte; IkbdMouseButtonAction: byte; IkbdJoystickReports: bool
       MouseAbsX: int; MouseAbsY: int; MouseAbsMaxX: int; MouseAbsMaxY: int
@@ -650,6 +652,31 @@ type MMU(rom: byte array, ?flatTestBus: bool) =
     let fdcIrqSlowSteps = 120000
     let fdcIrqFastSteps = 4000            //a real adjacent-track seek, well inside the self-test deadline
 
+    ///WD1772 timing measured in disk revolutions. The emulator runs 600,000 steps a second (a VBL
+    ///every 12,000 steps at 50 Hz) and the disk turns at 300 rpm, so one revolution (index pulse to
+    ///index pulse) is 120,000 steps. Two windows hang off it (WD1772 datasheet; Hatari src/fdc.c
+    ///FDC_DELAY_IP_ADDRESS_ID and FDC_DELAY_IP_MOTOR_OFF):
+    ///  - `fdcBusySteps`: a multi-record Read/Write Sector whose DMA count runs past the last sector
+    ///    of the track does not end with that sector. The controller stays busy (status bit 0)
+    ///    searching for the next sector's ID field for 5 revolutions from the command's start, then
+    ///    ends with Record Not Found and INTRQ. The sectors themselves still transfer at once, on
+    ///    the command write. A Force Interrupt inside the window ends the command with busy cleared
+    ///    and no error, which is what Archipelagos' loader tests for (`cmpi.b #$80`, `$70476`). Any
+    ///    other command written while busy is ignored, as on the chip (Hatari
+    ///    FDC_WriteCommandRegister).
+    ///  - `fdcMotorSteps`: status bit 7 (motor on). Every command starts the motor, and it spins
+    ///    down 9 revolutions after the command completes (counted on a timer, so also with an empty
+    ///    drive, as Hatari's FDC_UpdateMotorStop does). TOS's VBL floppy handler (`$fc1a16`) reads it
+    ///    to decide when to deselect the drives. Spin-up (6 revolutions before a command with the
+    ///    `h` bit clear starts on a stopped motor) and the spin-up status bit 5 are not modelled.
+    ///Both are 0 when idle. A snapshot carries them, with dmaHdcSelected, in an optional trailing
+    ///"FDCM" section (Program.fs SaveState) written only when one of the three is set.
+    let fdcRevolutionSteps = 120000
+    let fdcRnfSearchSteps = 5 * fdcRevolutionSteps
+    let fdcMotorOffSteps = 9 * fdcRevolutionSteps
+    let mutable fdcBusySteps = 0
+    let mutable fdcMotorSteps = 0
+
     ///The DMA Address Counter's three bytes (FD-HD_Programming.pdf: "DMA Registers Address Map") -
     ///a real, 22-bits-used-of-24 internal address register the DMA chip uses to know where in RAM
     ///to read/write during a floppy transfer. Boot ROM routinely writes this (in the documented
@@ -670,6 +697,21 @@ type MMU(rom: byte array, ?flatTestBus: bool) =
     ///`dmaScSelected` tracks the last $FF8606 bit-4 state so the next $FF8604 write is routed right.
     let mutable dmaSectorCount = 0uy
     let mutable dmaScSelected = false
+    ///$FF8606 bit 3 of the last mode write: 1 routes the next $FF8604 access to the hard-disk
+    ///controller (ACSI), not the WD1772. ACSI is not modelled, so such a write still reaches the FDC
+    ///code below with its old INTRQ and status timing (TOS's ACSI boot probe at `$fc04d6` depends on
+    ///that timing and stays unchanged), but it sees no drive: no sector moves and the motor does not
+    ///start. Without this the probe's command bytes for targets 4 and 5 (`$88`, `$a8`) ran as FDC
+    ///Read and Write Sector on drive A whenever the drive was still selected, which with the motor
+    ///modelled it is (TOS deselects only once the motor stops): the boot sector was written back.
+    let mutable dmaHdcSelected = false
+    let fdcDriveA () = fdcDrive = 0 && not dmaHdcSelected
+    ///A command starts (or keeps) the motor; it spins down 9 revolutions after the command ends,
+    ///`stepsToEnd` from now.
+    let fdcStartMotor (stepsToEnd: int) =
+        if not dmaHdcSelected then
+            if fdcMotorSteps = 0 then mutations <- mutations + 1UL
+            fdcMotorSteps <- stepsToEnd + fdcMotorOffSteps
 
     ///Real disk image mounted in drive A, if any - see LoadDiskA (set from Program.fs's
     ///ATARI_DISK_A env var, mirroring ATARI_ROM_PATH). `None` (the default) preserves every
@@ -716,8 +758,9 @@ type MMU(rom: byte array, ?flatTestBus: bool) =
     ///in the drive. Type II/III commands (Read/Write Sector, Read Address/Track, Write Track -
     ///opcode top bit set, excluding Force Interrupt $D0-$DF) need to find a real ID field on the
     ///media; with no disk image loaded there is nothing to find, so real hardware reports Record
-    ///Not Found (bit 4) after searching. Force Interrupt just goes idle. Busy (bit 0) is always
-    ///clear on read-back - this emulator has no command timing, every command completes instantly.
+    ///Not Found (bit 4) after searching. Force Interrupt has its own case in WriteByte. Busy (bit 0)
+    ///is clear on read-back except in the multi-record search window, and the motor-on bit 7 is
+    ///added on the status read (see fdcRevolutionSteps); otherwise commands complete instantly.
     let fdcCommandStatus (command: byte) =
         if command < 0x80uy then 0x04uy //Type I: TR00 set, no seek error, not busy
         elif command >= 0xd0uy && command < 0xe0uy then 0uy //Force Interrupt: idle
@@ -824,7 +867,7 @@ type MMU(rom: byte array, ?flatTestBus: bool) =
         let r =
             match diskA with
             | None -> false
-            | Some _ when fdcDrive <> 0 -> false     //only drive A is backed by an image
+            | Some _ when not (fdcDriveA ()) -> false     //only drive A is backed by an image
             | Some _ when fdcSide >= diskASides -> false
             | Some bytes ->
                 let s = int sector
@@ -863,13 +906,13 @@ type MMU(rom: byte array, ?flatTestBus: bool) =
     ///and control-flow reconstruction only need within-run persistence, which this gives. A
     ///persistent write-through to the host file would be a separate, explicit feature.
     ///Drive A selected with a disk in it and its write-protect tab on.
-    let writeProtectedA () = diskAWriteProtected && diskA.IsSome && fdcDrive = 0
+    let writeProtectedA () = diskAWriteProtected && diskA.IsSome && fdcDriveA ()
 
     let tryWriteSector (track: byte) (sector: byte) (dmaAddr: uint32) =
         let r =
             match diskA with
             | None -> false
-            | Some _ when fdcDrive <> 0 -> false     //only drive A is backed by an image
+            | Some _ when not (fdcDriveA ()) -> false     //only drive A is backed by an image
             | Some _ when fdcSide >= diskASides -> false
             | Some bytes ->
                 let s = int sector
@@ -907,7 +950,7 @@ type MMU(rom: byte array, ?flatTestBus: bool) =
         let streamLen = min trackBytes (int dmaSectorCount * 512)
         let result =
             match diskA with
-            | Some bytes when fdcDrive = 0 && fdcSide < diskASides && streamLen > 0 ->
+            | Some bytes when fdcDriveA () && fdcSide < diskASides && streamLen > 0 ->
                 let at i =
                     match translateRamAddress (dmaAddr + uint32 i) with
                     | Some idx -> ram.[int idx]
@@ -1048,7 +1091,9 @@ type MMU(rom: byte array, ?flatTestBus: bool) =
                     fdcIrq <- false
                     fdcIrqPending <- 0
                     mutations <- mutations + 1UL
-                fdcStatus
+                //Bit 7 is the motor-on line, live from fdcMotorSteps; bit 0 is set in fdcStatus
+                //itself while a command is busy. See fdcRevolutionSteps.
+                if fdcMotorSteps > 0 then fdcStatus ||| 0x80uy else fdcStatus
             | 1uy -> fdcTrack
             | 2uy -> fdcSector
             | _ -> fdcData
@@ -1325,6 +1370,9 @@ type MMU(rom: byte array, ?flatTestBus: bool) =
             if selected <> fdcSelectedReg || scSelected <> dmaScSelected then mutations <- mutations + 1UL
             fdcSelectedReg <- selected
             dmaScSelected <- scSelected
+            let hdc = input &&& 0x08uy <> 0uy
+            if hdc <> dmaHdcSelected then mutations <- mutations + 1UL
+            dmaHdcSelected <- hdc
             fdcLog (sprintf "mode  $8606<-$%02x  reg=%d sectorCount=%b" input selected scSelected)
         | a when a = fdcAccess && dmaScSelected ->
             //$FF8606 bit 4 is set: this $FF8604 write is the DMA sector-count register, not an FDC
@@ -1334,6 +1382,10 @@ type MMU(rom: byte array, ?flatTestBus: bool) =
             fdcLog (sprintf "count $8604<-$%02x" input)
         | a when a = fdcAccess ->
             match fdcSelectedReg with
+            | 0uy when fdcBusySteps > 0 && not dmaHdcSelected && input &&& 0xF0uy <> 0xD0uy ->
+                //Busy (a multi-record read searching past the track's last sector): only Force
+                //Interrupt is taken. See fdcRevolutionSteps.
+                fdcLog (sprintf "cmd   $8604<-$%02x  ignored: busy" input)
             | 0uy when input < 0x80uy ->
                 //Type I commands (Restore/Seek/Step/Step-in/Step-out) move the head and, when done,
                 //leave the Track register holding the new physical track. TOS's floppy driver
@@ -1366,6 +1418,7 @@ type MMU(rom: byte array, ?flatTestBus: bool) =
                 fdcStatus <- newStatus
                 fdcIrq <- false
                 fdcIrqPending <- delay
+                fdcStartMotor delay
             | 0uy when (input &&& 0xF0uy = 0xF0uy || input &&& 0xE0uy = 0xA0uy) && writeProtectedA () ->
                 //Write Track or Write Sector on a write-protected disk (Hatari fdc.c: "Stop now if
                 //disk is write protected"): no data moves, the DMA registers stay, the command ends
@@ -1374,6 +1427,7 @@ type MMU(rom: byte array, ?flatTestBus: bool) =
                 fdcStatus <- 0x40uy
                 fdcIrq <- true
                 fdcIrqPending <- 0
+                fdcStartMotor 0
                 fdcLog (sprintf "cmd   $8604<-$%02x  WRITE-PROTECTED status=$40" input)
             | 0uy when input &&& 0xF0uy = 0xF0uy ->
                 //Type III Write Track ($Fx): see tryWriteTrack. Synchronous like the sector
@@ -1406,6 +1460,23 @@ type MMU(rom: byte array, ?flatTestBus: bool) =
                 else
                     fdcIrq <- false
                     fdcIrqPending <- fdcIrqSlowSteps
+                fdcStartMotor fdcIrqPending
+            | 0uy when input &&& 0xF0uy = 0xD0uy ->
+                //Type IV Force Interrupt. Busy: the running command ends where it is, busy cleared
+                //and the rest of the status kept (no error). Idle: the status becomes Type I's
+                //(TR00 from the track register, WPRT) with the motor started, as Hatari's
+                //FDC_TypeIV_ForceInterrupt does ("verified on STF"). Either way the motor then spins
+                //down 9 revolutions later. $D8-$DF assert INTRQ at once, $D0-$D7 assert none.
+                let status =
+                    if fdcBusySteps > 0 then fdcStatus &&& 0xFEuy
+                    else (if fdcTrack = 0uy then 0x04uy else 0uy) ||| (if writeProtectedA () then 0x40uy else 0uy)
+                if status <> fdcStatus || fdcBusySteps <> 0 then mutations <- mutations + 1UL
+                fdcLog (sprintf "cmd   $8604<-$%02x  FORCE-INTERRUPT busy=%b status=$%02x" input (fdcBusySteps > 0) status)
+                fdcBusySteps <- 0
+                fdcStatus <- status
+                fdcIrq <- input &&& 0x08uy <> 0uy
+                fdcIrqPending <- 0
+                fdcStartMotor 0
             | 0uy ->
                 //Type II sector transfer: Read Sector ($8x, media -> RAM) or Write Sector ($Ax,
                 //RAM -> media). Top 3 bits "100"/"101", bottom 2 bits "00" (FD-HD_Programming.pdf's
@@ -1447,7 +1518,11 @@ type MMU(rom: byte array, ?flatTestBus: bool) =
                     dmaAddrLowByte <- byte advanced
                     dmaSectorCount <- byte (max 0 (int dmaSectorCount - transferred))
                     mutations <- mutations + 1UL
-                let status = if ok then 0uy else fdcCommandStatus input
+                //A multi-record command whose count runs past the track's last sector keeps
+                //searching for the next ID field: busy, no INTRQ, Record Not Found only when the
+                //window ends (FdcTick). See fdcRevolutionSteps.
+                let searching = (isReadSector || isWriteSector) && multiRecord && transferred > 0 && not ok
+                let status = if ok then 0uy elif searching then 0x01uy else fdcCommandStatus input
                 if status <> fdcStatus then mutations <- mutations + 1UL
                 fdcStatus <- status
                 //Read Sector and Write Sector both run a DMA transfer, so both move the $FF8606
@@ -1460,19 +1535,24 @@ type MMU(rom: byte array, ?flatTestBus: bool) =
                             input
                             (if isReadSector then "READ-SECTOR" elif isWriteSector then "WRITE-SECTOR" else "(other)")
                             multiRecord count transferred status)
-                //INTRQ. Force Interrupt ($D0-$DF): $D8-$DF assert immediately, $D0-$D7 terminate with
-                //none. A Read/Write Sector that moved data asserts INTRQ now (bytes are already in
-                //RAM). Everything else - a sector command that found nothing, Read Address/Track -
-                //takes the slow bucket that makes the boot FDC self-test time out. See fdcIrq.
-                if input >= 0xD0uy && input < 0xE0uy then
-                    fdcIrq <- input &&& 0x08uy <> 0uy
+                //INTRQ (Force Interrupt has its own case above). A Read/Write Sector that moved all
+                //its sectors asserts INTRQ now (bytes are already in RAM); one still searching past
+                //the track's end asserts it when the search window ends. Everything else - a sector
+                //command that found nothing, Read Address/Track - takes the slow bucket that makes
+                //the boot FDC self-test time out. See fdcIrq.
+                if searching then
+                    fdcIrq <- false
                     fdcIrqPending <- 0
+                    fdcBusySteps <- fdcRnfSearchSteps
+                    fdcStartMotor fdcRnfSearchSteps
                 elif (isReadSector || isWriteSector) && transferred > 0 then
                     fdcIrq <- true
                     fdcIrqPending <- 0
+                    fdcStartMotor 0
                 else
                     fdcIrq <- false
                     fdcIrqPending <- fdcIrqSlowSteps
+                    fdcStartMotor fdcIrqSlowSteps
             | 1uy -> if input <> fdcTrack then mutations <- mutations + 1UL
                      fdcTrack <- input
                      fdcLog (sprintf "track $8604<-%d" (int input))
@@ -1569,6 +1649,8 @@ type MMU(rom: byte array, ?flatTestBus: bool) =
         let mix (v: uint64) = h <- (h ^^^ v) * 1099511628211UL
         mix (uint64 tbCounter)
         mix (uint64 (uint32 fdcIrqPending))
+        mix (uint64 (uint32 fdcBusySteps))
+        mix (uint64 (uint32 fdcMotorSteps))
         mix (b fdcIrq)
         mix (uint64 dmaSectorCount)
         mix (b dmaScSelected)
@@ -1659,6 +1741,13 @@ type MMU(rom: byte array, ?flatTestBus: bool) =
     ///See `diskLog`. The journal's current length (an MmuSnapshot built outside SnapshotRam, as
     ///LoadState's, passes it to make the disk roll-back a no-op).
     member x.DiskLogLength = diskLog.Count
+    ///The WD1772 busy-search and motor countdowns (see fdcRevolutionSteps) and the $FF8606 HDC
+    ///select bit (dmaHdcSelected), for SaveState's optional "FDCM" section and LoadState's restore.
+    member x.FdcTimers = struct (fdcBusySteps, fdcMotorSteps, dmaHdcSelected)
+    member x.SetFdcTimers (busy: int) (motor: int) (hdc: bool) =
+        fdcBusySteps <- max 0 busy
+        fdcMotorSteps <- max 0 motor
+        dmaHdcSelected <- hdc
     ///For SaveState's `DSKA` section: FNV-1a 64 of the image as mounted (current image with the
     ///journal undone on a copy) and each written sector's offset and current 512 bytes, in
     ///ascending offset order. None when no disk is mounted or nothing was written.
@@ -1784,6 +1873,9 @@ type MMU(rom: byte array, ?flatTestBus: bool) =
     ///Counts down a pending WD1772 INTRQ. Called from Program.fs's Step loop at the same cadence as
     ///HblTick (`steps` = instructionsPerLine), so a CPU polling `btst #5,$fffffa01` sees the line
     ///drop after the command's fast/slow bucket has elapsed. See fdcIrq for why the delay exists.
+    ///Also runs the busy search window and the motor spin-down (see fdcRevolutionSteps): a search
+    ///that runs out ends with Record Not Found and INTRQ, and the motor-on bit drops when its
+    ///countdown reaches 0.
     member x.FdcTick(steps: int) =
         if fdcIrqPending > 0 then
             fdcIrqPending <- fdcIrqPending - steps
@@ -1792,6 +1884,19 @@ type MMU(rom: byte array, ?flatTestBus: bool) =
                 if not fdcIrq then
                     fdcIrq <- true
                     mutations <- mutations + 1UL
+        if fdcBusySteps > 0 then
+            fdcBusySteps <- fdcBusySteps - steps
+            if fdcBusySteps <= 0 then
+                fdcBusySteps <- 0
+                fdcStatus <- 0x10uy
+                fdcIrq <- true
+                mutations <- mutations + 1UL
+                fdcLog "search ended: RECORD-NOT-FOUND status=$10"
+        if fdcMotorSteps > 0 then
+            fdcMotorSteps <- fdcMotorSteps - steps
+            if fdcMotorSteps <= 0 then
+                fdcMotorSteps <- 0
+                mutations <- mutations + 1UL
     ///Counts down `ikbdGap` at the FdcTick cadence; when the next queued IKBD byte arrives, the
     ///ACIA's RDRF and IRQ (with RX interrupts enabled) go up and channel 6 is requested.
     member x.IkbdTick(steps: int) =
@@ -2017,6 +2122,7 @@ type MMU(rom: byte array, ?flatTestBus: bool) =
           TimerCPending = timerCPending; TimerBPending = timerBPending; TimerAPending = timerAPending
           TbCounter = tbCounter
           FdcIrq = fdcIrq; FdcIrqPending = fdcIrqPending; DmaNoError = dmaNoError
+          FdcBusySteps = fdcBusySteps; FdcMotorSteps = fdcMotorSteps; DmaHdcSelected = dmaHdcSelected
           DmaSectorCount = dmaSectorCount; DmaScSelected = dmaScSelected
           IkbdMouseMode = ikbdMouseMode; IkbdMouseButtonAction = ikbdMouseButtonAction
           IkbdJoystickReports = ikbdJoystickReports
@@ -2089,6 +2195,9 @@ type MMU(rom: byte array, ?flatTestBus: bool) =
         tbCounter <- snapshot.TbCounter
         fdcIrq <- snapshot.FdcIrq
         fdcIrqPending <- snapshot.FdcIrqPending
+        fdcBusySteps <- snapshot.FdcBusySteps
+        fdcMotorSteps <- snapshot.FdcMotorSteps
+        dmaHdcSelected <- snapshot.DmaHdcSelected
         dmaNoError <- snapshot.DmaNoError
         dmaSectorCount <- snapshot.DmaSectorCount
         dmaScSelected <- snapshot.DmaScSelected

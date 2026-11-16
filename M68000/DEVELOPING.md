@@ -395,7 +395,11 @@ written sector's offset and contents) after the v12 block, without a version bum
 the image as mounted otherwise (wrong or no `--disk-a`). A run that never wrote to the disk
 writes no section, so its snapshot is byte-identical to the plain v12 layout; an older build
 reads up to the section and ignores it (it never checks for end of file), resuming with the
-unwritten image as before. The write-protect tab (`wprot`) is not saved.
+unwritten image as before. The write-protect tab (`wprot`) is not saved. After it, an optional
+`FDCM` section (tag, u8 1, i32 busy-search steps, i32 motor steps, u8 `$FF8606` HDC select) holds
+the WD1772 countdowns ("Busy search and the motor-on bit") and the ACSI routing bit, and is written
+only while a countdown runs or the HDC is selected, so a snapshot of an idle FDC keeps the plain
+layout; an older build stops at the tag and resumes with all three clear.
 
 Provenance sidecar: every snapshot written through `SaveState` (CLI `<n> snapshot`, REPL `snap`,
 `stserver` `save`) also gets `<snap>.prov.json` (`Provenance` in `Program.fs`): the snapshot
@@ -562,13 +566,17 @@ interpreter above). See `reversing/a_013/`.
 **FDC completion signalling (WD1772 INTRQ / MFP GPIP bit 5).** GPIP bit 5 (FDC
 interrupt line, active-low) idles high and re-raises a coarse delay after a
 command, cleared on a status read or a new command (`MMU`'s `fdcIrq` /
-`FdcTick`). The delay matters because TOS's post-autoboot FDC self-test at
-`$fc04a8` issues 8 bogus WD1772 commands and expects each to still be running
-when its `_hz_200`+10 poll expires. If the line read "always complete", the
-self-test would re-`jsr` the boot sector in `_dskbufp` every iteration, and a
+`FdcTick`). The delay matters because TOS's ACSI boot probe at `$fc04a8`
+(`$fc04d6`, one READ(6) per target 0..7) expects no answer before its
+`_hz_200`+10 poll expires. ACSI is not modelled: with `$FF8606` bit 3 set the
+`$FF8604` bytes still reach the FDC code with its INTRQ and status timing, but see
+no drive, move no data and do not start the motor (`dmaHdcSelected`), so the
+target 4 and 5 bytes (`$88`, `$a8`) are never a Read or Write Sector on drive A.
+If the line read "always complete", the
+probe would re-`jsr` the boot sector in `_dskbufp` every iteration, and a
 crack whose boot sector checksums to `$1234` (PowerMonger `[cr Replicants]`, TDT
-"ALTAIR ANTI VIRUS") would loop forever. With the delay the self-test's first
-polled command (a Restore) times out like real hardware and the loop exits;
+"ALTAIR ANTI VIRUS") would loop forever. With the delay the probe's first
+polled byte times out like real hardware and the loop exits;
 `[cr Replicants]` boots to its cracktro key-wait. There is no per-command WD1772
 state machine (Hatari's `src/fdc.c` has one), so the delay is bucketed:
 
@@ -581,8 +589,31 @@ state machine (Hatari's `src/fdc.c` has one), so the delay is bucketed:
   poll budget). `$fc04d6` issues a Restore first every self-test iteration, so
   this bucket is what times the self-test out (`$fc04cc` runs 0 times).
 
-The diskless-boot checkpoint (`checkpoint.txt`) is baselined with this self-test
-spinning rather than short-circuiting.
+The diskless-boot checkpoint (`checkpoint.txt`) is baselined with this probe
+spinning rather than short-circuiting. The motor-on bit below changed the diskless
+boot's timing, so a checkpoint written by a build without it fails `verify` (at 5M
+steps D0 reads `$ffffff84` for `$ffffff04` and D7 is 40 polls apart).
+
+**Busy search and the motor-on bit.** Two WD1772 windows run on `FdcTick`, measured
+in revolutions of 120,000 steps (300 rpm at 600,000 steps a second; `MMU`'s
+`fdcRevolutionSteps`). A multi-record Read or Write Sector whose DMA count runs past
+the track's last sector transfers what exists at once, then stays busy (status `$01`,
+no INTRQ) for 5 revolutions searching for the next ID field before it ends with
+Record Not Found (`$10`) and INTRQ. Force Interrupt (`$Dx`) inside that window ends the
+command with busy cleared and no error; written while idle it gives Type I status
+(TR00 from the track register, WPRT). Any other command written while busy is
+ignored. Status bit 7 (motor on) is set from every command until 9 revolutions after
+it completes, counted on a timer as Hatari does, so also with no disk. TOS reads it:
+`flop_cmd` picks its poll budget from it and the VBL handler (`$fc1a16`) deselects the
+drives only once it drops. A loader that waits for the motor to stop now waits about
+1.08M steps (Archipelagos' `$70790` and `$13a36`), and a diskless boot's status reads
+in the drive-A retry loop return `$84` where they returned `$04`, so its timing
+shifts (a control build that masks bit 7 on read gives a 30M diskless snapshot
+byte-identical to the build before the change). Not modelled: spin-up (6 revolutions
+before a command with `h` clear on a stopped motor), the spin-up status bit 5, the
+index bit, and Record Not Found timing for a single-sector command (still the 120,000-step
+bucket with status `$10` at once). Both countdowns go in the snapshot's optional
+`FDCM` section (below).
 
 Known gap: past the cracktro key-wait `[cr Replicants]` loads about 1 MB of game
 data (all FDC reads OK) then its depacker derails to `PC=$20`. `[cr Empire]`'s
