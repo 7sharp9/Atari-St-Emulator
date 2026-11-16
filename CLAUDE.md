@@ -249,9 +249,7 @@ before spawning agents. The ones most often missed:
   (`$12`) mode or when the button is already in that state; an absolute-mode game reads clicks only
   through `$0D` interrogation. `ATARI_TRACE_IKBD=1` shows the mode; the packet per mode is in
   `DEVELOPING.md`, "IKBD command interpreter".
-- A whole `mouse move`/`mouse down` packet is queued at once and the next IKBD interrupt is raised as soon as
-  a byte is read; the MFP in-service register is not modelled. A game whose ACIA handler lowers the mask on
-  entry (Carrier Command's `$1794c`, `move #$2500,sr`) nests one handler per byte and parses the packet last
-  byte first, so the pointer never moves. Send each byte on its own `kbd` with `s 3000` between (`kbd f8`,
-  `kbd <dx>`, `kbd <dy>`; `$fa` = left down): `reversing/carriercommand/drive.txt`, README "Running it".
+- A queued IKBD packet reaches the ACIA one byte per 768 steps (1.28 ms) after each read, and the MFP
+  in-service registers hold a channel off until its handler clears the bit; a snapshot older than format v13
+  resumes with both registers 0 (`DEVELOPING.md`, "IKBD command interpreter").
 - `u <addr>` from a snapshot already stopped at `<addr>` (a `$f898`-frame snapshot) returns at once with "reached after 0 steps": `u` aligns to an address and stays put when already there (`reversing/powermonger/py/track.sh` relies on it). For the next arrival use `bp <addr>`, which steps first, or step past it and then `u`, as `reversing/powermonger/py/capture.sh` does.
