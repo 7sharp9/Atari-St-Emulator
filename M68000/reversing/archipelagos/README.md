@@ -134,7 +134,8 @@ loader's `$70790` (and the game's `$13a36`) waits for the motor-on bit to drop, 
 **The pokes are no longer needed.** Proven with `drive.txt` run twice on the same build, once as written and once with
 its four `ww` lines removed: both reach `bp 1301c` after 4,735,885 steps, the title (`p3`) and the first-person view
 (`m2`, PC `$1c534`). `at1301c` differs only in the four POKE 1 bytes at `$7047a`; `m2` differs only in the four
-POKE 2 bytes at `$13578` and five bytes at `$2f43..$2f48`, below the stack pointer (`$2fdc`). Before this FDC model
+POKE 2 bytes at `$13578` and five bytes in `$2f43..$2f49`, below the stack pointer (`$2fdc`): RAM differences inside
+those ranges 4/4 and 9/9 (`py/gate_unpoked.py`, gate `unpoked`). Before this FDC model
 the unpoked run ended in an `ILLEGAL` opcode `$2e7d` at `$1301c` (the PRG partly read, the relocator patching the
 wrong bytes, a double bus fault), and the pokes below were what got past it. The snapshots under
 `scratchpad/archipelagos/` were made with the pokes on the older FDC.
@@ -412,6 +413,7 @@ what happens to the player when the creature arrives.
 | file | what |
 |---|---|
 | `drive.txt`, `py/run_drive.sh` | the cold boot to gameplay drive and its runner (both pokes) |
+| `py/gate_unpoked.py` | `drive.txt` with and without its pokes from a cold boot; RAM differences of `at1301c` and `m2` against the poke ranges; output under `scratchpad/archipelagos/gate_unpoked/` |
 | `py/island_model.py` | the island builder model (map out; parameter block, or the picture read from the disk image, in); `disk_read`, `disk_block`, `picture_bits` |
 | `py/island_params.py` | the `$16166` parameter model |
 | `py/capture_islands.sh` | fresh entry and exit snapshots and the RNG watch log (pokes: parameter sets, `$1d566`) |
@@ -424,7 +426,7 @@ what happens to the player when the creature arrives.
 | `py/render_pictures.py` | draws `picture_islands.png` from the model and the disk image |
 | `picture_islands.png` | the 20 picture islands as the game builds them |
 | `py/render_buf.py` | render a 320 x 200 screen at an explicit buffer base |
-| `gates.toml` | the gates for `tools/gates.py` (`islands`, `creature`; PASS 134 s and 14 s) |
+| `gates.toml` | the gates for `tools/gates.py` (`islands`, `creature`, `unpoked`; PASS 134 s, 14 s and about 70 s) |
 | `archipelagos.sym` | names, one per line |
 | `title.png` | the title screen (obelisk, berry trees) |
 | `map_screen.png` | the archipelago map after the code-word screen (text noisy) |

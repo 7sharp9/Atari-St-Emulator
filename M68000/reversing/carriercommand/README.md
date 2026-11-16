@@ -362,7 +362,7 @@ returned. The emulator models both (MFP in-service registers, and one IKBD byte 
 `c_eng.snap`, `mouse move 0 -55` and 400,000 steps take the pointer (`$476`/`$478`) from (160,100) to (160,45),
 the `c_mv.snap` position, where a build without them left it at (160,100); and `drive.txt` with its mouse bytes
 replaced by `mouse move 0 -55`, `mouse down l`, `mouse up l` reaches the Strategy game (`$1244 = $ff`; 0 on the
-older build). `drive.txt` still sends each packet byte on its own `kbd` with 3,000 steps between, the form that
+older build; `py/emu/gate_mouse.py`, gate `mouse`). `drive.txt` still sends each packet byte on its own `kbd` with 3,000 steps between, the form that
 made `c_mv.snap` and `c_s30.snap` before these were modelled.
 
 ## Snapshots
@@ -403,6 +403,7 @@ drones and island structures (`$193dc`, a jump table by type), and the 3D frame 
 | `ai.md`, `economy.md`, `render.md`, `vehicles.md`, `packer.md` | topic docs |
 | `carriercommand.sym` | routine and table names, each from its body |
 | `drive.txt` | REPL input from `c80.snap` to `c_s30.snap` |
+| `py/emu/gate_mouse.py` | the plain-mouse proofs of "Mouse input" (gate `mouse`) |
 | `gates.toml` | the promoted proofs for `tools/gates.py` |
 | `language.png`, `title.png`, `strategy.png` | milestones |
 | `cheat.png` | "Cheat Mode active" after the phrase |

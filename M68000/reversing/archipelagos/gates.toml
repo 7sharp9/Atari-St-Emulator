@@ -27,3 +27,12 @@ expect = ["300/300", "2/2", "40/40"]
 cite = "README.md, 'The creature and its blood'"
 inputs = ["scratchpad/archipelagos/tmb58.st", "scratchpad/archipelagos/m2.snap"]
 minutes = 1
+
+[[gate]]
+name = "unpoked"
+cmd = "{python} gate_unpoked.py"
+cwd = "py"
+expect = ["re:unpoked bp 1301c: reached after 4735885 steps", "4/4", "9/9"]
+cite = "README.md, 'The emulator gap and the two pokes'"
+inputs = ["scratchpad/archipelagos/tmb58.st"]
+minutes = 2
