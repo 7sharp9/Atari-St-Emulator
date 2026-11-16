@@ -1,36 +1,39 @@
 # Emulator and tooling: handoff
 
-Updated 2026-11-12 by the session that built execution profiles, drive recordings to disk, gate DLL hashes and a
-faster `stserver` `read` (Open 1, 2, 4 and 5 of the previous handoff).
+Updated 2026-11-16 by the session that modelled the WD1772 busy search, motor-on bit and Read Track, and the MFP
+in-service registers with paced IKBD bytes, and gated both.
 
 ## Resume point
 
-- Last commit of this workstream: `1cd2453` server: bench_ab.py ...; the work is `1428261` (profiles), `b4a68cd`
-  (stdrive recordings), `4067b77` (gates.py hashes), `019669a` (read).
-- Installed build: `bin/` and `server/bin/` `M68000.dll` SHA-256 `a2dd7af2…` (source of `7993e58`, embedding commit
-  `5b9c6a3`), `stserver.dll` `1924f4dd…` (HEAD's `Server.fs`). `uv run python tools/gates.py run all -j 1` 54/54 on
-  `a2dd7af2…` with `stserver.dll` `94d3c74f…` (HEAD minus the read change; Super Sprint's two gates re-run under `uv`);
-  on `1924f4dd…`: `smoke.py` ALL PASS, `profile_proof.py` 5/5, `stdrive_check.py` 5/5, `stdrive_record_check.py` 5/5,
-  `record_disk_proof.py` 9/9, `provenance_proof.py` 178/178, gate `midwinter/period` PASS. 30M boot and a 10M Black
-  Tiger resume byte-identical between `8ec1f644…` and `a2dd7af2…`.
-- Working data: none. Proofs start from Black Tiger `scratchpad/black_tiger/play_start.snap` (`bt_auto.st`),
-  Impossamole `agents/unpoked/hop4s/none/shop/seg5_pit_exit.snap` and `agents/secrets/data/name_entry.snap`, PowerMonger
-  `scratchpad/cmd10/leadkill/pre_pick.snap` with `scratchpad/powermonger.st`.
-- Uncommitted work left behind: none. `master` is 17 commits ahead of `origin/master` before this file's commit (5 of them this session's), not pushed.
+- Last commit of this workstream: `8646fd2` gates: archipelagos unpoked and carriercommand mouse; the emulator work is
+  `c859b89` (MFP in-service, IKBD pacing, snapshot v13), `09fbb9a` (FDC busy search, Force Interrupt, motor-on bit,
+  ACSI bytes kept off drive A), `3b26da7` (Read Track), `8d9dc73` (CLAUDE.md), `37dd7d0` (Archipelagos README).
+- Installed build: `bin/` and `server/bin/` `M68000.dll` SHA-256 `1620cb81…` (embedding commit `3b26da7`), `stserver.dll`
+  `e0f474f6…`. `checkpoint.txt` was regenerated from this build (it now reads the motor-on bit at 5M steps: D0
+  `$ffffff84`, D7 `$3cd33`); the previous one is `M68000/scratchpad/checkpoint.txt.pre-fdc-motor`.
+- Working data: none. The pre-change build used as the control is `/private/tmp/claude-501/fdc/base/` (a 404b3c5
+  build, outside the repo and not durable): rebuild one with `git worktree add` at `4419e9f` and
+  `dotnet build -c Debug M68000.fsproj -o <dir>`.
+- Uncommitted work left behind: none. Agent worktree branches `worktree-agent-a488c6300f4cef75c` (FDC) and
+  `worktree-agent-ab3a60938446e1b09` (MFP, locked) are merged by cherry-pick; their worktrees are still on disk.
 
 ## Proven so far
 
-- Execution profiles (DEVELOPING.md "Execution profile"; tooling-ideas.md idea 5): `server/profile_proof.py` 5/5
-  (Black Tiger level skip, `cmp.b #$47` `$c6c8` rank 1, `cmp.b #$85` `$c6d6` rank 2; 0 flag mismatches in 245,325);
-  `reversing/impossamole/py/secrets/cheat_profile.py` (`--text LUMBAJAK`: `cmp.l` `$18358`/`$18364` ranks 1 and 2).
-  No-profile cost within noise (`server/bench_ab.py step`), profile running about 1.5x.
-- Drive recordings: `tools/stdrive_record_check.py` 5/5 (slice of `$1a645` = the REPL watch's last 12 writes).
-- `stserver` `read`: `server/bench_ab.py read` 0.946 s -> 0.071 s median for 20 x 64 KB, same bytes.
-- Earlier, unchanged: memory hooks and `stserver` (`smoke.py`), record and replay (`replay_proof.py` 12/12,
-  `last_writer_proof.py` 20/20, `divergence_proof.py` 8/8, `record_disk_proof.py` 9/9), `last_reg_change` 412/412,
-  `provenance.py` 178/178, snapshot provenance sidecar, `stdrive.py` (`stdrive_check.py` 5/5), `layout.py`/`snapdiff.py`
-  (`snapdiff_proof.sh`, `layout_crosscheck.py` 39/39). DEVELOPING.md sections of the same names.
-- Gate manifests: Black Tiger 15, Carrier Command 5, Midwinter 8, PowerMonger 20, Super Sprint 6 (54).
+- Net on the merged build (`tools/regress_net.sh` against the 404b3c5 build, Cadaver inputs): selftest 1,000,051 pass,
+  0 wrong, 9 skip; Cadaver game and DMA watches identical (25 and 11 lines); `uv run python tools/gates.py run all -j 3`
+  80/80 PASS on `1620cb81…`. The 30M diskless snapshot differs from the old build in 269 bytes; against the FDC branch
+  alone in 1 byte (ISRB, TOS inside its Timer C handler) plus the version byte and the 4 appended bytes.
+- FDC: Archipelagos loads without its pokes, gate `archipelagos/unpoked` (bp `$1301c` at 4,735,885 steps, RAM
+  differences inside the poke ranges 4/4 and 9/9; the 404b3c5 build gives 4/60880 and 10/255347). Archipelagos README
+  "The emulator gap and the two pokes"; DEVELOPING.md "Busy search and the motor-on bit".
+- MFP: gate `carriercommand/mouse` (pointer (160,100) -> (160,45), `$1244 = ff`; old build (160,100) and `00`).
+  Carrier README "Mouse input"; DEVELOPING.md "IKBD command interpreter".
+- Read Track: Captive's Copylock still adds key 0 (`captive/system.md` 7); Carrier's `$2119e` returns in 41 steps with
+  the synthesised track (Carrier README, "Read from code"). Not gated.
+- Earlier, unchanged: execution profiles (`server/profile_proof.py` 5/5), drive recordings
+  (`tools/stdrive_record_check.py` 5/5), `stserver` `read` speed (`server/bench_ab.py read`), record and replay,
+  provenance, `layout.py`/`snapdiff.py`: DEVELOPING.md sections of the same names.
+- Gate manifests: 82 gates in all, 76 declaring no inputs (`gates.py run all --dry-run`, 0 MISSING).
 
 ## Running
 
@@ -38,40 +41,45 @@ Nothing running.
 
 ## Open, in priority order
 
-1. Gate manifests for Cadaver, Populous, Lemmings, Impossamole from counts their docs record (check each work dir
-   exists first; an ERROR for a missing prerequisite is not a pass). Scripted candidates: `snapdiff_proof.sh`,
-   `layout_crosscheck.py`, `boss_stdrive.py --delay 700000` (cmp `kill_d700000_end.snap`), `cheat_profile.py`; and a
-   home for the `server/*_proof.py` and `tools/stdrive*_check.py` scripts, which are not gates yet.
-2. Go-Explore over forks (idea 7) from `scratchpad/impossamole/pass108/nohop/BEST/seg3_pit_a.snap`, now with profiles
-   (coverage as the novelty signal) and drive recordings; route repair (idea 8) belongs to the cadaver workstream.
-3. Coverage against a static listing: a snapshot where PowerMonger's `a_worksh` `$1192e` runs (its `jsr 0(A1,D2.w)`
-   table at `$11970` is the one form `rdis.py` misses); show covered handlers `$11898..$1191e` absent from `rdis.py`.
-4. `sub`/`subq` then branch is not in the compare log; add it only when a hunt needs it.
-5. Ghidra import of snapshot RAM + `.sym` + coverage (not installed or checked); MAME model gaps (no HBL, coarse FDC,
-   no IKBD power-up traffic), each an emulator change behind the net.
+1. Cycle counting, stage 1: count 68000 cycles per instruction (Hatari's tables, which `68k.fs` already cross-checks
+   in places) and report them only. Proof: byte-identical 30M snapshot and 82/82 gates; then measure instructions per
+   frame in several games against the fixed 12,000. That number decides stage 2 (VBL, HBL and timers from cycles behind
+   a flag; Midwinter's menu `$a5e0` without its `rte` poke is the test, `midwinter/README.md`). Dave asked about it; it
+   changes every step-denominated rule, so stage 2 needs his go-ahead.
+2. MFP arbitration order: Timer B should outrank the ACIA (DEVELOPING.md "IKBD command interpreter"). Proof: net plus a
+   game that raster-splits while reading the keyboard.
+3. FDC gaps left: spin-up and its status bit, the index bit, Record Not Found timing on a single-sector command, the
+   sector register advancing in a multi-sector read, Read Track taking a revolution. Each only when a loader needs it.
+4. Gate manifests for Cadaver, Populous, Lemmings, Impossamole from counts their docs record (check each work dir
+   first); a home for `server/*_proof.py` and `tools/stdrive*_check.py`, which are not gates yet.
+5. Go-Explore over forks (tooling idea 7) from `scratchpad/impossamole/pass108/nohop/BEST/seg3_pit_a.snap`; coverage
+   against a static listing (PowerMonger `$1192e`, handlers `$11898..$1191e`); `sub`/`subq` in the compare log;
+   Ghidra import; MAME model gaps (no HBL, no IKBD power-up traffic).
 
 ## Known traps
 
-- `stserver.dll` is not built by `dotnet build M68000.fsproj`: build `server/StServer.fsproj`, which also reinstalls
-  the core into `bin/`; cmp `bin/` against `server/bin/` at resume. A running session's MCP `stserver` keeps the build
-  it started with: restart the session to get new tools (`profile_start`).
-- `M68000.dll` embeds HEAD's commit (`1.0.0+<sha>`), so a rebuild after any commit changes its SHA-256 (and about 29k
-  bytes) with no source edit. Tie results to the DLL run, and settle "same source?" from `git log -- '*.fs'` plus a
-  30M boot snapshot compare.
+- A copy of `M68000.dll` alone does not run (`dotnet exec` exits 131): a control build is its whole `-o` directory.
+- `stserver.dll` is not built by `dotnet build M68000.fsproj`: build `server/StServer.fsproj`, which also reinstalls the
+  core into `bin/`; cmp `bin/` against `server/bin/`. A session's MCP `stserver` keeps the build it started with.
+- `M68000.dll` embeds HEAD's commit, so a rebuild after any commit changes its SHA-256 with no source edit.
 - Run `tools/gates.py` with `uv run python`: under the system `python3` the Super Sprint gates ERROR on `numpy`.
 - A worktree's `checkpoint.txt` is a symlink to the main checkout's: `N checkpoint` there writes through to MAIN.
 - `stdrive.replay` and `stdrive_check.py` need `--dll` in a checkout without its own `server/bin/`.
-- For the supersprint workstream, not fixed here: `sound.md:58` and `secrets.md:97` give liveproof's Q as 15559/15559,
-  while the script prints 15559/15560 over 15560 ISR invocations (as `sound.md:82` says).
+- Snapshots made before `c859b89`/`09fbb9a` resume with ISR zeroed and no FDC countdowns: a resume of a mid-load
+  snapshot from an older build is not the run the new build would have made.
 
 ## Waiting on Dave
 
-- Push: `master` is 18 commits ahead of `origin/master` (with this file's commit), only on this Mac.
-- For the impossamole workstream (not edited here): `sessions/impossamole.md` "Known traps" says the boss `Repl` does not
-  record and a fight takes 40 s; `boss_stdrive.py` journals every input, records with `--record`, and a fight takes
-  about 8 s on an idle machine (13 to 16 s at load average 20 to 30).
+- Push: `master` is 15 commits ahead of `origin/master` with this file's commit, only on this Mac.
+- Remove the two merged agent worktrees (`.claude/worktrees/agent-a488c6300f4cef75c`, `agent-ab3a60938446e1b09`,
+  the second locked) and their branches.
+- Stale in other workstreams' handoffs (not edited here): `sessions/archipelagos.md` Open 1 (the emulator gap, now
+  fixed and gated) and its "Both loader pokes applied" snapshots; `sessions/carriercommand.md` Open 6 (`$2119e` now
+  returns); `sessions/captive.md` Open 5 (Read Track now modelled); for supersprint, `sound.md:58` and `secrets.md:97`
+  give liveproof's Q as 15559/15559 where the script prints 15559/15560.
 
 ## Next session
 
-`/resume emulator`; restart first if the MCP `stserver` lacks `profile_start`. Then Open 1 (gate manifests), which
-turns this session's proofs into gates; Open 2 next if a search workload is waiting.
+`/resume emulator`. Check `bin/` still hashes `1620cb81…` (or re-run the net on whatever replaced it). Then Open 1
+stage 1 (cycle counting with no behaviour change, then the instructions-per-frame survey), which decides whether the
+timing rework is worth doing; Open 2 is the cheaper standalone fix if a raster game needs it.
