@@ -8,8 +8,9 @@
 name = "islands"
 cmd = "bash run_gate.sh"
 cwd = "py"
-expect = ["65536/65536", "9/9", "11792/11792"]
-cite = "README.md, 'The island generator'"
+expect = ["65536/65536", "9/9", "11792/11792", "2048/2048", "21/21"]
+cite = "README.md, 'The island generator', 'Island number'"
+inputs = ["scratchpad/archipelagos/tmb58.st", "scratchpad/archipelagos/n0.snap", "scratchpad/archipelagos/n2.snap"]
 minutes = 1
 
 [[gate]]
@@ -18,4 +19,5 @@ cmd = "bash run_gate.sh"
 cwd = "py/creature"
 expect = ["300/300", "2/2", "40/40"]
 cite = "README.md, 'The creature and its blood'"
+inputs = ["scratchpad/archipelagos/tmb58.st", "scratchpad/archipelagos/m2.snap"]
 minutes = 1

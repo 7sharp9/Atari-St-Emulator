@@ -56,8 +56,9 @@ class Model:
         for i in range(BASE, BASE + 0x10000):
             if self.m[i] != 4: self.m[i] |= 0x80
     # --- main
-    def run(self):
-        assert self.N not in self.special, 'island N is in the special table $16a58 (not procedural)'
+    def run(self, disk=None):
+        if self.N in self.special:                                # $15a38: a picture island
+            return self.picture(disk)
         for i in range(BASE, BASE + 0x10000): self.m[i] = 4
         P = self.P
         D1 = P[0x1697a]
@@ -77,6 +78,21 @@ class Model:
             if D1 == 0: break
         self.final_pass()
         return bytes(self.m[BASE:BASE + 0x10000])
+    def picture(self, disk):                                      # $15a38..$15a7e, $160c8
+        """The special table's 4 bytes are the game's track and sector; $134f8 reads $800 bytes from there. On this
+        disk the game's track T is cylinder T, side 1 (island 1's parameter block, track 2 sector 1, is at image
+        sector 50). The 2,048 bytes are a 128 x 128 1-bit picture, MSB first, set to 6 (land) else 4, placed at
+        row 64 column 64 of the cleared map; then the procedural path's final pass. A failed read ($160b4) leaves
+        all sea; the model assumes the read succeeds."""
+        bits = picture_bits(disk, self.N, self.m)
+        m = self.m
+        for i in range(BASE, BASE + 0x10000): m[i] = 4
+        for y in range(128):
+            for x in range(128):
+                if bits[y * 16 + (x >> 3)] >> (7 - (x & 7)) & 1:
+                    m[BASE + (64 + y) * 256 + 64 + x] = 6
+        self.final_pass()
+        return bytes(m[BASE:BASE + 0x10000])
     def shape(self, D3, D4):                                      # $15b90
         P = self.P
         self.flag = 0
@@ -200,6 +216,32 @@ class Model:
                 m[a] = v; a += 1; D7 ^= 1
             D7 ^= 1
 
+def disk_read(disk, track, sector, n):
+    """$134f8 on tmb58.st: the game's track T is cylinder T side 1; reads run on to the next track after sector 10."""
+    out = b''
+    while len(out) < n:
+        o = ((track * 2 + 1) * 10 + sector - 1) * 512
+        out += disk[o:o + 512]
+        sector += 1
+        if sector > 10: sector, track = 1, track + 1
+    return out[:n]
+
+def picture_bits(disk, N, ram):
+    """The 2,048 picture bytes of special island N, from the table at $16a58 in `ram`."""
+    w = lambda a: ram[a] << 8 | ram[a + 1]
+    a = 0x16a58
+    while w(a) and w(a) != N: a += 6
+    assert w(a) == N, f'island {N} is not in the special table'
+    return disk_read(disk, w(a + 2), w(a + 4), 0x800)
+
+def disk_block(disk, N):
+    """$1b142: the parameter block of island N <= 100, track (N-1)/10 + 2, sector (N-1)%10 + 1, byte-swapped by
+    $1c700 into the 21 words at $1697a."""
+    raw = disk_read(disk, (N - 1) // 10 + 2, (N - 1) % 10 + 1, 42)
+    return bytes(x for i in range(0, 42, 2) for x in (raw[i + 1], raw[i]))
+
+DISK = os.path.join(d, 'scratchpad', 'archipelagos', 'tmb58.st')
+
 if __name__ == '__main__':
     from gfxview import load_ram
     bug = int(os.environ.get('BUG', '0'))
@@ -208,7 +250,7 @@ if __name__ == '__main__':
     ram = bytearray(ram)
     for i, v in enumerate(os.environ.get('PARAMS', '').split()):   # the labelled poke, applied to the block
         ram[0x1697a + 2 * i: 0x1697c + 2 * i] = int(v, 16).to_bytes(2, 'big')
-    M = Model(ram, bug); out = M.run()
+    M = Model(ram, bug); out = M.run(open(os.environ.get('DISK', DISK), 'rb').read())
     from collections import Counter
     print('shapes called', M.shapes, 'cells', dict(Counter(out)))
     if os.environ.get('PNG'):

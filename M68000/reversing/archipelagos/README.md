@@ -8,14 +8,15 @@ trained by The Mighty Clog, original supplied by Jobil.
 
 **What this doc set has established.** This directory reaches the title, the archipelago map and first-person play,
 locates the island generator and proves it: a Python model rebuilds the game's 256 x 256 island map cell for cell on
-five islands. One creature's step and its blood footprint are modelled and gated; the other object kinds are not
+seven procedural islands and three of the twenty picture islands, from the island number and the disk alone. One creature's step and its blood footprint are modelled and gated; the other object kinds are not
 decoded. The program is one hand-written 68000 image (a 50,774-byte PRG, text only, no symbol table, 0 LINK frames)
 with dead instructions interleaved with the live code, so the `disassemble.py --all` listing mis-syncs in places.
 Trust a live trace (`ATARI_TRACE=1` for a few hundred steps) or `callcap` over a static read.
 
 **Where to find what.**
 
-- How is an island's height map built? "The island generator"; which island is shown? "Island number".
+- How is an island's height map built? "The island generator"; which island is shown? "Island number". What are
+  the picture islands? "Picture islands" (`picture_islands.png`).
 - What does the creature do and what is its blood footprint? "The creature and its blood".
 - Why does the disk not load on this emulator without two patches? "The emulator gap and the two pokes".
 - How does the game load from disk? "Disk layout, and why `extract_disk.py` is wrong for it", "Load chain".
@@ -25,7 +26,7 @@ Trust a live trace (`ATARI_TRACE=1` for a few hundred steps) or `callcap` over a
 Terms used here are defined in `../GLOSSARY.md`.
 
 Evidence is of three kinds. **Gated from this directory** (`uv run python tools/gates.py run archipelagos`, one gate,
-15 s after the drive): the island model, `$16166`, the RNG. **Observed once, not gated:** the boot drive, the loader
+15 s after the drive): the island model, the picture islands and disk blocks, `$16166`, the RNG. **Observed once, not gated:** the boot drive, the loader
 chain, the FDC trace, the watch on the map during play. **Read from code only:** marked "(read)" or "inferred".
 
 ## Provenance
@@ -156,7 +157,7 @@ read suggested is not established).
 | `$13000..$1f656` | the game image (`$1301c` entry; relocated, with live code at `$1b9ea` and the data tables above it) |
 | `$16978..$169a3` | island parameter block (21 words) and RNG seed; `$1697a..$16988` counts and thresholds, `$1698a` build seed |
 | `$1698c`, `$16a32..$16a36`, `$16a42` | per-iteration range table (four 6-byte entries), range state, the eight neighbour offsets |
-| `$16a58` | special-island table (word keys, six bytes apiece; an island whose number is in it takes a picture path, not modelled) |
+| `$16a58` | special-island table (20 rows `N, track, sector`; an island whose number is in it is a picture, "Picture islands") |
 | `$1d566` | island number N |
 | `$1db28..$1db36` | eight object-kind count words; `$1db28` is the kind-8 creature count ("The creature and its blood") |
 | `$1db3e`, `$1db7e`, `$1dbbe` | the creature block, 32 words each: phase, position, envelope output |
@@ -168,8 +169,8 @@ read suggested is not established).
 ## The island generator
 
 **Heightfield.** One island at a time, in the 64K at `$3000`: sea 4, coast 5, interior 6 or 7 as a checkerboard.
-`$15a20` builds it. Entry: if N (`$1d566`) is in the special table the island comes from a picture. Otherwise
-(`$15a82`) the map is cleared to 4, then for `P[$1697a]` iterations:
+`$15a20` builds it. Entry: if N (`$1d566`) is in the special table `$16a58` the island is a picture ("Picture
+islands"). Otherwise (`$15a82`) the map is cleared to 4, then for `P[$1697a]` iterations:
 
 1. `$16062` finds the iteration in the four-entry range table at `$1698c` and sets the start ranges.
 2. A start position and a size come from the RNG: position `((rand * W34 / 255) << 8) | (rand * W32 / 255)` plus the word
@@ -203,9 +204,10 @@ map with the game's at the `$15b8e` return. `bash reversing/archipelagos/py/run_
 | N = 150, computed (number poked, see below) | 65536/65536 | 58982/65536 |
 | N = 4321, computed (number poked) | 65536/65536 | 61646/65536 |
 
-Stamp coverage over the five islands: all four stamp shapes occur (island 1 only the walk; the defaults run walk 7,
-wander 16, circle 5, rect 2; N = 150 walk 9, wander 13, circle 9, rect 4). The model does not cover the special-island
-picture path. A model gate compares only what the build writes (`$3000..$12fff`), not the registers.
+Two more islands take their block from the disk with the number poked at the loader `$1b142` ("Island number"):
+N = 6 and N = 99, 65536/65536 each (`py/gate_pictures.py`). Stamp coverage over the seven islands: all four stamp
+shapes occur (island 1 only the walk; the defaults run walk 7, wander 16, circle 5, rect 2; N = 150 walk 9, wander 13,
+circle 9, rect 4; N = 99 walk 26, wander 38, circle 2, rect 4). A model gate compares only what the build writes (`$3000..$12fff`), not the registers.
 
 **RNG gate** (`py/gate_rng.py` on the `watch 16978` log of island 1's build): 11792/11792 successive seeds obey
 `s = 5s + 1` (11791 pairs between the `$16632` writes plus the seed load at `$15a96`); the control `s = 5s + 2` gives
@@ -216,6 +218,40 @@ bits: `$1c576` clears bit 7 of each visible cell and records it in the list at `
 (4,072 and 4,071 writes in 60M idle steps, from the `watch 3000 65536` run); `$19faa` writes `D1 | $a0`, an object
 marker (inferred). So values such as 130, 166, 198, 199, 242, 243 are a low 3 bits value of 2, 3, 6 or 7 with bit 7 and
 the marker bits set.
+
+## Picture islands
+
+The special table `$16a58` holds 20 six-byte rows, `N, track, sector`, for N = 5, 10, 15, ..., 100 (read from the
+table in RAM), from track 13 sector 1 to track 20 sector 7, four sectors apiece. For such an N, `$15a38` reads `$800`
+bytes from there through the game's loader `$134f8` into the buffer at `[$1d55e] ^ $8000` (`$70000`, a screen).
+`$160c8` clears the map to 4 and draws the buffer as a 128 x 128 one-bit picture, most significant bit first, in the
+centre of the map (row 64, column 64; a set bit is 6, a clear bit 4); a failed read takes `$160b4` instead and leaves
+the map all sea. Then the procedural path's final pass `$15b16` adds the coast and the checkerboard. So the pictures
+are drawn land masks, not parameter sets, and nothing random touches them.
+
+The game's track T is cylinder T, side 1, of `tmb58.st` (the load chain reads its files from side 1 the same way):
+island 1's parameter block, track 2 sector 1, is image sector 50. The twenty pictures are, by eye, a wheel (5),
+a map captioned "East Enders" (10), Great Britain (15), a pig marked out in "bacon cuts" (20), Europe (25), a
+home computer with a smiling screen, joystick and mouse (30), a turtle (35, the Logotron logo the reviews name), a
+winding track (40), a coat of arms (45), the Americas (50), a portrait under "ПЭРЭСТРОИКА" (55), roses (60), a
+diamond lattice (65), five land masses joined by dotted lines (70), concentric rings (75), a speckled streak (80),
+"WANTED DEAD OR ALIVE ... TONY'S BARBER" (85), a square maze (90), an X of islets (95) and a figure of islets (100).
+`picture_islands.png` draws them as the model builds them (`py/render_pictures.py`, the centre 150 x 150 cells).
+
+Each picture island also has a parameter-block slot on the disk (it loads one like any N up to 100; the builder
+does not use its stamp fields). All 20 blocks that equal an earlier island's are in these slots or copy one (for
+example 10's equals 1's, 99's equals 95's slot); the 80 procedural islands' blocks are all different.
+
+**Gate** (`py/capture_pictures.sh`, then `py/gate_pictures.py`, from `n0.snap` with N poked at `$1b142`):
+
+| island | map cells | buffer bytes vs the side-1 read | control: next picture / side 0 |
+|---|---|---|---|
+| 15 | 65536/65536 | 2048/2048 | 60012 / 56331 |
+| 25 | 65536/65536 | 2048/2048 | 55989 / 53983 |
+| 85 | 65536/65536 | 2048/2048 | 56880 / 57195 |
+
+and for the disk blocks: N = 6 and N = 99 load 21 of 21 words equal to `disk_block` (control, the block of N - 1: 5
+and 15 of 21), and the model run on the block read from the disk gives 65536/65536 on both.
 
 ## Island number
 
@@ -228,7 +264,10 @@ thresholds `rand * 32 / 255 + 15` accumulated three times (the last capped at 10
 
 **Gate** (`py/gate_params.sh`, `island_params.py`): the model gives 9 of 9 fields for N = 150 and 9 of 9 for N = 4321;
 control (seed + 1) 2 of 9 for each. N is reached by a poke of `$1d566` on the map screen (`ww 1d566 0096`, `ww 1d566
-10e1`), then space, not by a played selection; how a played game changes N on the map screen is not driven.
+10e1`), then space, not by a played selection; how a played game changes N on the map screen is not driven. That
+poke is too late for N up to 100: `$1b142` has already loaded island 1's block into `$1defe`, and `$1c700` copies
+that one (a map-screen poke of 6 rebuilds island 1). `py/capture_pictures.sh` pokes N at the entry of `$1b142`
+instead, after the code-word screen.
 
 ## The code-word screen
 
@@ -294,7 +333,7 @@ what happens to the player when the creature arrives.
 
 - The garbled text on the code-word and map screens, and what the code word is.
 - The emulator gap: an FDC read that a Force Interrupt ends at status `$80` would remove both pokes.
-- The special-island table at `$16a58` and its picture path; how the map screen sets N in play.
+- How the map screen sets N in play.
 - The other seven object kinds (counts `$1db2a..$1db36`, handlers `$1c99a`: trees, pods and the necromancer are
   candidates, not matched), what reads the creature's envelope `$1dbbe`, and the sprite's link to `$1db7e`.
 - The land generator of the 3D view (how the landscape patchwork is drawn from the map).
@@ -304,12 +343,15 @@ what happens to the player when the creature arrives.
 | file | what |
 |---|---|
 | `drive.txt`, `py/run_drive.sh` | the cold boot to gameplay drive and its runner (both pokes) |
-| `py/island_model.py` | the island builder model (map out, parameter block in) |
+| `py/island_model.py` | the island builder model (map out; parameter block, or the picture read from the disk image, in); `disk_read`, `disk_block`, `picture_bits` |
 | `py/island_params.py` | the `$16166` parameter model |
 | `py/capture_islands.sh` | fresh entry and exit snapshots and the RNG watch log (pokes: parameter sets, `$1d566`) |
 | `py/gate_islands_only.sh`, `py/gate_params.sh`, `py/gate_rng.py`, `py/run_gate.sh` | the gates; `run_gate.sh` runs all |
 | `py/creature/creature_model.py` | model of the creature tick `$1a4e0` and its footprint, plus `capture_entry()` |
 | `py/creature/gate_creature.py`, `py/creature/gate_creature_idle.py`, `py/creature/run_gate.sh` | the callcap gate (300 poked states) and the watch-log gate (2 natural, 40 poked events); `run_gate.sh` runs both |
+| `py/capture_pictures.sh`, `py/gate_pictures.py` | captures of islands 15, 25, 85, 6, 99 (N poked at `$1b142`) and their gate: picture path, buffer, disk blocks |
+| `py/render_pictures.py` | draws `picture_islands.png` from the model and the disk image |
+| `picture_islands.png` | the 20 picture islands as the game builds them |
 | `py/render_buf.py` | render a 320 x 200 screen at an explicit buffer base |
 | `gates.toml` | the gates for `tools/gates.py` (`islands`, `creature`; PASS 11 s and 15 s) |
 | `archipelagos.sym` | names, one per line |
