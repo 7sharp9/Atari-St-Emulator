@@ -1,7 +1,8 @@
 #!/usr/bin/env python3
 """captain_take.py <out dir> <snap> <x> <y> [--budget N] [--postures 4,2] [--man 041a]: order side 1's captain to
-attack the lord at cell (x, y) from <snap>, once per posture, and report whether side 1 gets a second group
-(README "A second side-1 group").
+attack whatever cell (x, y) holds (a lord, or a foreign man: `$4a7a`) from <snap>, once per posture, and report
+whether side 1 gets a second group (README "A second side-1 group"). A posture of `none` is the control arm: the
+take and no order.
 
 Each arm is a loop.py replay of a two-order log (posture `$16` at step 0, attack `$0c` 400k steps later, then no
 orders) with a decision read every 5M steps and `--objs 1e5`; the arms differ only in the posture. Prints per arm:
@@ -19,15 +20,19 @@ a = sys.argv[1:]
 opt = lambda k, d: a[a.index(k) + 1] if k in a else d
 out, snap, x, y = Path(a[0]).resolve(), Path(a[1]).resolve().relative_to(ROOT), int(a[2]), int(a[3])
 budget = int(float(opt('--budget', '200e6')))
-postures = [int(p) for p in opt('--postures', '4,2').split(',')]
+postures = opt('--postures', '4,2').split(',')
 man = opt('--man', '041a')
 
 procs = []
 for p in postures:
     d = out / f'p{p}'; d.mkdir(parents=True, exist_ok=True)
-    rows = [dict(kind='start', snap=str(snap), budget=budget, every=5000000, gap=400000, side=1, take=True),
-            dict(kind='applied', step=0, actions=[dict(side=1, take=True), dict(side=1, type=22, x=0, y=p, group=0)]),
-            dict(kind='applied', step=400000, actions=[dict(side=1, type=12, x=x, y=y, group=0)])]
+    rows = [dict(kind='start', snap=str(snap), budget=budget, every=5000000, gap=400000, side=1, take=True)]
+    if p == 'none':
+        rows.append(dict(kind='applied', step=0, actions=[dict(side=1, take=True)]))
+    else:
+        rows += [dict(kind='applied', step=0, actions=[dict(side=1, take=True),
+                                                       dict(side=1, type=22, x=0, y=int(p), group=0)]),
+                 dict(kind='applied', step=400000, actions=[dict(side=1, type=12, x=x, y=y, group=0)])]
     rows += [dict(kind='decision', step=s) for s in range(0, budget, 5000000)]
     (d / 'in.jsonl').write_text(''.join(json.dumps(r) + '\n' for r in rows))
     for f in ('objs.bin', 'final.snap', 'decisions.jsonl'):

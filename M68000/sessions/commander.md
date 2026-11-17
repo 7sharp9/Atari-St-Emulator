@@ -2,7 +2,7 @@
 
 ## Resume point
 
-- Last commit of this workstream: the second-group pass (`captain_trace.py`, `captain_rout.py`, `captain_take.py`), after
+- Last commit of this workstream: group 1 emptied (`captain_empty.py`), after `a4300fa`, the second-group pass (`captain_trace.py`, `captain_rout.py`, `captain_take.py`), after
   `2463b49` (pending word and LLM wording). Before them: `77254ad` wall following against A* (`bug2/`, promoted from a subagent by an
   overseer session on 2026-11-14; no emulator arm was run for it beyond one live pair). Before it: `52a1013` rollout
   at the LLM's 20M cadence wins land 2 7/30. Before that: `24cc325` hybrid placebo (`--backend rand`) wins land 2 7/30 against the Haiku
@@ -13,7 +13,7 @@
   (23:10:04) is the obj/ compile time, kept by the copy, not the install time.
   `cmd15/rebase` shows the merge does not move these games (665/665 decision hashes, 6/6 end steps). `bin/` is 7df69a2.
 - Working data: `M68000/scratchpad/cmd16/` (`rout`, `take`: rebuilt by `captain_rout.py`, `captain_take.py` from
-  `cmd11/so/scripted/o1/decisions.jsonl`), `M68000/scratchpad/cmd15/` (README: `rebase`, `l2s30` with all six arms linked), `cmd14/` (README),
+  `cmd11/so/scripted/o1/decisions.jsonl`; `empty`: `captain_empty.py`; `chase`: the attacks that did not engage and the first, hand-run copy of the march, with `rout/p4s` its 210M/230M/250M snapshots), `M68000/scratchpad/cmd15/` (README: `rebase`, `l2s30` with all six arms linked), `cmd14/` (README),
   `cmd12/r1s3`, `cmd13/r1s3b`, `cmd9/`. Tables: `outcomes.py scratchpad/cmd15/l2s30 1 scripted llm_haiku rollout
   rollout_e20 hybrid_haiku hybrid_rand`; `pairs.py scratchpad/cmd13/r1s3b 3 --at 300,440`.
 - Start from: rand1 `scratchpad/pm142/rand1.snap` (side 3 testbed); land 2 `scratchpad/cmd3/l2build/l2_built.snap`,
@@ -58,6 +58,15 @@ All in `reversing/powermonger/commander/README.md`; every gate re-run from its p
   field fight of scripted o1 keeps him alive and home in `$3c` from 279.4M; posture 2 and no order leave him dead at
   198M (`captain_rout.py`, `scratchpad/cmd16/rout`). Home, he still leads 14 men or more in all 928 candidate-mode
   samples. One attack on the Capital from there lost at 75M at both postures (`captain_take.py`, `cmd16/take`).
+- **Group 1 can be emptied with both leaders alive** (`captain_empty.py scratchpad/cmd16/empty`, one start, three
+  arms differing only in the posture order): in the posture-4 field fight the 24 men who fought are routed (0 dead)
+  and 14 who never engaged stay with him. A two-waypoint march from 210M ((24,64), (29,77)) and an attack on the
+  followers' cell (33,77) then routs 14 of 14 at posture 4, kills 14 of 14 at posture 2, and leaves 14 of 14 in the
+  no-order control. `$041a` is alive in all three and home in `$3c` with 0 followers for 39 and 32 samples (about
+  277M to 281M absolute); the captain's lowest health is 52, 28 of 31 men left. Posture 2 is the better order for
+  this fight (the routed men go home: 63 against 49 at side 2's homes). He leaves home again from about 281M and
+  camps at (39,88), so the window is 3 to 4M steps. Attacks ordered from the Base never engage: they stall at a
+  shore (`scratchpad/cmd16/chase`, twelve arms, 14 followers kept in each).
   The chain works under the harness on land 1: 15 of 24 `pm123` side-1 logs get a group 1, 0 of 488 land-2 logs.
 - **Wall following against A*** (README "Wall following against A*", `bug2/`; data `scratchpad/pm_bug2/`): the
   census's 4230 stuck pairs hold 2417 reachable ones whose line crosses water (2202 distinct pairs, 133 men, six
@@ -75,13 +84,17 @@ Nothing running.
 
 ## Open, in priority order
 
-1. **Land 2, a second side-1 group: empty group 1 and take the Capital.** Three conditions (Proven): `$041a` home
-   in `$8a`/`$3c`, alive (the captain at posture 4 in the field fight), and leading no men. Untried: (a) fight
-   group 1 at posture 4 until its men are routed and read his followers with `captain_trace.py` (0 followers in a
-   candidate mode is the target); (b) an attack on the Capital with enough men (it held 21 at home plus his 14 to
-   29; recruit first), `captain_take.py` reporting a second group. The posture-2 field-fight fix that keeps the
-   captain alive is what kills `$041a`, so (a) also needs the captain's survival read from the same runs
-   (`leadkill/standoff.py`). If (a) cannot empty the group with the captain alive, land 2 has no second-group lever.
+1. **Land 2, a second side-1 group: take the Capital inside the window.** Proven: `$041a` can be home in `$3c`,
+   alive, with an empty group, for 3 to 4M steps about 70M after the 210M state (`captain_empty.py`). Not shown: the
+   Capital changing side while he is there, which is what fires `$550e`. Next: from `scratchpad/cmd16/empty/fight/p2`
+   (rerun with `--snap-at` at the fight's end, about 16M), march the captain to the Capital (44,99) by A* waypoints
+   (`astar.py <snap> 29 77 44 99 --cells`; about 27 cells, the lead gets home 16M after the fight ends) and attack
+   it, `captain_take.py` reporting a second group; a control with no attack. Unknowns that decide it: whether 28
+   men take a Capital whose side holds 49 at home (the first attempt, 31 men against 21 plus his 29, lost at 75M),
+   whether to recruit first (he then leaves home and the window is missed, so check whether he returns to `$8a`
+   later: `captain_trace.py` over a longer no-order run from the fight's end), and whether an attack arriving
+   while he camps at (39,88) can wait for him. If the Capital cannot be taken in a window, land 2 has no
+   second-group lever.
 2. **Rollout food blindness**: inside a 40M horizon food costs nothing until it hits 0; try a longer horizon for
    get-food candidates or score food left against the eating rate. The placebo result says the 40M score picks
    locally better moves that do not win more, so the horizon or the score is the search's weak point. Deciding every
@@ -165,7 +178,7 @@ The PowerMonger traps in `sessions/powermonger.md` apply.
 
 ## Next session
 
-Open 1(a) from `scratchpad/cmd16/rout/p4` (posture 4 against group 1), unless Dave wants Open 2's longer-horizon
+Open 1 (the Capital inside the window, from `scratchpad/cmd16/empty`), unless Dave wants Open 2's longer-horizon
 arm or Open 3's K sweep first. An outside review (2026-11-16) proposed a learned continuation-value model on the
 rollout; the answer given was not before a diagnostic shows the spread between candidates exceeds the spread
 within one candidate under perturbed continuations (a 30-start arm is one state at p about 0.13 to 0.27). Any new arm records its build (`bin/` is 7df69a2). The prompt that starts it is `/resume commander`.

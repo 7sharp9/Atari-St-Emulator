@@ -508,17 +508,52 @@ On land 2 three conditions have to hold at once, and the policies meet none of t
   posture 4 he is alive at 300M, back at the Capital in `$3c` from 279.4M (one start, three arms differing in that
   one order; `scratchpad/cmd16/rout`). The field-fight fix that keeps the captain alive ("Side 2 on land 2, and
   field-fight posture") is therefore also what kills the one man who could found a second group.
-- **His group has to be empty.** Home in `$3c` and then `$8a`, he still leads group 1 with 14 men or more in every
-  candidate-mode sample (207 in the posture-4 arm, 721 in the two arms below; followers are the live men whose word
-  28 is his offset, which matches the group record's 14 men at 300M), and `$5c2c` hands a lead whose group has
-  members to `$4bc8` instead of defecting him. He was not seen home with an empty group.
+- **His group has to be empty.** After the posture-4 fight he walks home leading group 1 with 14 men, and `$5c2c`
+  hands a lead whose group has members to `$4bc8` instead of defecting him. Left alone he is home in `$3c` and then
+  `$8a` with 14 followers or more in every candidate-mode sample (207 in the posture-4 arm; followers are the live
+  men whose word 28 is his offset, which matches the group record's 14 men at 300M).
 
-One attempt to take the Capital from that 300M state (`captain_take.py scratchpad/cmd16/take
-scratchpad/cmd16/rout/p4/final.snap 44 99`: posture, then attack (44,99), no further orders, 31 men against 21 at
-home and his group) lost the land at 75.5M at posture 4 and at 74.5M at posture 2, the Capital still side 2's and
-no second group; his group had grown to 29 before the fight. That is one start and an uncommanded captain, so it
-bounds nothing about a stronger army. What is not tried: emptying group 1 at posture 4 (its men routed, not
-killed) before he gets home, and an attack on the Capital with enough men to take it.
+The fight itself sorts his men. Of the 38 followers at 190M, the 24 that went into melee (mode `$32`) are all
+routed by 206M at posture 4 (alive, out of the group, prev mode `$3c`; 0 dead), where posture 2 leaves 23 of the
+38 dead; the other 14 sat in mode `$2c` (pick a target, none found) at all 131 samples from 191M to 204M and
+are, man for man, the 14 he keeps. He himself walks home at health 10 or less (0 in 708 of 731 samples from 206M
+to 279M) with prev mode `$3c` (708 of 731), and the 14 wait ahead of him across a bay, 15 cells off at 210M.
+
+Those 14 can be emptied with both leaders alive (`captain_empty.py scratchpad/cmd16/empty`, one start, three arms
+differing only in the posture order). From the 210M state the captain is sent by two go to orders along the A*
+waypoints (24,64) and (29,77), arriving by 35M, and then ordered to attack the cell holding most followers,
+(33,77):
+
+| arm | the 14 followers | `$041a` at 60M | his candidate-mode samples | captain |
+|---|---|---|---|---|
+| posture 4, attack | 14 routed, 0 dead (all out by 15.6M) | alive | 39, all with 0 followers (`$3c`, 32.0M..35.8M) | alive, lowest health 52, 28 of 31 men |
+| posture 2, attack | 14 dead (by 14.6M) | alive | 32, all with 0 followers (`$3c`, 31.8M..34.9M) | alive, lowest health 52, 28 of 31 men |
+| no order (control) | 14 still followers | alive | 279, all with 14 followers (`$3c`, 31.9M..59.7M) | alive, health 95, 31 men |
+
+So all three conditions hold together for the first time, for 3 to 4M steps: he is home in `$3c`, alive, with
+an empty group. Posture decides only what becomes of the men, because the lead is not in this fight: side 2's men
+at home end at 63 at posture 4 (the routed 14 go home) against 49 at posture 2 and in the control, so posture 2
+is the better order here and the posture-4 requirement applies only to the fight the lead himself is in. The window is
+short because he does not stay: from about 36M he walks out again and camps at (39,88) in mode `$68`, where
+`$550e` does not take him. The control shows what the window is without the fight (`$3c` to the end of the run).
+
+What did not engage, with the captain ordered from his Base (`scratchpad/cmd16/chase`; `captain_take.py` at
+postures 4, 2 and none over 100M, the lead with 14 followers in every candidate-mode sample of all twelve arms):
+an attack on the lead's own cell at 210M, 3 cells away, commits, marches 1.5 cells and ends in a camp at 2.2M
+(why is inferred, from the melee rule that drops a target whose prev mode is `$3c`; the march's own exit is not
+read); attacks on the lead's cell at 230M and 250M and on the followers' cell at 210M walk straight at the target
+and spend the rest of the run in the obstacle modes at a shore, at (33..35,67) or wandering round (46,84), never
+closer than 4.7 cells to a follower. That is the game's missing pathfinding and why the march uses waypoints. A
+go to order does not start a fight: the march passes within a cell of two followers at 30M.
+
+The Capital still has to change side inside that window, and that is not shown. One attempt to take it, made
+before the group was emptied (`captain_take.py scratchpad/cmd16/take scratchpad/cmd16/rout/p4/final.snap 44 99`,
+from the posture-4 arm's 300M state: posture, then attack (44,99), no further orders, 31 men against 21 at home
+and his group), lost the land at 75.5M at posture 4 and at 74.5M at posture 2, the Capital still side 2's and no
+second group; his group had grown to 29 before the fight. That is one start and an uncommanded captain, so it
+bounds nothing about a stronger army. What is not tried: an attack on the Capital timed to land while he is home
+with the group empty (the captain is about 27 cells away at (29,77) when the fight ends, with 28 men against 49 to 63
+at side 2's homes), and whether the Capital's own garrison, not his group, is what beat the first attempt.
 
 **Policies against the game's AI** (`seeds.sh scratchpad/cmd12/r1s3 scratchpad/pm142/rand1.snap 3 "0 1 2 3 4 5"
 "ai=--policy,none,--no-take scripted=--policy,scripted llm=--policy,llm,--every,20e6 rollout=--policy,rollout" 8
@@ -744,7 +779,8 @@ hand selector (a short look-ahead of both coasts), other maps, moving targets an
 | `captains.py <snap>...` | every leader-flag man in a settlement: the men a revolt can turn into a new group |
 | `captain_trace.py <man hex> <run dir>...` | one leader-flag man over `--objs` replays: his modes, the samples in a `$550e` candidate mode (`$8a`, `$3c`) with his followers, the step he dies |
 | `captain_rout.py <out dir>` | three replays of a logged run that differ only in the posture order of one field-fight decision (2, 4, none), then `captain_trace.py` |
-| `captain_take.py <out dir> <snap> <x> <y>` | attack one lord from a snapshot at posture 4 and 2 with no further orders; reports a second side-1 group, the lord's side and `captain_trace.py` |
+| `captain_take.py <out dir> <snap> <x> <y>` | attack whatever the cell holds (a lord, a foreign man) from a snapshot, once per posture (`--postures 4,2,none`; `none` is the no-order control) with no further orders; reports a second side-1 group, the lord's side and `captain_trace.py` |
+| `captain_empty.py <out dir>` | the posture-4 field fight, a two-waypoint march to side 2's remaining followers and an attack on their cell at posture 4, 2 and none: the followers' fate, the lead's candidate-mode samples by follower count, the captain's lowest health |
 | `leadkill/gate_leadkill.sh [pick] [r39] [goto] [win]` | how an enemy man reaches the captain's lead (scripted o1, `runs/l2_scripted_o1`): the target-pick replay 64/64, the retry-byte poke, the go-to arms; `win` the chases on the rollout win's lead over 315M..330M (`runs/l2_rollout`, about 4 minutes) |
 | `leadkill/model_pick.py <out>` | `$503c`/`$548a` replayed from REPL dumps at each `bp 5350`, compared with the game's pick |
 | `leadkill/chase_fate.py <watch> [lead]` | each chaser aimed at a lead and what ends the chase (engaged, diverted, re-pick, dead), from a `wfilter.py 46-49` watch |
