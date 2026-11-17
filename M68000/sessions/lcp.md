@@ -1,12 +1,13 @@
 # lcp: handoff
 
-Updated 2026-11-17 by the session that ended at commit `b2adce5`.
+Updated 2026-11-17 by the session that ended at commit `1fa199f`.
 
 ## Resume point
 
-- Last commit of this workstream: `b2adce5` (needs and clock tick `$24648`).
+- Last commit of this workstream: `1fa199f` (control keys and house events).
 - Working data: `scratchpad/lcp/` (disk images in `disk/`, extracted files in `files/`, decompile in `decomp/`, boot
-  segments in `boot/`, query drive in `q/`, clock runs in `clock/`, RAM dump and tick disassembly in `tick/`).
+  segments in `boot/`, query drive in `q/`, clock runs in `clock/`, RAM dump and tick disassembly in `tick/`, key-drive
+  frames in `keys/`).
   Rebuild: `reversing/lcp/README.md` "Provenance" (unzip, `msa2st.py`, `py/patch_odd.py`, `extract_disk.py`) and
   "How it was run"; `clock/` from `py/clock_rate.py` and `py/natural_tick.py`.
 - Start from: `scratchpad/lcp/house.snap` (the house running with the shipped man Bart, 12:08 on 17 November 1986,
@@ -26,6 +27,10 @@ Updated 2026-11-17 by the session that ended at commit `b2adce5`.
   about 1.8G steps, about 8 minutes of wall time on this Mac.
 - Illness under neglect never passes 2 (each starvation resets it to 1): model arithmetic over all timer pairs, not
   a run.
+- Control keys: eight through `$26fe0`/`$2cc18`; Ctrl-B (not in the crack READ.ME) queues event `$20`, a book shelved
+  in the study (frames); event `$1e` is the phone call, also the tick's hourly event; Ctrl-P only while seated
+  (`$2c944`), sets happiness 0 rising; event `$23` is never queued (raw scan). One drive per key against a no-key
+  control (`py/ctrl_keys.py 150e6 -ABCDFPRW`, `py/pet_key.py`). README "Control keys and house events".
 - The query queue leaks dropped requests (gate control 839/1000, `queue_leak30.txt`).
 - `tools/gates.py run lcp`: 4/4 PASS.
 - Personalities 6 = 0 and 7 = 5 (period table `$2b49e`).
@@ -42,15 +47,15 @@ Nothing running.
    restarts the bladder, `$23444`, `$225c2`, `$2142c`), so name the action routines dispatched by `$172a6` from their
    bodies first (was item 5). Prove each by callcap of the action's state writes, then a natural-run comparison of the
    simulated day against `natural_tick.py`-style watches.
-2. House event `$1e` (raised by the tick about once an hour, with the ring sound `$2ae12`): which handler in
-   `$1721c` runs it, and which end of happiness is happy (read the UI text that shows the level).
+2. Happiness's on-screen text, to confirm 0 is the happy end (petting sets 0; inferred). Whether Kroah's pages list
+   Ctrl-B.
 3. The query parser and priority: who computes `$5539a` (base priority + rnd(0,3) + PLEASE + mood, per Kroah), and the
    vocabulary in `WORDS`; then whether enough low-priority drops make him deaf for a session (the leak's end state).
 4. A new person through a real boot: delete `HYBER` from a copy of the run disk (`tools/add_file_to_disk.py --remove`
    needs a subdirectory check first) and drive the move-in; confirms `$17c46` is the path a fresh disk takes.
    `PE2..PE6.LCP` as head types 2..6 is Kroah's mapping, unchecked.
-5. Secrets: compare the code's control keys (`$18656` handles key codes 1, 2, 3, 4, 6, `$17`) with the crack's
-   READ.ME list; the house-event handlers behind `$1721c`.
+5. Secrets beyond the keys: the F1..F10 codes `$17b5c` maps to `$f1`..`$fa` (who reads them), and what the house-event
+   handlers write beyond their flags.
 6. `HYBER` save path: which routine writes it (the leak drive wrote one disk sector) and when.
 
 ## Known traps
