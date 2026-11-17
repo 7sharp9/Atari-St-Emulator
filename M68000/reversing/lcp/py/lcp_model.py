@@ -156,3 +156,114 @@ def new_person(seed, names, variant='true'):
     raw = names[out['name_index'] * 10: out['name_index'] * 10 + 10]
     out['name'] = bytes(c if c >= 0x41 else 0 for c in raw)
     return out
+
+
+# ---- `$24648`, the clock and needs tick, run once per game frame by the frame wait `$26914` -------------------
+# A frame is at least 25 ticks of the 200 Hz clock and 2 VBLs apart (`$263a6`), so at most 8 frames a second;
+# `$24648` acts on every 8th frame (frame counter `$51424` & 7 == 0): 60 of those make a game minute, 60 minutes an hour.
+TICK = {  # name -> address of each word `$24648` (and `$2489e`, `$17f0c`, `$24a04`) reads or writes
+    'frame': 0x51424, 'sec': 0x4c592, 'min': 0x55102, 'hour': 0x4ca20,
+    'mday': 0x4ca22, 'month': 0x3dcd0, 'year': 0x4097c,          # day and month zero-based; year 86 = 1986
+    'thirst': 0x51464, 'thirst_len': 0x51466, 'thirst_left': 0x51468,
+    'hunger': 0x5146a, 'hunger_len': 0x5146c, 'hunger_left': 0x5146e,
+    'pee': 0x51470, 'pee_left': 0x51474,
+    'ill': 0x5145a, 'ill_left': 0x5145c, 'ill_dir': 0x5145e,
+    'happy': 0x5144e, 'happy_t0': 0x51450, 'happy_t1': 0x51452, 'happy_t2': 0x51454,
+    'happy_left': 0x51456, 'happy_dir': 0x51458,
+    'event_block': 0x2ae16, 'away': 0x51418, 'event_flag': 0x2ae12,
+    'lunch_done': 0x2ae18, 'dinner_done': 0x2ae1a, 'wake_done': 0x2ae1c, 'sleep_done': 0x2ae1e,
+}
+MONTH_DAYS = [31, 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31]   # table at `$2c7b8`, read from RAM
+TICK_BROKEN = ['no_illness_restart', 'event_1_100', 'happy_runs_when_ill', 'no_leap', 'ill_capped_2']
+
+
+def _w(v):
+    v &= 0xffff
+    return v - 0x10000 if v & 0x8000 else v
+
+
+EVQ = 0x2c948    # ten words, -1 = free; `$16f50` rule 1 takes the head
+
+
+def enqueue_event(q, ev, away):
+    """`$27222`: put `ev` in the first free slot, unless he is away or the last slot is taken."""
+    q = list(q)
+    if away == 0 and q[9] == -1:
+        q[q.index(-1)] = ev
+    return q
+
+
+def needs_tick(st, variant='true'):
+    """One call of `$24648` on state dict `st` (TICK names plus 'seed'); returns the new dict.
+    Every value is a signed word, as the routine compares them."""
+    s = dict(st)
+
+    def starve():                                    # `$2489e`: a need already at 3 runs out again
+        if variant == 'no_illness_restart' and s['ill'] > 0:
+            return
+        s['ill'] = 1; s['ill_left'] = 60; s['ill_dir'] = 1; s['happy_dir'] = 1
+        if s['happy'] < 2:
+            s['happy'] += 1
+
+    if s['frame'] & 7:
+        return s
+    s['sec'] = _w(s['sec'] + 1)
+    if s['sec'] != 60:
+        return s
+    s['sec'] = 0
+    for need, ln, left in (('thirst', 'thirst_len', 'thirst_left'), ('hunger', 'hunger_len', 'hunger_left')):
+        s[left] = _w(s[left] - 1)
+        if s[left] < 1:
+            s[left] = s[ln]
+            if s[need] < 3:
+                s[need] += 1
+            else:
+                starve()
+    if s['ill'] > 0:
+        s['ill_left'] = _w(s['ill_left'] - 1)
+        if s['ill_left'] == 0:
+            s['ill'] = _w(s['ill'] + s['ill_dir'])
+            if variant == 'ill_capped_2' and s['ill'] > 2:
+                s['ill'] = 2
+            if s['ill'] >= 2:
+                s['happy'] = 2
+            s['ill_left'] = 5 if s['ill_dir'] == -1 else 60
+    s['pee_left'] = _w(s['pee_left'] - 1)
+    if s['pee_left'] < 1:
+        s['pee_left'] = 9999; s['pee'] = 1
+    if 7 < s['hour'] < 22:
+        lo, hi = (1, 100) if variant == 'event_1_100' else (0, 100)
+        s['seed'], r = rnd(s['seed'], lo, hi)
+        if r < 2 and s['event_block'] == 0 and s['away'] == 0:
+            s['event_flag'] = 1
+            s['evq'] = enqueue_event(s['evq'], 0x1e, s['away'])
+    s['min'] = _w(s['min'] + 1)
+    if s['min'] != 60:
+        return s
+    s['min'] = 0
+    if (s['ill'] == 0 or s['happy'] != 2 or variant == 'happy_runs_when_ill'):
+        s['happy_left'] = _w(s['happy_left'] - 1)
+        if s['happy_left'] == 0:
+            s['happy'] = _w(s['happy'] + s['happy_dir'])
+            if s['happy'] < 1:
+                s['happy'] = 0; s['happy_dir'] = 1
+            elif s['happy'] >= 2:
+                s['happy'] = 2; s['happy_dir'] = -1
+            s['happy_left'] = s[('happy_t0', 'happy_t1', 'happy_t2')[s['happy']]]
+    s['hour'] = _w(s['hour'] + 1)
+    if s['hour'] != 24:
+        return s
+    s['hour'] = 0
+    for k in ('lunch_done', 'dinner_done', 'wake_done', 'sleep_done'):    # `$17f0c`
+        s[k] = 0
+    if s['month'] == 1 and variant != 'no_leap':
+        days = 29 if s['year'] % 4 == 0 else 28
+    else:
+        days = MONTH_DAYS[s['month']]
+    s['mday'] = _w(s['mday'] + 1)
+    if s['mday'] == days:
+        s['mday'] = 0
+        s['month'] = _w(s['month'] + 1)
+        if s['month'] == 12:
+            s['month'] = 0; s['year'] = _w(s['year'] + 1)
+    return s

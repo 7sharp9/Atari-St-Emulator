@@ -14,3 +14,11 @@
 2459c	weekday
 27270	dequeue_house_event
 28490	enqueue_query
+24648	needs_clock_tick
+2489e	need_ran_out
+248d8	recover_if_fed
+24900	palette6_by_illness
+24a04	month_length
+26914	frame_wait
+263a6	frame_gate_and_draw
+27222	enqueue_house_event

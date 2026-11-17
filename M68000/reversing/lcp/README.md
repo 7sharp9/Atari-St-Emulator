@@ -109,7 +109,7 @@ snapshot is byte-identical across runs, and replaying `drive.txt` in one REPL ru
 
 ## The behaviour scheduler
 
-The main loop `$16ee4` runs forever `$26914` (role unknown: name it from its body) then `$16f50`. `$16f50` is the
+The main loop `$16ee4` runs forever the frame wait `$26914` ("Needs and the clock") then `$16f50`. `$16f50` is the
 decision point: it runs every time the man is free and hands at most one action number to `$172a6`, which records
 it in `$4c5a4` ("last action"), clears the pending word `$2ae0c` and dispatches on the number to the action's
 routine (action names below are Kroah's).
@@ -151,7 +151,7 @@ lowered 13 times by `$171fc`, the drop branch `$1712c` ran twice, and the count 
 then holds ten copies of action 8 with priorities 8, 4, 4, 4, 5, 3, 6, 3, 3, 6, so it stays full. The queue also fills
 for an ordinary reason: he reaches `$16f50` only once or twice per 30M steps, slower than requests were typed. That 7
 of the 30 requests were refused at the cap is inferred (the `hits` windows started after each Return, so they could not
-see `$284ac`); whether enough drops leave him permanently deaf in a session is open item 1.
+see `$284ac`); whether enough drops leave him permanently deaf in a session is open.
 
 **`$1747e`, the secondary desire.** Hours awake = current hour `$4ca20` minus wake hour `$5142c` (mod 24). At 18
 hours or more, or with illness 2 or more, the result is "go to bed" (`$04`), or -1 if he is already in bed
@@ -175,6 +175,75 @@ weights: an action listed twice is drawn twice as often.
 **The random generator** is TOS 1.00's XBIOS 17 `Random` (seed long at `$29b8`: seed = seed * 3141592621 + 1,
 result (seed >> 8) & `$ffffff`), wrapped by `$1876a` as `rnd(lo,hi) = lo + (Random() & $7fff) mod (hi-lo+1)`.
 Every gate here predicts exact draws from the seed it reads, which is the check on this formula.
+
+## Needs and the clock
+
+**Frames.** The main loop's `$26914` is the frame wait: called with N, it runs N+1 frames, each one waiting until
+the frame counter `$51424` moves and then running the per-frame services (the clock tick `$24648`, the phone and
+alarm sounds, the house-event queue `$27222`'s consumers, the player's keys). Only `$263a6` advances the counter
+(`$268b4`, the one writer in a whole-image census and the only one a 30M-step watch saw), and only when 25 or more
+ticks of the 200 Hz clock (low word of `_hz_200`, `$4bc`) have passed since the last frame and `_vbclock` (`$462`)
+has moved by 2 or more. A frame is therefore at least 125 ms: the game runs at most 8 frames a second, whatever the
+machine's speed.
+
+**The clock.** `$24648` counts a game second on every frame whose counter is a multiple of 8 (`$4c592`, 0..59), so
+a game second is 8 frames and the clock keeps real time while the frame rate holds at 8. Every 60 seconds it runs
+the minute body below, then advances the minute `$55102`; at 60 minutes the hour `$4ca20`; at 24 hours it clears the
+daily-appointment flags (`$17f0c`) and advances the zero-based day `$4ca22`, month `$3dcd0` and the year `$4097c`
+(month lengths from `$2c7b8`; February has 29 days when the year is divisible by 4, `$24a04`). The guestbook routine
+sets month, day, year, hour and minute from what the player types (`$17fec`, read in the decompile only), so the
+house clock starts at the typed time. Measured on `house.snap` (`py/clock_rate.py 30 1000000`): 30M steps are 2500
+VBLs and 10000 ticks of the 200 Hz clock, i.e. 50 emulated seconds; the frame counter rose 398 and the game counted
+50 seconds. A game hour is about 1.8G emulator steps.
+
+**The minute body**, in order:
+
+1. Thirst: its countdown `$51468` drops by one; at 0 it restarts from the man's timer length `$51466` (45..75
+   minutes, "A new person") and thirst `$51464` rises by one, up to 3. A need already at 3 that runs out again
+   calls `$2489e`: illness `$5145a` is set to 1 with a 60-minute countdown `$5145c` rising (`$5145e = +1`),
+   happiness `$5144e` rises by one (up to 2) with its direction `$51458` set to +1, and `$24900` sets palette entry 6
+   to `$453` (ill) or `$754` (well).
+2. Hunger: the same with `$5146e`, timer length `$5146c` (75..120) and hunger `$5146a`.
+3. Illness, when above 0: its countdown drops; at 0 illness moves one step in its direction, any level 2 or more
+   forces happiness to 2, and the countdown restarts at 60 minutes, or 5 when recovering (direction -1). Recovery
+   is started by `$248d8` when hunger and thirst are both 0; its only callers sit in the routines that zero hunger
+   (`$225c2`) and thirst (`$23444`), so it starts when eating or drinking leaves both needs met (from the call sites;
+   not driven). Illness at 0 restores the well colour. A test of illness above 4 computes a value nothing reads.
+4. Bladder: the countdown `$51474` drops; at 0 it is parked at 9999 and "needs to pee" `$51470` is set. Its five
+   writers (`tools/find_field_writers.py house.snap '$51474'`) are this tick, the new person (`$17ec4`), the toilet
+   routine `$2142c` (clears the need, parks the countdown at 9999, `$217b2`) and the eating routine `$225c2`, which
+   alone restarts it from the man's length `$51472` (20..40 minutes, `$2298c`, beside its hunger = 0 write). So he
+   needs the toilet a fixed time after eating; drinking plays no part (writer census, not driven).
+5. House event: between 08:00 and 21:59, `rnd(0,100) < 2` (2 chances in 101 each minute, about once an hour), with
+   `$2ae16` and the away flag `$51418` both clear, sets `$2ae12` (the per-frame ring sound in `$26914`) and queues house
+   event `$1e` (`$27222`: first free slot of the ten at `$2c948`, nothing if he is away or the last slot is taken).
+6. Once an hour, unless he is ill with happiness at 2, the happiness countdown `$51456` drops; at 0 happiness takes a
+   step in its direction and bounces between 0 and 2, and the countdown restarts from that level's duration
+   (`$51450 + 2*level`, 6..24, 6..24 and 6..12 hours). So happiness is a slow triangle wave 0, 1, 2, 1, 0, ..., pushed
+   up by starvation and held at 2 while he is ill. Which end is happy is not settled here (the level's UI text is not
+   read); illness pushes it to 2.
+
+Proof: `py/gate_tick.py 1000 1` pokes 1000 states (every word above, the event queue and the TOS seed; biased so
+that each counter is often one tick from rolling over, and 30% of seeds win the event roll), calls `$24648` and
+compares every word it can change with `lcp_model.needs_tick`: **1000/1000**, every branch reached (79 events, 59
+year ends, 14 leap Februaries, 203 starvations, 21 cures). Controls: no illness restart while ill 855, event roll
+`rnd(1,100)` 924, happiness counting down while ill 750, no leap year 978, illness capped at 2 840. On a natural run,
+`py/natural_tick.py` replays the model at each of the tick's own reads of the frame counter (a read watch at
+`$2464e`), applies every other routine's writes as observed, and checks the tick's writes: over 2.2G steps (`natural_tick.py 2.2e9 1e8`, 12:08:10 to 13:08:58 game time)
+**29123/29123** ticks, crossing the bladder running out at 12:36, thirst rising at 12:47 and the hour, with the
+toilet (`$217ac`, `$217b2`), a drink (`$23538`, `$2353e`) and the recovery start (`$248ec`, `$248f4`) writing in between.
+
+**The clock loses frames.** In that hour the frame counter was written 29233 times but the tick ran 29123 times:
+110 frames (0.4%) never reach `$24648`. `$26914` takes the counter's value on entry, and its last frame's trailing
+`$263a6` call can advance the counter just before it returns, so the next `$26914` waits for a further frame and
+that one is never ticked (read from the body; a 30M-step window of the same run lost none). The game counted 3648
+seconds in 3666.7 emulated seconds (2.2G steps at 12000 per VBL), so the house clock runs about 0.5% slow.
+
+**Neglect cannot make him very ill.** Because each starvation resets illness to 1 rather than adding to it, and
+thirst runs out again within 75 minutes, illness under neglect never passes 2. Running the gated model for a week
+of minutes with both needs at 3, over every thirst and hunger timer pair (45..75 by 75..120): 690 pairs never pass
+illness 1 (thirst timer 59 minutes or less), 736 peak at 2, and no man spends more than 21% of the week at illness 2. This
+is arithmetic on the model, not a run of the game.
 
 ## A new person
 
@@ -204,10 +273,18 @@ over 22..23 scores 39.
 | `$3dce2` | word | player-query count (0..10) | writer census; gate |
 | `$3df6c` | word | alarm ringing | `$16f50` body; gate |
 | `$3e272`, `$40966` | 10 words each | query priorities, query actions | `$16f50`, `$28490` bodies; gate; typed "DANCE" stored action 8, priority 6 |
-| `$4097c`, `$3dcd0`, `$4ca22` | words | year (86), month (10, so zero-based), day of month | `$2459c` body; values in `house.snap` (inferred meaning for the first two) |
+| `$4097c`, `$3dcd0`, `$4ca22` | words | year (86 = 1986), month and day of month, both zero-based | `$24648` and `$24a04` bodies; tick gate |
+| `$4c592`, `$55102` | words | game second, minute (0..59) | `$24648` body; tick gate; natural run |
 | `$4c5a4` | word | last action started | `$172a6` body; gate |
 | `$4ca20` | word | current hour | `$1747e` body; gate |
+| `$51424` | word | frame counter (one writer, `$268b4`) | `$263a6` body; census; watch |
+| `$51418` | word | away (no house event is queued) | `$24648`, `$27222` bodies; tick gate (meaning Kroah's) |
+| `$2ae12` | word | house event `$1e` ringing | `$24648` body; tick gate |
 | `$51426` | 128 bytes | the `HYBER` record in RAM (offsets below) | equal to the file but for the player name |
+| `$5144e`..`$51458` | words | happiness 0..2, its three durations, countdown, direction | `$24648` body; tick gate |
+| `$5145a`, `$5145c`, `$5145e` | words | illness, its countdown, its direction | `$24648`, `$2489e` bodies; tick gate |
+| `$51464`..`$51468`, `$5146a`..`$5146e` | 3 words each | thirst and hunger: level 0..3, timer length, countdown | `$24648` body; tick gate |
+| `$51470`, `$51472`, `$51474` | words | needs to pee, bladder timer length, countdown | `$24648` body; writer census; tick gate |
 | `$5539a` | word | priority of the request being enqueued | `$28490` body (who computes it: open item 2) |
 
 `HYBER` offsets (record at `$51426`) that this pass's gates read or write: `+$00` clothes, `+$02` pyjamas, `+$04`
@@ -230,6 +307,14 @@ can count, `+$5a` head type, `+$5e` player name, `+$76` the man's name. They agr
 | `$17f0c` | clear the daily appointment flags | body |
 | `$1876a` | `rnd(lo,hi)` over XBIOS `Random` | body; every gate |
 | `$2459c` | weekday of the game date (0 = Sunday) | body; used as an input by the secondary gate |
+| `$24648` | clock and needs tick (every 8th frame a second; the minute body) | body; gate 1000/1000 |
+| `$2489e` | a need at 3 ran out again: illness 1, happiness up | body; tick gate |
+| `$248d8` | start recovering if hunger and thirst are both 0 | body |
+| `$24900` | set palette entry 6 by illness | body (XBIOS 6) |
+| `$24a04` | days in the month | body; tick gate |
+| `$263a6` | the frame: 125 ms and 2-VBL gate, then draw and count `$51424` | body; watch |
+| `$26914` | frame wait: N+1 frames of per-frame services | body |
+| `$27222` | queue a house event (first free of ten; not when away or full) | body; tick gate |
 | `$27270` | dequeue a house event | called before `$1721c` (inferred from the call site) |
 | `$28490` | enqueue a parsed player request | body |
 
@@ -244,13 +329,15 @@ can count, `+$5a` head type, `+$5e` player name, `+$76` the man's name. They agr
 | `queue_leak30.txt` | REPL drive: 30 typed requests with a watch on the query count ("The query queue leaks") |
 | `lcp.sym` | routine names for `DecompileAll.java` |
 | `py/patch_odd.py` | makes the run disk from the converted `.ST` ("Provenance") |
-| `py/lcp_model.py` | Python models of `$1876a`, `$1747e`, `$16f50`, `$17c46` and TOS `Random` |
-| `py/gate_toplevel.py`, `py/gate_secondary.py`, `py/gate_newperson.py` | the three gates (counts above) |
+| `py/lcp_model.py` | Python models of `$1876a`, `$1747e`, `$16f50`, `$17c46`, `$24648` and TOS `Random` |
+| `py/gate_toplevel.py`, `py/gate_secondary.py`, `py/gate_newperson.py`, `py/gate_tick.py` | the four gates (counts above) |
+| `py/clock_rate.py` | frames, VBLs, 200 Hz ticks and game seconds per chunk of a natural run, as CSV ("Needs and the clock") |
+| `py/natural_tick.py` | the tick model replayed against a natural run's own writes ("Needs and the clock") |
 | `gates.toml` | the gates for `tools/gates.py` |
 
 ## Not exercised in the emulator
 
-The hunger, thirst, illness and happiness clocks (how the levels rise; Kroah's stats page gives the rules), the
+What the man does when ill or unhappy beyond the cascade's rules, which end of happiness is happy, the
 house-event handlers and the control keys, the query parser and its vocabulary, the word puzzle and card games,
 the letters, saving to `HYBER` (the leak drive wrote one disk sector, not decoded), a new person made through a real boot
 without `HYBER`, and a session made deaf by drops alone.

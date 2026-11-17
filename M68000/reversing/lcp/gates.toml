@@ -25,3 +25,11 @@ expect = ["100/100"]
 cite = "README.md, A new person ($17c46)"
 minutes = 1
 inputs = ["scratchpad/lcp/house.snap", "scratchpad/lcp/disk/tmbird03_even.st", "scratchpad/lcp/files/LCP/DATA/NAMES"]
+
+[[gate]]
+name = "tick"
+cmd = "{python} reversing/lcp/py/gate_tick.py 1000 1"
+expect = ["1000/1000", "855/1000", "924/1000", "750/1000", "978/1000", "840/1000"]
+cite = "README.md, Needs and the clock ($24648)"
+minutes = 1
+inputs = ["scratchpad/lcp/house.snap", "scratchpad/lcp/disk/tmbird03_even.st"]
