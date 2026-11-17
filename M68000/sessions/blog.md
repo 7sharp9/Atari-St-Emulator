@@ -1,6 +1,6 @@
 # Blog: handoff
 
-Updated 2026-11-16 by the session that ended at commit `b0301ef`.
+Updated 2026-11-17 by the session that ended at commit `23dd01b` (master; the blog repo at `ea591df`).
 
 The blog workstream curates and extends posts for 7sharp9.dev from the game research. Each game is
 reversed in its own workstream; this one reads their docs, checks the claims a post would rest on
@@ -14,57 +14,61 @@ sessions build up; they are not rewritten for newcomers. Clarity is applied wher
 `tools/docguard.py`. The post shape that fits the blog: a game's algorithm ported to idiomatic F#, proven against the
 game, ending in a visual the game could not make (the Midwinter and Paint It Black drafts).
 
-**Dave (2026-11-16): the next post is Archipelagos' island generator**, chosen over Midwinter, Populous, Cadaver,
-PowerMonger, Captive, Super Sprint and Captain Blood; he asked for the picture islands to be modelled before the port.
+**Dave (2026-11-16): he wants an ML / AI-engineering slant**, since that is his work from now on; posts need not
+repeat what the blog did before but should meet its depth. He is open to games not yet reversed and to a long,
+patient pipeline. **Archipelagos is no longer the next post**: Dave is not sold on it (an island from its number by
+one stamp generator; the work stays in `reversing/archipelagos/`, proven, not ported).
 
 ## Resume point
 
-- Last commit of this workstream: `b0301ef` (Archipelagos census checked live, from the session
-  [arch-census-live]; `ff0d2d6` picture islands and `df6ece1` model census before it). Master is 4 ahead of origin
-  (with `af8afaa`, CLAUDE.md), the blog repo 3 (`add1f32`, `0486cc2`, `53a781e`, IDEAS.md only); neither pushed.
-- Working data (repo scratchpad, gitignored): `scratchpad/archipelagos/` (`tmb58.st`, `n0`/`n2`/`m2` snapshots,
-  `isl/`, `gen/`, `pic/`, `census/census.json`, `census_live/`); rebuild recipes in `scratchpad/ANCHORS.md`
-  (Archipelagos row) and `reversing/archipelagos/README.md` "Running it". The census: `py/census.py` (6 min, 10 cores).
-- Earlier data as before: Captive `scratchpad/captive/infographics/data/route.json`; Midwinter mockups
-  `scratchpad/midwinter/mockup/`.
-- Uncommitted work left behind: none.
+- Last commit of this workstream: blog repo `ea591df` (IDEAS entries 1 emulator bugs and 4 sample player cut, by
+  Dave's choice: the first is not an algorithm post, the second is standard ST technique). No emulator-repo commit
+  this session. Master is 19 ahead of origin, the blog repo 4; neither pushed.
+- Working data: as before (`scratchpad/archipelagos/`, Captive `scratchpad/captive/infographics/data/route.json`,
+  Midwinter `scratchpad/midwinter/mockup/`).
+- Uncommitted work left behind: none (`.vscode/settings.json` untracked, not this session's).
 
 ## Proven so far
 
-- Archipelagos generator (`reversing/archipelagos/README.md`, "The island generator", "Picture islands", "Island
-  number", "Over all island numbers"; gate `archipelagos/islands`, 2/2 PASS 136 s):
-  - Islands 5, 10, ..., 100 are 128 x 128 one-bit pictures from the disk (game track T = cylinder T side 1);
-    65536/65536 on 15, 25, 85, buffer 2048/2048 (`py/gate_pictures.py`). The other 80 of the first hundred are
-    hand-set parameter blocks for the same stamp generator (21/21 words on 6 and 99). Figure `picture_islands.png`.
-  - Model census N = 1..9,999 (`py/census.py`), checked live on 42 islands, all 65536/65536 (`py/gate_census_live.py`):
-    no builder write outside the map (11/11 worst cases; the edge-forced control writes outside, then double bus
-    faults); 64 parameter sets above 100 (low-byte draws, N and N+64 share 20/21 words, maps differ); land and
-    pieces flat after island 100 (about 7,300 land cells, 27 pieces).
-- Earlier: Captive keys (`captive/mapgen.md`, `infographic_keys.png`); Midwinter roughness overflow
-  (`midwinter/terrain.md` section 1); Carrier Command figures; Midwinter port 70000/70000; PowerMonger LLM commander
-  8/30 vs 7/30; Populous swamp edge 75.9% Hatari vs 70.0% ours.
+Unchanged this session; pointers: Archipelagos generator (`reversing/archipelagos/README.md`, gate
+`archipelagos/islands`); Captive keys (`captive/mapgen.md`); Midwinter roughness (`midwinter/terrain.md` 1) and port
+70000/70000; PowerMonger LLM commander (`powermonger/commander/README.md`, "Land 2 as a rate": scripted 0/30, Haiku 0,
+rollout 4, hybrid 8, random-proposer placebo 7, no search arms separable; Haiku's candidate best at 29% of decisions
+against 15% random); Populous swamp edge 75.9% Hatari vs 70.0% ours.
 
 ## Running
 
-Nothing running. The session [arch-census-live] (`local_04c61e87-32f8-414a-a140-7e619ff29eec`) is idle with its
-work committed; archive it on Dave's yes.
+Nothing from this session. Linked session "Start reversing Little Computer People"
+(`local_51e994b0-1b8a-48ed-b4a8-b09e632483d7`) owns the `lcp` workstream; it committed `23dd01b`: the behaviour is a
+fixed-priority cascade, not needs scoring, and Kroah's 2006 reverse engineering is prior art. That changes the
+post angle assumed here ("needs-and-timer scheduler as generative agents, 1985"): read `reversing/lcp/README.md`
+before pitching it.
 
 ## Open, in priority order
 
-1. **Archipelagos post: the F# port.** Port `py/island_model.py` (procedural path and picture path) and
-   `py/island_params.py` to idiomatic F# (an island as a function of N plus the disk). Gate: 65536/65536 on the
-   committed captures (`isl/`, `gen/`, `pic/`, `census_live/`) and the BUG=1 control lower. The out-of-map
-   offsets need no emulation (none reachable, README census), but say so in the port.
-2. **Post figures:** an atlas of islands (a sheet of many N, the visual the game cannot make), a stamp-by-stamp build
-   strip, `picture_islands.png`, and N vs N+64 side by side. Generate from the F# port.
-3. **Prior art, rest of it:** Pera Putnik's ST archive page (`atari.8bitchip.info/ASTGA/A/archipel.php`), the Hall of
-   Light entry, and whether the 16Bit Pocket Power disk's "commented assembler source" (Atarimania trivia) has been
-   published. MobyGames (403) and TCRF (DNS) could not be read by the web-fetch agent; MobyGames' "first 100
-   hand-designed" is known only from a search snippet.
-4. **Not established, limit what the post may claim:** the 9,999 cap is not read from code; how a played map screen
-   sets N; the 3D land view (the map is a 2D mask); who the portrait on island 55 is.
-5. Carried: Midwinter (draft line 50 vs `terrain.md` section 1), Captive (emulator-check sampled bases), Carrier
-   Command series (set aside, `git show e97590c:M68000/sessions/blog.md`), the unsourced figure and README gaps,
+Ranking agreed from this session's review plus a Fable 5.2 second opinion (figures checked against the commander
+README; Fable's "24 of 27 losses are the captain" is not in the doc, do not quote it).
+
+1. **Finish Paint It Black** (hook and personal paragraph are Dave's), then **Mountains of the Moon** (line 50).
+2. **"The placebo arm"**: first ML post, from the commander's measured land-2 results. Scope to state: memoryless,
+   toolless LLM deciding every 20M, one land, 30 starts. Figures: win grid by start and arm, captain-death timeline.
+   Optional extra arm: an LLM with memory of its last orders and outcomes.
+3. **Cadaver's language** (IDEAS 2), then **the planner** (IDEAS 7): the F# post and its classical-AI sequel; a
+   possible LLM agent against the planner's reachable sets.
+4. **Virus flown by optimisation**: F# port of the proven flight tick (`virus/README.md`, flight 119/119), a
+   TorchSharp float surrogate, planned controls replayed in the emulator against the demo autopilot (`demo.md`).
+   Keeps the F#-port shape with an ML payload.
+5. **"Graded by the authors"**: IDEAS 6 reframed as an LLM function-naming benchmark against the developer symbol
+   table, arms by context (body, callers, decompile, runtime evidence). The repo is public and the docs quote many
+   names: design a held-out set before running.
+6. **PowerMonger world model**: forecaster plus captain-death hazard on the rollout logs; needs more than 30 starts.
+7. **New games for the pipeline**: Laser Squad first (hidden units, line of sight; enemy AI undocumented per a
+   Spectrum disassembly thread), Colossus Chess X (evaluation and what "learns" means; check the dump). Cut: The
+   Sentinel (Moxon's documented source), Balance of Power (source released).
+8. Cut or sidebar, keep out of the queue: Super Sprint (cut), Archipelagos, Populous generator, Bug2, causeway,
+   Captive keys/digger/galaxy; the influence-map, utility, ecology, alliance and plain-language ideas in
+   `reversing/ideas.md` (unbuilt, nothing to measure). Carrier routing and span filler stay as infographics.
+9. Carried: Midwinter draft line 50, Captive emulator-check sampled bases, Carrier Command series, unsourced figures,
    `gen_takeoff.py` cache, Black Tiger stale claim.
 
 ## Known traps
@@ -75,19 +79,21 @@ work committed; archive it on Dave's yes.
 - `docguard` reports a token's delta, not its meaning.
 - Three PowerMonger figures have no generator (the SVG is the source); PNGs: `rsvg-convert -b white -w 1800`.
 - `tools/gates.py run <game> -k <gate>` runs one gate; `run <game>/<gate>` fails.
-- `census.py`'s worker pool is forked before the summary: state for the workers goes in function arguments, not
-  `os.environ` set afterwards.
+- IDEAS.md entries are cited by number ("entry 2", "entry 9"): leave gaps when cutting, do not renumber.
 
 ## Waiting on Dave
 
-- His Midwinter draft line 50 ("peaks are rougher than lowland"); true only to average height 3,470.
-- Keep or redo the Captive keys figure; whether the Captive post is dropped.
+- Whether to rewrite IDEAS.md around the Open ranking (the ML entries 2, 4, 5, 6 are not in it yet).
+- Captain Blood prior art: AtariMania lists Kroah's Game Reverse Engineering Page as covering its interpreter and
+  conversation system (search snippet only, unread); the `captainblood` workstream should read it before more
+  `rules.md` work. Not written into that game's docs from here.
+- His Midwinter draft line 50; keep or redo the Captive keys figure.
 - Carried: the Carrier Command series, "proven" vs "observed" in Crude Buster and Final Fight, the Lemmings artifact
   republish, the Black Tiger stale claim, upgrading Hugo, pushing master and the blog repo.
 
 ## Next session
 
-`/resume blog`. Archipelagos post, Open 1: read `reversing/archipelagos/README.md` "The island generator" through
-"Over all island numbers" and `py/island_model.py`, then port to F# (an `.fsx` under `reversing/archipelagos/fs/` as
-Midwinter's `fs/` does) gated 65536/65536 on the committed captures. Then the atlas figure (Open 2) and the
-remaining prior-art pages (Open 3) before drafting with the `dave-post` skill.
+`/resume blog`. Ask Dave whether to finish Paint It Black now (its two TODOs are his) or start "The placebo arm":
+read `powermonger/commander/README.md` "Policies against the game's AI", "Land 2 as a rate" and "Evaluation design",
+then scaffold the post with the `dave-post` skill and draw the win grid from `scratchpad/cmd14/l2s30` and
+`cmd15/l2s30`. Read `reversing/lcp/README.md` before pitching an LCP post.
