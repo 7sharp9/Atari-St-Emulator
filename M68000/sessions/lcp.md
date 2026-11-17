@@ -1,10 +1,10 @@
 # lcp: handoff
 
-Updated 2026-11-17 by the session that ended at commit `1fa199f`.
+Updated 2026-11-17 by the session that ended at commit `1054874`.
 
 ## Resume point
 
-- Last commit of this workstream: `1fa199f` (control keys and house events).
+- Last commit of this workstream: `1054874` (Ctrl-B frame script; before it `31aec35`, event `$23`).
 - Working data: `scratchpad/lcp/` (disk images in `disk/`, extracted files in `files/`, decompile in `decomp/`, boot
   segments in `boot/`, query drive in `q/`, clock runs in `clock/`, RAM dump and tick disassembly in `tick/`, key-drive
   frames in `keys/`).
@@ -29,8 +29,10 @@ Updated 2026-11-17 by the session that ended at commit `1fa199f`.
   a run.
 - Control keys: eight through `$26fe0`/`$2cc18`; Ctrl-B (not in the crack READ.ME) queues event `$20`, a book shelved
   in the study (frames); event `$1e` is the phone call, also the tick's hourly event; Ctrl-P only while seated
-  (`$2c944`), sets happiness 0 rising; event `$23` is never queued (raw scan). One drive per key against a no-key
-  control (`py/ctrl_keys.py 150e6 -ABCDFPRW`, `py/pet_key.py`). README "Control keys and house events".
+  (`$2c944`), sets happiness 0 rising. Event and action `$23` run the "agree" gesture `$2310a` and are unreachable
+  (enqueue census, the eleven `$2ae0c` writers, request rules `$2d066`; `find_ram_callers.py`: 4 callers of `$2310a`,
+  6 of `$27222`). One drive per key against a no-key control (`py/ctrl_keys.py 150e6 -ABCDFPRW`, `py/pet_key.py`,
+  `py/book_frames.py`). README "Control keys and house events".
 - The query queue leaks dropped requests (gate control 839/1000, `queue_leak30.txt`).
 - `tools/gates.py run lcp`: 4/4 PASS.
 - Personalities 6 = 0 and 7 = 5 (period table `$2b49e`).
@@ -49,8 +51,9 @@ Nothing running.
    simulated day against `natural_tick.py`-style watches.
 2. Happiness's on-screen text, to confirm 0 is the happy end (petting sets 0; inferred). Whether Kroah's pages list
    Ctrl-B.
-3. The query parser and priority: who computes `$5539a` (base priority + rnd(0,3) + PLEASE + mood, per Kroah), and the
-   vocabulary in `WORDS`; then whether enough low-priority drops make him deaf for a session (the leak's end state).
+3. The query parser: `$28208` computes `$5539a` (base `$2d206[happiness]` + rnd + 4 per PLEASE + the rule's adjust;
+   decompile only) from the 33 word-mask rules at `$2d066`; gate it by poking typed lines and calling `$28208`, and decode
+   the vocabulary; then whether enough low-priority drops make him deaf for a session (the leak's end state).
 4. A new person through a real boot: delete `HYBER` from a copy of the run disk (`tools/add_file_to_disk.py --remove`
    needs a subdirectory check first) and drive the move-in; confirms `$17c46` is the path a fresh disk takes.
    `PE2..PE6.LCP` as head types 2..6 is Kroah's mapping, unchecked.
@@ -59,6 +62,9 @@ Nothing running.
 6. `HYBER` save path: which routine writes it (the leak drive wrote one disk sector) and when.
 
 ## Known traps
+
+- Caller censuses: `tools/find_ram_callers.py scratchpad/lcp/house.snap <addr>`; an inline `jsr`-literal scan misses
+  `bsr` callers (`$1f940` of `$2310a`).
 
 - The shipped `LCP.PRG` bombs on TOS 1.00 (odd DATA size): use `disk/tmbird03_even.st`, made by `py/patch_odd.py`.
 - Menu choice 2 quits to the desktop; the first double click on `LCP.PRG` after the pointer move does not launch, the
@@ -74,8 +80,9 @@ Nothing running.
 - Focus set by Dave: AI and algorithms, curiosities and secrets.
 - The behaviour model is a fixed-priority cascade with lookup tables, not needs-weighted scoring, and Kroah published
   its structure in 2006 (README "Prior art"). The needs tick adds quirks of the same kind: illness capped at 2 by its
-  own reset, the bladder filled by eating, not drinking, and happiness as a fixed triangle wave. Whether that is enough
-  for a post is your call.
+  own reset, the bladder filled by eating, not drinking, and happiness as a fixed triangle wave. Curiosities added:
+  Ctrl-B (a book) missing from the crack's key list, petting resets happiness rather than raising it, friends phone
+  about hourly unprompted, and an unreachable "agree" event. Whether that is enough for a post is your call.
 - Proposed: fix stserver `hits` to count through `CensusStep` as the REPL does (an emulator-side change behind the
   regression net), or add its double count to CLAUDE.md's `hits` rule.
 
