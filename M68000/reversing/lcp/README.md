@@ -269,7 +269,7 @@ it:
 **Ctrl-B delivers a book.** `$224ac` has the same body as the record handler `$21f7c`: walk to the door, open it, take
 the object, carry it away. The two differ only in which object flag they clear (`$2c9be` against `$2c9c0`), and the
 record handler also counts records in `$4c9ee`. In the frames he carries a green object from the door, up to the
-study, and puts it on the bookcase, which gains a green book on its top shelf (`keys/Bseq_*.png`, one run). The crack
+study, and puts it on the bookcase, which gains a green book on its top shelf (`py/book_frames.py`, frames `$LCP_WORK/keys/Bseq_*.png`, one run). The crack
 list leaves it out; Kroah's pages have not been checked for it.
 
 **The phone call is the hourly house event.** Event `$1e` is the one the clock tick raises (2 chances in 101 each
@@ -413,7 +413,7 @@ can count, `+$5a` head type, `+$5e` player name, `+$76` the man's name. They agr
 | `py/gate_toplevel.py`, `py/gate_secondary.py`, `py/gate_newperson.py`, `py/gate_tick.py` | the four gates (counts above) |
 | `py/clock_rate.py` | frames, VBLs, 200 Hz ticks and game seconds per chunk of a natural run, as CSV ("Needs and the clock") |
 | `py/natural_tick.py` | the tick model replayed against a natural run's own writes ("Needs and the clock") |
-| `py/ctrl_keys.py`, `py/pet_key.py` | the control-key drives ("Control keys and house events"); frames in `$LCP_WORK/keys/` |
+| `py/ctrl_keys.py`, `py/pet_key.py`, `py/book_frames.py` | the control-key drives ("Control keys and house events"); frames in `$LCP_WORK/keys/` |
 | `gates.toml` | the gates for `tools/gates.py` |
 
 ## Not exercised in the emulator
