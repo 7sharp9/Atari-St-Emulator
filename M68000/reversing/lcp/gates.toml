@@ -1,0 +1,27 @@
+# Little Computer People's promoted proofs, for tools/gates.py (`uv run python tools/gates.py run lcp`).
+# All run from M68000/ and read scratchpad/lcp/ (house.snap, disk/tmbird03_even.st, files/LCP/DATA/NAMES;
+# README "How it was run" and "Provenance" rebuild them).
+
+[[gate]]
+name = "toplevel"
+cmd = "{python} reversing/lcp/py/gate_toplevel.py 1000 3"
+expect = ["1000/1000", "839/1000"]
+cite = "README.md, The behaviour scheduler ($16f50)"
+minutes = 1
+inputs = ["scratchpad/lcp/house.snap", "scratchpad/lcp/disk/tmbird03_even.st"]
+
+[[gate]]
+name = "secondary"
+cmd = "{python} reversing/lcp/py/gate_secondary.py 2000 7"
+expect = ["2000/2000"]
+cite = "README.md, The behaviour scheduler ($1747e)"
+minutes = 1
+inputs = ["scratchpad/lcp/house.snap", "scratchpad/lcp/disk/tmbird03_even.st"]
+
+[[gate]]
+name = "newperson"
+cmd = "{python} reversing/lcp/py/gate_newperson.py 100 1"
+expect = ["100/100"]
+cite = "README.md, A new person ($17c46)"
+minutes = 1
+inputs = ["scratchpad/lcp/house.snap", "scratchpad/lcp/disk/tmbird03_even.st", "scratchpad/lcp/files/LCP/DATA/NAMES"]

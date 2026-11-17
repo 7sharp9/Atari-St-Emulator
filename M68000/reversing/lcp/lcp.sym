@@ -1,0 +1,16 @@
+1126e	crt0_start
+11368	xbios
+11378	bios
+11388	gemdos
+16d36	load_hyber
+16ee4	main_loop
+16f50	decide_action
+1721c	run_house_event
+172a6	start_action
+1747e	secondary_desire
+17c46	new_person
+17f0c	clear_daily_flags
+1876a	rnd
+2459c	weekday
+27270	dequeue_house_event
+28490	enqueue_query

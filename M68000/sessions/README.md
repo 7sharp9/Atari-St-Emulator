@@ -19,6 +19,7 @@ continuation record: the next-session prompt is always the one line `/resume <wo
 | `impossamole.md` | Impossamole reversing (`reversing/impossamole/`) |
 | `midwinter.md` | Midwinter reversing, first 3D game (`reversing/midwinter/`) |
 | `lemmings.md` | Lemmings reversing, lemming behaviour first (`reversing/lemmings/`) |
+| `lcp.md` | Little Computer People reversing: the man's behaviour scheduler, needs and queries (`reversing/lcp/`) |
 | `populous.md` | Populous reversing (`reversing/populous/`) |
 | `populous2.md` | Populous II reversing (`reversing/populous2/`) |
 | `powermonger.md` | PowerMonger reversing and port (`reversing/powermonger/`) |

@@ -1,0 +1,109 @@
+kbd 03
+s 300000
+kbd 83
+s 60000000
+mouse move -127 -127
+s 30000
+mouse move -127 -127
+s 30000
+mouse move 120 80
+s 30000
+mouse move 15 15
+s 80000000
+mouse down l
+s 50000
+mouse up l
+s 50000
+mouse down l
+s 50000
+mouse up l
+s 100000000
+mouse down l
+s 50000
+mouse up l
+s 50000
+mouse down l
+s 50000
+mouse up l
+s 100000000
+kbd 20
+s 200000
+kbd a0
+s 400000
+kbd 1e
+s 200000
+kbd 9e
+s 400000
+kbd 2f
+s 200000
+kbd af
+s 400000
+kbd 12
+s 200000
+kbd 92
+s 400000
+kbd 1c
+s 200000
+kbd 9c
+s 400000
+s 100000000
+kbd 02
+s 200000
+kbd 82
+s 400000
+kbd 02
+s 200000
+kbd 82
+s 400000
+kbd 02
+s 200000
+kbd 82
+s 400000
+kbd 08
+s 200000
+kbd 88
+s 400000
+kbd 09
+s 200000
+kbd 89
+s 400000
+kbd 07
+s 200000
+kbd 87
+s 400000
+kbd 1c
+s 200000
+kbd 9c
+s 400000
+s 100000000
+kbd 02
+s 200000
+kbd 82
+s 400000
+kbd 03
+s 200000
+kbd 83
+s 400000
+kbd 0b
+s 200000
+kbd 8b
+s 400000
+kbd 0b
+s 200000
+kbd 8b
+s 400000
+kbd 1c
+s 200000
+kbd 9c
+s 400000
+s 200000000
+kbd 19
+s 200000
+kbd 99
+s 400000
+kbd 1c
+s 200000
+kbd 9c
+s 400000
+s 300000000
+snap scratchpad/lcp/replay/house_replay.snap
