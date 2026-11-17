@@ -22,3 +22,14 @@
 26914	frame_wait
 263a6	frame_gate_and_draw
 27222	enqueue_house_event
+17b5c	read_key
+18656	wait_key
+1fb36	alarm_ring
+21a8c	walk_and_sit
+21c30	ev_phone_call
+21f62	ev_dog_food
+21f7c	ev_record
+222ea	ev_food
+224ac	ev_book
+2310a	flash_2ae06
+26fe0	key_action

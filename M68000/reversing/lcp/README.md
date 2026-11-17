@@ -14,7 +14,9 @@ the top-level chooser (1000/1000), the time-of-day/personality chooser (2000/200
 (100/100), each with broken-model controls that fail. Kroah's 2006 reverse engineering of the same ST version
 (see "Prior art") described this structure first; the gates here confirm it at the instruction level and add three
 things it does not state: the no-immediate-repeat draw, a player-query queue that leaks a slot whenever it drops a
-request, and that two of the eight personalities are copies of two others.
+request, and that two of the eight personalities are copies of two others. The control keys include one the crack's
+list omits (Ctrl-B, a book at the door), petting resets happiness to its lowest level rather than raising it, and the
+roughly hourly house event the clock raises is a phone call ("Control keys and house events").
 
 ## Provenance
 
@@ -216,12 +218,12 @@ VBLs and 10000 ticks of the 200 Hz clock, i.e. 50 emulated seconds; the frame co
    needs the toilet a fixed time after eating; drinking plays no part (writer census, not driven).
 5. House event: between 08:00 and 21:59, `rnd(0,100) < 2` (2 chances in 101 each minute, about once an hour), with
    `$2ae16` and the away flag `$51418` both clear, sets `$2ae12` (the per-frame ring sound in `$26914`) and queues house
-   event `$1e` (`$27222`: first free slot of the ten at `$2c948`, nothing if he is away or the last slot is taken).
+   event `$1e`, a phone call (`$27222`: first free slot of the ten at `$2c948`, nothing if he is away or the last slot is taken).
 6. Once an hour, unless he is ill with happiness at 2, the happiness countdown `$51456` drops; at 0 happiness takes a
    step in its direction and bounces between 0 and 2, and the countdown restarts from that level's duration
    (`$51450 + 2*level`, 6..24, 6..24 and 6..12 hours). So happiness is a slow triangle wave 0, 1, 2, 1, 0, ..., pushed
-   up by starvation and held at 2 while he is ill. Which end is happy is not settled here (the level's UI text is not
-   read); illness pushes it to 2.
+   up by starvation and held at 2 while he is ill. Petting (Ctrl-P) sets it to 0, so 0 is probably the happy end
+   ("Control keys and house events"; the level's on-screen text is not read).
 
 Proof: `py/gate_tick.py 1000 1` pokes 1000 states (every word above, the event queue and the TOS seed; biased so
 that each counter is often one tick from rolling over, and 30% of seeds win the event roll), calls `$24648` and
@@ -244,6 +246,60 @@ thirst runs out again within 75 minutes, illness under neglect never passes 2. R
 of minutes with both needs at 3, over every thirst and hunger timer pair (45..75 by 75..120): 690 pairs never pass
 illness 1 (thirst timer 59 minutes or less), 736 peak at 2, and no man spends more than 21% of the week at illness 2. This
 is arithmetic on the model, not a run of the game.
+
+## Control keys and house events
+
+The crack's `READ.ME` lists seven control keys. The code handles eight. Every frame, `$26914` reads a key with
+`$17b5c` (GEMDOS) unless he is away or busy; Ctrl-A, B, C, D, F, P, R and W go straight to `$26fe0`, and any other key
+opens the typing line. `$26fe0` jumps through the 23-entry table at `$2cc18`, one entry per Ctrl-letter. The entries
+not listed below fall through to the typing line. Five keys queue a house event with `$27222`, and `$1721c` later runs
+it:
+
+| key | `READ.ME` | what `$26fe0` does | event and handler |
+|---|---|---|---|
+| Ctrl-A | set off alarm clock | sets `$3df6c`; the wait loop `$18656` runs `$1fb36`, which clears it | none |
+| Ctrl-B | not listed | queues the event | `$20` `$224ac` |
+| Ctrl-C | make phone ring | unless a call is under way (`$2ae16`): sets the ring flag `$2ae12`, queues the event | `$1e` `$21c30` |
+| Ctrl-D | dog food at the door | queues the event | `$1f` `$21f62` |
+| Ctrl-F | food at the door if needed | if the cans (bits 9..11 of `$5147e`) are below 4, queues the event; at 4, sets `$3e26e` instead | `$1d` `$222ea` |
+| Ctrl-P | pet him in his chair | only while `$2c944` is set and no pet is running: happiness `$5144e` = 0, direction +1, countdown from `t0`, starts the pet animation (`$2c946`) | none |
+| Ctrl-R | record at the door | unless the typing line is open: queues the event | `$1c` `$21f7c` |
+| Ctrl-W | fill the water bottle | unless the bottle `$5141a` is already 10: calls `$1eff6($13)`, then `$23568(1)`, which fills it | none |
+
+**Ctrl-B delivers a book.** `$224ac` has the same body as the record handler `$21f7c`: walk to the door, open it, take
+the object, carry it away. The two differ only in which object flag they clear (`$2c9be` against `$2c9c0`), and the
+record handler also counts records in `$4c9ee`. In the frames he carries a green object from the door, up to the
+study, and puts it on the bookcase, which gains a green book on its top shelf (`keys/Bseq_*.png`, one run). The crack
+list leaves it out; Kroah's pages have not been checked for it.
+
+**The phone call is the hourly house event.** Event `$1e` is the one the clock tick raises (2 chances in 101 each
+minute, "Needs and the clock" step 5), and the same event Ctrl-C queues. `$21c30` walks him to his chair (`$21a8c`,
+which sets the seated flag `$2c944` once he gets there), answers, talks for a random number of rounds with random
+gestures, then waits for any pet in progress to finish before he gets up. So "friends call" about once an hour of
+daytime without the player.
+
+**Petting resets happiness to 0.** Ctrl-P does not add a step of happiness. It restarts the triangle wave at level 0,
+rising, with the level-0 duration `t0` (6..24 hours). Starvation pushes the level toward 2 (`$2489e`) and petting
+sets it to 0. That makes 0 the happy end, inferred from what the two writers do; the level's on-screen text has not
+been read. Pressing it outside a call is a no-op, because the seated flag `$2c944` is 0 (seen in the drive below). The
+`READ.ME` says he must be in his easy chair. In the code, `$21a8c` sets the flag when he arrives at an object and
+sits: the phone handler, the action dispatcher `$172a6` and two other routines call it.
+
+**Event `$23` is never queued.** `$1721c` has a case for event `$23` (`$2310a`, which flashes `$2ae06` four times).
+A raw scan of the text segment finds six calls to `$27222`: the tick and the five keys above, with events `$1c`..`$20`
+pushed. Only `$27222` and `$27270` refer to the queue `$2c948`, and no longword holding `$27222` exists that a pointer
+call could use. So the `$23` case is dead. `$2310a` is still called directly from three places, two of them outside
+`$1721c`.
+
+Drive: `py/ctrl_keys.py 150e6 -ABCDFPRW` forks `house.snap` once per key. Each fork holds Ctrl and the letter for
+30,000 steps, then runs 150M steps with write watches on the queue and the keys' flags, and instruction-read watches
+on each handler's entry. In the no-key control nothing is queued and no handler runs. B, C, D, F and R each queue
+exactly their event (`$20`, `$1e`, `$1f`, `$1d`, `$1c`, written by `$27268`), and the handler starts within 10M steps (the drive polls in 5M-step chunks);
+D's `$21f62` enters `$222ea` as its body says. A runs `$1fb36` within 25M steps, which clears `$3df6c` at `$1fb76`. W writes 10 to the
+bottle at `$2365c`. P writes nothing (seated flag 0). `py/pet_key.py` makes the phone ring, stops when `$21ade` sets
+`$2c944`, and forks there. With Ctrl-P, happiness goes 1 → 0, countdown 18 → 7 (`t0`), direction -1 → +1 (writes at
+`$2708c`, `$2709a`, `$27092`), and the pet flag is set and later cleared at `$26be8`. In the no-key control from the
+same fork, none of these words is written. One run per key, so these are single observations, not rates.
 
 ## A new person
 
@@ -314,6 +370,17 @@ can count, `+$5a` head type, `+$5e` player name, `+$76` the man's name. They agr
 | `$24a04` | days in the month | body; tick gate |
 | `$263a6` | the frame: 125 ms and 2-VBL gate, then draw and count `$51424` | body; watch |
 | `$26914` | frame wait: N+1 frames of per-frame services | body |
+| `$17b5c` | read a key (GEMDOS; F1..F10 to `$f1`..`$fa`) | body |
+| `$18656` | wait for a key, running alarm, toilet, drink and house events meanwhile | body |
+| `$1fb36` | ring the alarm clock | called when `$3df6c` is set (call site; drive) |
+| `$21a8c` | walk to an object and sit (sets `$2c944`) | body |
+| `$21c30` | house event `$1e`: phone call | body; Ctrl-C drive |
+| `$21f62` | house event `$1f`: dog food at the door (`$222ea` with `$409ec` set) | body; Ctrl-D drive |
+| `$21f7c` | house event `$1c`: record at the door | body; Ctrl-R drive |
+| `$222ea` | house event `$1d`: food at the door, cans filled to 4 | body; Ctrl-F drive |
+| `$224ac` | house event `$20`: book at the door, shelved in the study | body and frames; Ctrl-B drive |
+| `$2310a` | flash `$2ae06` four times (event `$23`, never queued) | body; raw scan |
+| `$26fe0` | act on a key (Ctrl-letter table `$2cc18`, else the typing line) | body; drive |
 | `$27222` | queue a house event (first free of ten; not when away or full) | body; tick gate |
 | `$27270` | dequeue a house event | called before `$1721c` (inferred from the call site) |
 | `$28490` | enqueue a parsed player request | body |
@@ -333,11 +400,12 @@ can count, `+$5a` head type, `+$5e` player name, `+$76` the man's name. They agr
 | `py/gate_toplevel.py`, `py/gate_secondary.py`, `py/gate_newperson.py`, `py/gate_tick.py` | the four gates (counts above) |
 | `py/clock_rate.py` | frames, VBLs, 200 Hz ticks and game seconds per chunk of a natural run, as CSV ("Needs and the clock") |
 | `py/natural_tick.py` | the tick model replayed against a natural run's own writes ("Needs and the clock") |
+| `py/ctrl_keys.py`, `py/pet_key.py` | the control-key drives ("Control keys and house events"); frames in `$LCP_WORK/keys/` |
 | `gates.toml` | the gates for `tools/gates.py` |
 
 ## Not exercised in the emulator
 
-What the man does when ill or unhappy beyond the cascade's rules, which end of happiness is happy, the
-house-event handlers and the control keys, the query parser and its vocabulary, the word puzzle and card games,
+What the man does when ill or unhappy beyond the cascade's rules, the happiness level's on-screen text, what each
+house-event handler writes beyond the flags listed in "Control keys and house events", the query parser and its vocabulary, the word puzzle and card games,
 the letters, saving to `HYBER` (the leak drive wrote one disk sector, not decoded), a new person made through a real boot
 without `HYBER`, and a session made deaf by drops alone.
