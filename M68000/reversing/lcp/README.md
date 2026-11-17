@@ -285,11 +285,24 @@ been read. Pressing it outside a call is a no-op, because the seated flag `$2c94
 `READ.ME` says he must be in his easy chair. In the code, `$21a8c` sets the flag when he arrives at an object and
 sits: the phone handler, the action dispatcher `$172a6` and two other routines call it.
 
-**Event `$23` is never queued.** `$1721c` has a case for event `$23` (`$2310a`, which flashes `$2ae06` four times).
-A raw scan of the text segment finds six calls to `$27222`: the tick and the five keys above, with events `$1c`..`$20`
-pushed. Only `$27222` and `$27270` refer to the queue `$2c948`, and no longword holding `$27222` exists that a pointer
-call could use. So the `$23` case is dead. `$2310a` is still called directly from three places, two of them outside
-`$1721c`.
+**Event `$23` is a gesture nothing can trigger.** `$1721c` has a case for event `$23`, and `$172a6` has a case for
+action `$23`. Both call `$2310a`, the gesture that rule 7 of the cascade calls by Kroah's name, "agree". Its body picks a pose for
+`$2ae06` from the man's current one (`$2ae04 & 7`: 8, 9, 10, 14 or 15) and waits for him to reach it (`$268f8` steps
+until `$2ae04` equals `$2ae06`). It then alternates four times between the pose `$2ae04 & 7` and `$2ae04 | $10`, and
+returns him to where he was. That reads as a short repeated head or body movement; what the pose bits look like has
+not been rendered. Neither case can be reached:
+- **As an event.** A raw scan of the text segment finds six calls to `$27222`: the tick and the five keys above,
+  pushing events `$1c`..`$20`. Only `$27222` and `$27270` refer to the queue `$2c948`, and no longword holding `$27222`
+  exists for a pointer call.
+- **As an action.** The action word `$2ae0c` has eleven absolute writers in the text segment. Eight are constants
+  in `$16f50` (`$29`, `$15`, `$0d`, `$12`, `$19` twice, `$2b`, `$2c`), and `$172a6` clears it to `$ffff`. One is the secondary desire's
+  draw from lists A, B and C, which hold no `$23`. One is the player-query head, filled by the parser `$28208` from
+  the 33 rules at `$2d066`, none of which yields `$23`.
+
+The gesture itself does run. Four call sites in the whole image call `$2310a` directly: the two dead cases, the
+cascade before it obeys a request for action `$10` or `$1a` (`$171ac`), and `$1f76e` (`$1f940`), a routine not yet
+named. So event and action `$23` look like a way to trigger the gesture on demand that was never
+wired to a key or a word (inferred).
 
 Drive: `py/ctrl_keys.py 150e6 -ABCDFPRW` forks `house.snap` once per key. Each fork holds Ctrl and the letter for
 30,000 steps, then runs 150M steps with write watches on the queue and the keys' flags, and instruction-read watches
@@ -379,7 +392,7 @@ can count, `+$5a` head type, `+$5e` player name, `+$76` the man's name. They agr
 | `$21f7c` | house event `$1c`: record at the door | body; Ctrl-R drive |
 | `$222ea` | house event `$1d`: food at the door, cans filled to 4 | body; Ctrl-F drive |
 | `$224ac` | house event `$20`: book at the door, shelved in the study | body and frames; Ctrl-B drive |
-| `$2310a` | flash `$2ae06` four times (event `$23`, never queued) | body; raw scan |
+| `$2310a` | the "agree" gesture (Kroah's name): a pose, then four alternations of pose and pose `\| $10` | body; callers by raw scan; event and action `$23` unreachable |
 | `$26fe0` | act on a key (Ctrl-letter table `$2cc18`, else the typing line) | body; drive |
 | `$27222` | queue a house event (first free of ten; not when away or full) | body; tick gate |
 | `$27270` | dequeue a house event | called before `$1721c` (inferred from the call site) |
