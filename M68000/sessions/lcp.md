@@ -1,10 +1,10 @@
 # lcp: handoff
 
-Updated 2026-11-17 by the session that started the workstream (see `git log -- M68000/reversing/lcp` for the commit).
+Updated 2026-11-17 by the session that started the workstream.
 
 ## Resume point
 
-- Last commit of this workstream: the one adding `reversing/lcp/` and this file.
+- Last commit of this workstream: `23dd01b` (adds `reversing/lcp/`); skill lesson `b448975`.
 - Working data: `scratchpad/lcp/` (disk images in `disk/`, extracted files in `files/`, decompile in `decomp/`, boot
   segments in `boot/`, query drive in `q/`). Rebuild: `reversing/lcp/README.md` "Provenance" (unzip, `msa2st.py`,
   `py/patch_odd.py`, `extract_disk.py`) and "How it was run".
@@ -56,6 +56,8 @@ Nothing running.
 - The man reaches `$16f50` only once or twice per 30M steps: a `hits`/`bp` budget for a decision must be long.
 
 ## Waiting on Dave
+
+- Focus set by Dave: AI and algorithms, curiosities and secrets. Items 1, 4 and 5 below serve it most.
 
 - The behaviour model is a fixed-priority cascade with lookup tables, not needs-weighted scoring, and Kroah published
   its structure in 2006 (README "Prior art"). A "generative agents, 1985" post has to frame the 1985 side as a
