@@ -120,6 +120,31 @@ emulator raises no horizontal-blank interrupt, and TOS's handler for it is what 
 What this still does not show: the demo reads no input, so the keyboard and mouse path inside the game is not
 exercised; only the logged ranges are compared after the start; and it is one flight of one game.
 
+## What is proven: a whole callcap corpus inside one Hatari flight
+
+Because the flight is the same on both machines, Hatari's own run passes through every call this emulator's `callcap`
+corpus was taken from, so one Hatari process can check a whole corpus. `py/hatari_calls.py <snap> <ticks.log>` lets
+Hatari fly from `S1b.snap` with interrupts live and logs, with two trace breakpoints, the registers and the routine's
+inputs at every entry of `Input_Autopilot` `$2538c` and the registers and its outputs at every return (`$255d4`; the
+routine has one caller, the `bsr.w` at `$255d0`). Each call is compared with this emulator's `callcap` of the same
+natural entry, from the pilot corpus that gates the pilot model (`../virus/demo.md`, "The pilot";
+`../virus/py/pilot/capture_pilot.py`).
+
+Result, from a fresh capture: **3,496/3,496 calls agree at entry** (D0-A7, the five condition codes and the 3,341
+input bytes the capture dumps: pilot words, ship, matrix, pool count, tick, countdown and the pool) **and 3,496/3,496
+at return** (D0-A6 against `callcap`'s register changes, A7 four above its entry value, and the 33 output bytes, pilot
+words `$270a2`, matrix `$270d4` and countdown `$62a60`, against the entry dump with `callcap`'s memory changes applied).
+`callcap` records no write outside those three ranges and the stack below the entry A7 in any of the calls, so they
+are all the memory the routine changes. Control: with `$62a60` raised by one by Hatari's debugger at the first entry,
+0/20 calls agree and call 0 is reported at that byte. `py/gate_hatari_calls.sh` runs the capture, the 3,496 calls and
+the control in about 3 minutes, against about 3 hours for one Hatari process per call.
+
+This is the corpus the pilot model is gated on (model == `callcap` 3,496/3,496), so for that model the judge has been
+checked on every call it judged, not on a sample. It differs from the one-call check above in what it compares: the
+call runs unmasked inside the game on Hatari and masked under `callcap` here, and only the routine's inputs and
+outputs are compared, not all of RAM. The same script fits any routine with one call site and a corpus that dumps
+its inputs; a routine with several callers needs one return breakpoint per caller.
+
 ## What the call check leaves out
 
 - **Only RAM and CPU registers are transferred.** Hatari's video, MFP (timer and interrupt chip), sound chip, keyboard
@@ -130,9 +155,8 @@ exercised; only the logged ranges are compared after the start; and it is one fl
   machine) before its breakpoint is tested, so the Hatari side returns to `$00FC0000` and the four-byte return slot is
   left out of the compare.
 - **Addresses `$0-$7` are not compared**: on a real ST and in Hatari they read from ROM.
-- **Cost**: about 3 s per call, almost all of it Hatari's start and 200-frame boot. A 3,496-call corpus one process per
-  call would take about 3 hours. Chaining many calls inside one Hatari process (reload RAM at each return) should
-  remove most of that; it has not been tried.
+- **Cost**: about 3 s per call, almost all of it Hatari's start and 200-frame boot. For a whole corpus use the
+  in-flight check of the section above.
 
 ## Other uses of Hatari, not tried here
 
@@ -156,5 +180,6 @@ source build (`DEVELOPING.md`, "macOS") works the same way. All three gates need
 `scratchpad/learning/hatari_callcap/gate.log` plus one directory per call (both emulators' logs, the debugger scripts,
 the RAM images); the game gate writes `scratchpad/learning/hatari_game/gate.log` and one directory per run. The boot gate needs
 `scratchpad/virus/aha.st` and this emulator's side from the game gate (`t2000/ours.json`, or `flight1/ours.json` for
-`full`), and writes `scratchpad/learning/hatari_boot/gate.log`. None is in a `gates.toml`: they depend on a Hatari
+`full`), and writes `scratchpad/learning/hatari_boot/gate.log`. The corpus gate takes its own fresh capture into
+`scratchpad/learning/hatari_calls/`. None is in a `gates.toml`: they depend on a Hatari
 binary outside the repo.
