@@ -1,0 +1,1647 @@
+{
+ "nodes": [
+  {
+   "id": "p0",
+   "type": "text",
+   "x": 1260,
+   "y": 0,
+   "width": 460,
+   "height": 170,
+   "text": "**Arcade Learning Environment** (2013, JAIR)\nAtari 2600 emulator packaged as an evaluation platform for general agents.\n[OpenAlex](https://openalex.org/W2150468603) \u00b7 3,605 cites \u00b7 basis T"
+  },
+  {
+   "id": "p1",
+   "type": "text",
+   "x": 1260,
+   "y": 190,
+   "width": 460,
+   "height": 170,
+   "text": "**Revisiting the ALE** (2018, JAIR)\nEvaluation protocols and open problems for agents on the ALE.\n[OpenAlex](https://openalex.org/W2754879180) \u00b7 671 cites \u00b7 basis T"
+  },
+  {
+   "id": "p2",
+   "type": "text",
+   "x": 1260,
+   "y": 380,
+   "width": 460,
+   "height": 170,
+   "text": "**Gotta Learn Fast (Gym Retro)** (2018, arXiv)\nBenchmark built on the Sonic the Hedgehog games, for transfer and few-shot learning.\n[OpenAlex](https://openalex.org/W2796979132) \u00b7 204 cites \u00b7 basis A"
+  },
+  {
+   "id": "p3",
+   "type": "text",
+   "x": 1260,
+   "y": 570,
+   "width": 460,
+   "height": 170,
+   "text": "**Survey: deep RL in video games** (2019, arXiv)\nSurvey of deep reinforcement learning methods across video games.\n[OpenAlex](https://openalex.org/W2996726407) \u00b7 320 cites \u00b7 basis T"
+  },
+  {
+   "id": "p4",
+   "type": "text",
+   "x": 1260,
+   "y": 760,
+   "width": 460,
+   "height": 170,
+   "text": "**Statistical precipice** (2021, arXiv)\nPoint estimates over a few training runs ignore statistical uncertainty; argues for interval estimates.\n[OpenAlex](https://openalex.org/W3197485521) \u00b7 1,082 cites \u00b7 basis A",
+   "color": "4"
+  },
+  {
+   "id": "p5",
+   "type": "text",
+   "x": 1260,
+   "y": 950,
+   "width": 460,
+   "height": 144,
+   "text": "**Atari-5** (2022, arXiv)\nDistils the 57-game suite down to five games.\n[OpenAlex](https://openalex.org/W4303449812) \u00b7 33 cites \u00b7 basis T"
+  },
+  {
+   "id": "p6",
+   "type": "text",
+   "x": 1260,
+   "y": 1114,
+   "width": 460,
+   "height": 170,
+   "text": "**OCAtari** (2023, arXiv)\nAtari environments extended with object-centric state instead of pixels only.\n[OpenAlex](https://openalex.org/W4380993741) \u00b7 43 cites \u00b7 basis A",
+   "color": "4"
+  },
+  {
+   "id": "p7",
+   "type": "text",
+   "x": 1260,
+   "y": 1304,
+   "width": 460,
+   "height": 170,
+   "text": "**Gymnasium** (2025, NeurIPS)\nThe standard reset/step interface for reinforcement learning environments.\n[OpenAlex](https://openalex.org/W7172656275) \u00b7 157 cites \u00b7 basis T",
+   "color": "4"
+  },
+  {
+   "id": "b0",
+   "type": "text",
+   "x": 640,
+   "y": 587,
+   "width": 420,
+   "height": 300,
+   "color": "5",
+   "text": "## Environments and evaluation\nHow a game is wrapped for a learner (reset, step, observation, reward, done) and how results are compared.\n\n**For this repo:** The emulator has the pieces (seeded starts, snapshots, RAM-derived reward) but no single env interface. The 2% weight-change noise measured on Virus is the problem the 'statistical precipice' paper names."
+  },
+  {
+   "id": "p9",
+   "type": "text",
+   "x": 1260,
+   "y": 1574,
+   "width": 460,
+   "height": 170,
+   "text": "**DQN** (2015, Nature)\nHuman-level control of Atari games from pixels with a deep Q-network.\n[OpenAlex](https://openalex.org/W2145339207) \u00b7 39,470 cites \u00b7 basis T"
+  },
+  {
+   "id": "p10",
+   "type": "text",
+   "x": 1260,
+   "y": 1764,
+   "width": 460,
+   "height": 170,
+   "text": "**PPO** (2017, arXiv)\nProximal policy optimisation, the default policy-gradient method.\n[OpenAlex](https://openalex.org/W2736601468) \u00b7 38,652 cites \u00b7 basis T"
+  },
+  {
+   "id": "p11",
+   "type": "text",
+   "x": 1260,
+   "y": 1954,
+   "width": 460,
+   "height": 170,
+   "text": "**Rainbow** (2018, AAAI)\nCombines the separate DQN improvements into one agent.\n[OpenAlex](https://openalex.org/W2761873684) \u00b7 2,712 cites \u00b7 basis T"
+  },
+  {
+   "id": "p12",
+   "type": "text",
+   "x": 1260,
+   "y": 2144,
+   "width": 460,
+   "height": 170,
+   "text": "**IMPALA** (2018, arXiv)\nDistributed actor-learner architecture with importance weighting.\n[OpenAlex](https://openalex.org/W2786036274) \u00b7 1,705 cites \u00b7 basis T"
+  },
+  {
+   "id": "p13",
+   "type": "text",
+   "x": 1260,
+   "y": 2334,
+   "width": 460,
+   "height": 170,
+   "text": "**R2D2** (2018, ICLR)\nRecurrent experience replay in distributed reinforcement learning.\n[OpenAlex](https://openalex.org/W2908064123) \u00b7 635 cites \u00b7 basis T"
+  },
+  {
+   "id": "p14",
+   "type": "text",
+   "x": 1260,
+   "y": 2524,
+   "width": 460,
+   "height": 170,
+   "text": "**Agent57** (2020, arXiv)\nFirst deep RL agent above the standard human benchmark on all 57 Atari games.\n[OpenAlex](https://openalex.org/W3013618273) \u00b7 629 cites \u00b7 basis A"
+  },
+  {
+   "id": "p15",
+   "type": "text",
+   "x": 1260,
+   "y": 2714,
+   "width": 460,
+   "height": 170,
+   "text": "**BBF** (2023, arXiv)\nValue-based agent, super-human on the Atari 100K benchmark by scaling the value network.\n[OpenAlex](https://openalex.org/W4379087150) \u00b7 165 cites \u00b7 basis A",
+   "color": "4"
+  },
+  {
+   "id": "p16",
+   "type": "text",
+   "x": 1260,
+   "y": 2904,
+   "width": 460,
+   "height": 196,
+   "text": "**PQN (Simplifying deep TD)** (2024, arXiv)\nQ-learning aimed at dropping the replay buffer and target networks; built for many parallel environments (R).\n[OpenAlex](https://openalex.org/W4400517417) \u00b7 58 cites \u00b7 basis A",
+   "color": "4"
+  },
+  {
+   "id": "p17",
+   "type": "text",
+   "x": 1260,
+   "y": 3120,
+   "width": 460,
+   "height": 170,
+   "text": "**Discovered RL rule** (2025, Nature)\nA machine-discovered reinforcement learning rule that outperforms hand-designed ones.\n[OpenAlex](https://openalex.org/W4415437559) \u00b7 61 cites \u00b7 basis A"
+  },
+  {
+   "id": "b1",
+   "type": "text",
+   "x": 640,
+   "y": 2295,
+   "width": 420,
+   "height": 274,
+   "color": "5",
+   "text": "## Model-free learning\nNo model of the game: a policy or value function is learned from trial and error alone. Reliable, but costs the most game steps.\n\n**For this repo:** At 4.4M emulated instructions/s (about 367 frames/s per core) the large-budget methods here are slow; BBF-class sample-efficient methods fit."
+  },
+  {
+   "id": "p19",
+   "type": "text",
+   "x": 1260,
+   "y": 3390,
+   "width": 460,
+   "height": 170,
+   "text": "**AlphaZero** (2018, Science)\nOne self-play algorithm masters chess, shogi and Go, searching with the true rules.\n[OpenAlex](https://openalex.org/W2902907165) \u00b7 7,467 cites \u00b7 basis T",
+   "color": "4"
+  },
+  {
+   "id": "p20",
+   "type": "text",
+   "x": 1260,
+   "y": 3580,
+   "width": 460,
+   "height": 170,
+   "text": "**MuZero** (2020, Nature)\nMasters Atari, Go, chess and shogi by planning with a learned model.\n[OpenAlex](https://openalex.org/W2989847975) \u00b7 3,329 cites \u00b7 basis T"
+  },
+  {
+   "id": "p21",
+   "type": "text",
+   "x": 1260,
+   "y": 3770,
+   "width": 460,
+   "height": 170,
+   "text": "**EfficientZero** (2021, arXiv)\nSample-efficient visual RL built on MuZero, aimed at human-level Atari from limited data.\n[OpenAlex](https://openalex.org/W3208460365) \u00b7 193 cites \u00b7 basis A",
+   "color": "4"
+  },
+  {
+   "id": "p22",
+   "type": "text",
+   "x": 1260,
+   "y": 3960,
+   "width": 460,
+   "height": 170,
+   "text": "**EfficientZero V2** (2024, arXiv)\nExtends EfficientZero to both discrete and continuous control.\n[OpenAlex](https://openalex.org/W4392427796) \u00b7 42 cites \u00b7 basis A"
+  },
+  {
+   "id": "b2",
+   "type": "text",
+   "x": 640,
+   "y": 3623,
+   "width": 420,
+   "height": 274,
+   "color": "5",
+   "text": "## Search with a model\nPlan ahead by tree search, using the true rules or a learned model of them.\n\n**For this repo:** stserver's in-memory fork and restore is the primitive tree search needs; the exact Python tick, shot and seeder functions in virus/py/mpc are a true-rules model, which is what AlphaZero assumes."
+  },
+  {
+   "id": "p24",
+   "type": "text",
+   "x": 1260,
+   "y": 4230,
+   "width": 460,
+   "height": 170,
+   "text": "**World Models** (2018, arXiv)\nRecurrent world models with the policy found by evolution.\n[OpenAlex](https://openalex.org/W2890208753) \u00b7 1,178 cites \u00b7 basis T"
+  },
+  {
+   "id": "p25",
+   "type": "text",
+   "x": 1260,
+   "y": 4420,
+   "width": 460,
+   "height": 144,
+   "text": "**SimPLe** (2019, arXiv)\nModel-based reinforcement learning for Atari.\n[OpenAlex](https://openalex.org/W2920362155) \u00b7 898 cites \u00b7 basis T"
+  },
+  {
+   "id": "p26",
+   "type": "text",
+   "x": 1260,
+   "y": 4584,
+   "width": 460,
+   "height": 144,
+   "text": "**DreamerV2** (2020, arXiv)\nMasters Atari with discrete world models.\n[OpenAlex](https://openalex.org/W3091507139) \u00b7 1,064 cites \u00b7 basis T"
+  },
+  {
+   "id": "p27",
+   "type": "text",
+   "x": 1260,
+   "y": 4748,
+   "width": 460,
+   "height": 144,
+   "text": "**IRIS** (2022, arXiv)\nTransformers as sample-efficient world models.\n[OpenAlex](https://openalex.org/W4294435908) \u00b7 250 cites \u00b7 basis T"
+  },
+  {
+   "id": "p28",
+   "type": "text",
+   "x": 1260,
+   "y": 4912,
+   "width": 460,
+   "height": 144,
+   "text": "**STORM** (2023, NeurIPS)\nEfficient stochastic transformer world models.\n[OpenAlex](https://openalex.org/W7133196033) \u00b7 177 cites \u00b7 basis T"
+  },
+  {
+   "id": "p29",
+   "type": "text",
+   "x": 1260,
+   "y": 5076,
+   "width": 460,
+   "height": 196,
+   "text": "**TD-MPC2** (2023, arXiv)\nTrajectory optimisation in the latent space of a learned model; 104 tasks with one set of hyperparameters.\n[OpenAlex](https://openalex.org/W4387964172) \u00b7 385 cites \u00b7 basis A",
+   "color": "4"
+  },
+  {
+   "id": "p30",
+   "type": "text",
+   "x": 1260,
+   "y": 5292,
+   "width": 460,
+   "height": 170,
+   "text": "**Delta-IRIS** (2024, arXiv)\nEfficient world models with context-aware tokenisation.\n[OpenAlex](https://openalex.org/W4400141986) \u00b7 28 cites \u00b7 basis T"
+  },
+  {
+   "id": "p31",
+   "type": "text",
+   "x": 1260,
+   "y": 5482,
+   "width": 460,
+   "height": 170,
+   "text": "**DreamerV3** (2025, Nature)\nThird-generation Dreamer: one general algorithm across domains without per-domain tuning.\n[OpenAlex](https://openalex.org/W4409147637) \u00b7 2,473 cites \u00b7 basis A",
+   "color": "4"
+  },
+  {
+   "id": "p32",
+   "type": "text",
+   "x": 1260,
+   "y": 5672,
+   "width": 460,
+   "height": 170,
+   "text": "**Dreamer 4** (2025, arXiv)\nTrains agents by RL inside a fast, accurate world model; demonstrated in Minecraft.\n[OpenAlex](https://openalex.org/W4415336982) \u00b7 175 cites \u00b7 basis A"
+  },
+  {
+   "id": "p33",
+   "type": "text",
+   "x": 1260,
+   "y": 5862,
+   "width": 460,
+   "height": 170,
+   "text": "**Simulus** (2025, arXiv)\nCombines improvements in sample-efficient world-model agents.\n[OpenAlex](https://openalex.org/W4407713845) \u00b7 7 cites \u00b7 basis T"
+  },
+  {
+   "id": "b3",
+   "type": "text",
+   "x": 640,
+   "y": 4981,
+   "width": 420,
+   "height": 300,
+   "color": "5",
+   "text": "## Learned world models\nA network learns to predict the game; the policy is trained or planned inside that prediction.\n\n**For this repo:** The route when a game has not been reversed. TD-MPC2 is the published relative of the Virus MPC pilot (planning over a short horizon), with a learned model where ours is exact."
+  },
+  {
+   "id": "p35",
+   "type": "text",
+   "x": 1260,
+   "y": 6132,
+   "width": 460,
+   "height": 144,
+   "text": "**Genie** (2024, arXiv)\nGenerative interactive environments.\n[OpenAlex](https://openalex.org/W4392182423) \u00b7 1,004 cites \u00b7 basis T"
+  },
+  {
+   "id": "p36",
+   "type": "text",
+   "x": 1260,
+   "y": 6296,
+   "width": 460,
+   "height": 170,
+   "text": "**GameNGen** (2024, arXiv)\nA diffusion model simulates DOOM interactively at 20 frames/s on one TPU.\n[OpenAlex](https://openalex.org/W4402704721) \u00b7 348 cites \u00b7 basis A"
+  },
+  {
+   "id": "b4",
+   "type": "text",
+   "x": 640,
+   "y": 6175,
+   "width": 420,
+   "height": 248,
+   "color": "5",
+   "text": "## Neural game engines\nA generative model replaces the game itself: frames out, actions in.\n\n**For this repo:** The opposite of this repo's method. These approximate a game nobody has reversed; the reversed routines here are exact and gated against the emulator."
+  },
+  {
+   "id": "p38",
+   "type": "text",
+   "x": 1260,
+   "y": 6566,
+   "width": 460,
+   "height": 196,
+   "text": "**DAgger** (2010, arXiv)\nReduces imitation learning to no-regret online learning (R: the learner's own states are relabelled by the expert).\n[OpenAlex](https://openalex.org/W1931877416) \u00b7 2,539 cites \u00b7 basis T",
+   "color": "4"
+  },
+  {
+   "id": "p39",
+   "type": "text",
+   "x": 1260,
+   "y": 6782,
+   "width": 460,
+   "height": 170,
+   "text": "**Evolution Strategies** (2017, arXiv)\nEvolution strategies as a scalable alternative to reinforcement learning.\n[OpenAlex](https://openalex.org/W2596367596) \u00b7 2,158 cites \u00b7 basis T"
+  },
+  {
+   "id": "p40",
+   "type": "text",
+   "x": 1260,
+   "y": 6972,
+   "width": 460,
+   "height": 170,
+   "text": "**Go-Explore** (2019, arXiv)\nHard exploration (Montezuma's Revenge, Pitfall) by returning to saved states, then exploring (R).\n[OpenAlex](https://openalex.org/W2914261249) \u00b7 509 cites \u00b7 basis A",
+   "color": "4"
+  },
+  {
+   "id": "p41",
+   "type": "text",
+   "x": 1260,
+   "y": 7162,
+   "width": 460,
+   "height": 144,
+   "text": "**First return, then explore** (2021, Nature)\nThe journal version of Go-Explore.\n[OpenAlex](https://openalex.org/W3018036994) \u00b7 558 cites \u00b7 basis T",
+   "color": "4"
+  },
+  {
+   "id": "p42",
+   "type": "text",
+   "x": 1260,
+   "y": 7326,
+   "width": 460,
+   "height": 170,
+   "text": "**Learning by Cheating** (2019, arXiv)\nTrain a privileged agent on ground-truth state, then use it as teacher for a vision-only agent.\n[OpenAlex](https://openalex.org/W2996998055) \u00b7 379 cites \u00b7 basis A",
+   "color": "4"
+  },
+  {
+   "id": "p43",
+   "type": "text",
+   "x": 1260,
+   "y": 7516,
+   "width": 460,
+   "height": 170,
+   "text": "**Decision Transformer** (2021, arXiv)\nReinforcement learning recast as sequence modelling.\n[OpenAlex](https://openalex.org/W3212637808) \u00b7 2,593 cites \u00b7 basis T"
+  },
+  {
+   "id": "p44",
+   "type": "text",
+   "x": 1260,
+   "y": 7706,
+   "width": 460,
+   "height": 144,
+   "text": "**VPT** (2022, NeurIPS)\nLearns to act by watching unlabelled online videos.\n[OpenAlex](https://openalex.org/W7133197435) \u00b7 501 cites \u00b7 basis T"
+  },
+  {
+   "id": "b5",
+   "type": "text",
+   "x": 640,
+   "y": 7058,
+   "width": 420,
+   "height": 300,
+   "color": "5",
+   "text": "## Exploration, imitation, privileged teachers\nWays round the hard parts: return to saved states, copy a demonstrator, or let an agent that sees everything teach one that does not.\n\n**For this repo:** Closest fit to the open Virus problem: the full-memory planner ends 7 of 8 held-out waves, the player-view pilot 0 of 8. That is the teacher and student of 'Learning by Cheating'; DAgger is the training loop."
+  },
+  {
+   "id": "p46",
+   "type": "text",
+   "x": 1260,
+   "y": 7950,
+   "width": 460,
+   "height": 170,
+   "text": "**CuLE** (2019, arXiv)\nGPU-accelerated Atari emulation for reinforcement learning.\n[OpenAlex](https://openalex.org/W2963949762) \u00b7 3 cites \u00b7 basis T",
+   "color": "4"
+  },
+  {
+   "id": "p47",
+   "type": "text",
+   "x": 1260,
+   "y": 8140,
+   "width": 460,
+   "height": 170,
+   "text": "**Sample Factory** (2020, arXiv)\nSingle-machine asynchronous RL from pixels at 100,000 frames/s.\n[OpenAlex](https://openalex.org/W3035554437) \u00b7 110 cites \u00b7 basis A"
+  },
+  {
+   "id": "p48",
+   "type": "text",
+   "x": 1260,
+   "y": 8330,
+   "width": 460,
+   "height": 170,
+   "text": "**Brax** (2021, arXiv)\nDifferentiable rigid-body physics engine for large-scale simulation.\n[OpenAlex](https://openalex.org/W3172279798) \u00b7 676 cites \u00b7 basis T"
+  },
+  {
+   "id": "p49",
+   "type": "text",
+   "x": 1260,
+   "y": 8520,
+   "width": 460,
+   "height": 170,
+   "text": "**EnvPool** (2022, NeurIPS)\nParallel environment execution engine; environment stepping is often the slowest part of training.\n[OpenAlex](https://openalex.org/W7133223694) \u00b7 102 cites \u00b7 basis A",
+   "color": "4"
+  },
+  {
+   "id": "p50",
+   "type": "text",
+   "x": 1260,
+   "y": 8710,
+   "width": 460,
+   "height": 144,
+   "text": "**Jumanji** (2023, arXiv)\nSuite of scalable environments written in JAX.\n[OpenAlex](https://openalex.org/W4381252681) \u00b7 82 cites \u00b7 basis T"
+  },
+  {
+   "id": "p51",
+   "type": "text",
+   "x": 1260,
+   "y": 8874,
+   "width": 460,
+   "height": 170,
+   "text": "**Craftax** (2024, arXiv)\nA fast benchmark, because existing open-ended ones are either too slow or too simple.\n[OpenAlex](https://openalex.org/W4392223126) \u00b7 116 cites \u00b7 basis A"
+  },
+  {
+   "id": "p52",
+   "type": "text",
+   "x": 1260,
+   "y": 9064,
+   "width": 460,
+   "height": 170,
+   "text": "**PufferLib** (2024, arXiv)\nCompatibility layer between RL libraries and environments.\n[OpenAlex](https://openalex.org/W4399911985) \u00b7 25 cites \u00b7 basis T"
+  },
+  {
+   "id": "p53",
+   "type": "text",
+   "x": 1260,
+   "y": 9254,
+   "width": 460,
+   "height": 170,
+   "text": "**Pokemon Red via RL** (2025, IEEE CoG)\nDeep RL completes the opening of a Game Boy role-playing game, up to Cerulean City.\n[OpenAlex](https://openalex.org/W4413321770) \u00b7 13 cites \u00b7 basis A",
+   "color": "4"
+  },
+  {
+   "id": "b6",
+   "type": "text",
+   "x": 640,
+   "y": 8550,
+   "width": 420,
+   "height": 274,
+   "color": "5",
+   "text": "## Throughput: fast and parallel simulators\nRun the game thousands of times at once. Much recent progress is here, not in the learning rule.\n\n**For this repo:** Decides the fast-simulator question. The handoff's planned F# port of the Virus tick is this branch; so would be N emulator instances stepped in one process."
+  },
+  {
+   "id": "p55",
+   "type": "text",
+   "x": 1260,
+   "y": 9524,
+   "width": 460,
+   "height": 170,
+   "text": "**AlphaStar** (2019, Nature)\nGrandmaster level in StarCraft II with multi-agent reinforcement learning.\n[OpenAlex](https://openalex.org/W2982316857) \u00b7 5,527 cites \u00b7 basis T"
+  },
+  {
+   "id": "p56",
+   "type": "text",
+   "x": 1260,
+   "y": 9714,
+   "width": 460,
+   "height": 170,
+   "text": "**OpenAI Five** (2019, arXiv)\nDota 2 with large-scale deep reinforcement learning.\n[OpenAlex](https://openalex.org/W2996037775) \u00b7 2,843 cites \u00b7 basis T"
+  },
+  {
+   "id": "p57",
+   "type": "text",
+   "x": 1260,
+   "y": 9904,
+   "width": 460,
+   "height": 144,
+   "text": "**GT Sophy** (2022, Nature)\nOutraces champion Gran Turismo drivers.\n[OpenAlex](https://openalex.org/W4210870706) \u00b7 664 cites \u00b7 basis T"
+  },
+  {
+   "id": "p58",
+   "type": "text",
+   "x": 1260,
+   "y": 10068,
+   "width": 460,
+   "height": 170,
+   "text": "**DeepNash** (2022, Science)\nMasters Stratego with model-free multi-agent reinforcement learning.\n[OpenAlex](https://openalex.org/W4310705874) \u00b7 388 cites \u00b7 basis T"
+  },
+  {
+   "id": "b7",
+   "type": "text",
+   "x": 640,
+   "y": 9770,
+   "width": 420,
+   "height": 222,
+   "color": "5",
+   "text": "## Successes at scale\nThe headline results: a full commercial game beaten at expert level, each with very large compute.\n\n**For this repo:** Context, not a plan: none of these budgets is available here."
+  },
+  {
+   "id": "p60",
+   "type": "text",
+   "x": 1260,
+   "y": 10338,
+   "width": 460,
+   "height": 170,
+   "text": "**Gato** (2022, TMLR)\nOne generalist network across games, control and language tasks.\n[OpenAlex](https://openalex.org/W4307868887) \u00b7 1,009 cites \u00b7 basis T"
+  },
+  {
+   "id": "p61",
+   "type": "text",
+   "x": 1260,
+   "y": 10528,
+   "width": 460,
+   "height": 170,
+   "text": "**SIMA** (2024, arXiv)\nInstructable agents scaled across many simulated worlds.\n[OpenAlex](https://openalex.org/W4394946817) \u00b7 93 cites \u00b7 basis T"
+  },
+  {
+   "id": "p62",
+   "type": "text",
+   "x": 1260,
+   "y": 10718,
+   "width": 460,
+   "height": 144,
+   "text": "**Survey: LLM game agents** (2024, arXiv)\nSurvey of language-model-based game agents.\n[OpenAlex](https://openalex.org/W4393942320) \u00b7 197 cites \u00b7 basis T"
+  },
+  {
+   "id": "p63",
+   "type": "text",
+   "x": 1260,
+   "y": 10882,
+   "width": 460,
+   "height": 170,
+   "text": "**BALROG** (2024, arXiv)\nBenchmark finding language and vision-language models still struggle in complex, dynamic games.\n[OpenAlex](https://openalex.org/W4404649840) \u00b7 133 cites \u00b7 basis A"
+  },
+  {
+   "id": "p64",
+   "type": "text",
+   "x": 1260,
+   "y": 11072,
+   "width": 460,
+   "height": 144,
+   "text": "**lmgame-Bench** (2025, arXiv)\nAsks how good language models are at playing games.\n[OpenAlex](https://openalex.org/W4415145236) \u00b7 56 cites \u00b7 basis T"
+  },
+  {
+   "id": "p65",
+   "type": "text",
+   "x": 1260,
+   "y": 11236,
+   "width": 460,
+   "height": 144,
+   "text": "**SIMA 2** (2025, arXiv)\nGeneralist embodied agent for virtual worlds.\n[OpenAlex](https://openalex.org/W4417086995) \u00b7 49 cites \u00b7 basis T"
+  },
+  {
+   "id": "p66",
+   "type": "text",
+   "x": 1260,
+   "y": 11400,
+   "width": 460,
+   "height": 170,
+   "text": "**AutoHarness** (2026, arXiv)\nA language model synthesises its own code harness to stop itself making illegal moves.\n[OpenAlex](https://openalex.org/W7133750645) \u00b7 99 cites \u00b7 basis A"
+  },
+  {
+   "id": "b8",
+   "type": "text",
+   "x": 640,
+   "y": 10843,
+   "width": 420,
+   "height": 222,
+   "color": "5",
+   "text": "## Language-model agents\nA language model plays the game directly, choosing each move from a prompt.\n\n**For this repo:** Not a fit for a fast-reaction game like Virus; the benchmarks here report the models still struggle in dynamic games."
+  },
+  {
+   "id": "p68",
+   "type": "text",
+   "x": 1880,
+   "y": 11670,
+   "width": 460,
+   "height": 170,
+   "text": "**VGDL** (2013, IEEE CIG)\nPyVGDL: a high-level description language for 2D video games, parsed and played at once.\n[OpenAlex](https://openalex.org/W2028208918) \u00b7 264 cites \u00b7 basis A"
+  },
+  {
+   "id": "p69",
+   "type": "text",
+   "x": 1880,
+   "y": 11860,
+   "width": 460,
+   "height": 170,
+   "text": "**Schema Networks** (2017, arXiv)\nObject-oriented generative physics simulator that reasons backward from goals through causes.\n[OpenAlex](https://openalex.org/W2624780181) \u00b7 258 cites \u00b7 basis A"
+  },
+  {
+   "id": "p70",
+   "type": "text",
+   "x": 1880,
+   "y": 12050,
+   "width": 460,
+   "height": 170,
+   "text": "**Theory-based RL (EMPA)** (2021, arXiv)\nHuman-level learning speed through theory-based modelling, exploration and planning.\n[OpenAlex](https://openalex.org/W3183390056) \u00b7 101 cites \u00b7 basis T"
+  },
+  {
+   "id": "p71",
+   "type": "text",
+   "x": 1880,
+   "y": 12240,
+   "width": 460,
+   "height": 196,
+   "text": "**AutumnSynth** (2023, PACMPL)\nSynthesises reactive programs from observations of Atari-style grid worlds, adding hidden state where needed.\n[OpenAlex](https://openalex.org/W4315606137) \u00b7 19 cites \u00b7 basis A",
+   "color": "4"
+  },
+  {
+   "id": "b9s0",
+   "type": "text",
+   "x": 1260,
+   "y": 11929,
+   "width": 420,
+   "height": 248,
+   "color": "3",
+   "text": "### Heritage: rules as programs\nBefore language models: a game described in a small language, or a causal model searched for by program synthesis.\n\n**For this repo:** The tick, shot and seeder functions are hand-written members of this family."
+  },
+  {
+   "id": "p73",
+   "type": "text",
+   "x": 1880,
+   "y": 12496,
+   "width": 460,
+   "height": 170,
+   "text": "**ByteSized32** (2023, EMNLP)\nLanguage models generating text games as hundreds of lines of Python.\n[OpenAlex](https://openalex.org/W4389524188) \u00b7 26 cites \u00b7 basis A"
+  },
+  {
+   "id": "p74",
+   "type": "text",
+   "x": 1880,
+   "y": 12686,
+   "width": 460,
+   "height": 170,
+   "text": "**WorldCoder** (2024, NeurIPS)\nAgent that writes a Python program as its world model from interaction, then plans with it.\n[OpenAlex](https://openalex.org/W4415796843) \u00b7 172 cites \u00b7 basis A",
+   "color": "4"
+  },
+  {
+   "id": "p75",
+   "type": "text",
+   "x": 1880,
+   "y": 12876,
+   "width": 460,
+   "height": 170,
+   "text": "**Code world models + MCTS** (2024, NeurIPS)\nA language model generates the world model as Python code, guided by tree search.\n[OpenAlex](https://openalex.org/W4415797484) \u00b7 94 cites \u00b7 basis A",
+   "color": "4"
+  },
+  {
+   "id": "p76",
+   "type": "text",
+   "x": 1880,
+   "y": 13066,
+   "width": 460,
+   "height": 170,
+   "text": "**WALL-E** (2024, arXiv)\nA few learned rules align a language model's predictions with one environment's dynamics.\n[OpenAlex](https://openalex.org/W4403364427) \u00b7 31 cites \u00b7 basis A"
+  },
+  {
+   "id": "p77",
+   "type": "text",
+   "x": 1880,
+   "y": 13256,
+   "width": 460,
+   "height": 222,
+   "text": "**CWM for general game playing** (2025, arXiv)\nRules and trajectories translated to Python (transition, legal moves, termination) for tree search, plus inference functions for hidden state; matches or beats Gemini 2.5 Pro on 9 of 10 games.\n[OpenAlex](https://openalex.org/W4414946777) \u00b7 30 cites \u00b7 basis A",
+   "color": "4"
+  },
+  {
+   "id": "p78",
+   "type": "text",
+   "x": 1880,
+   "y": 13498,
+   "width": 460,
+   "height": 170,
+   "text": "**TheoryCoder (bilevel planning)** (2025, TMLR)\nTheory-based RL with synthesised causal world models used as forward simulators.\n[OpenAlex](https://openalex.org/W4409045958) \u00b7 23 cites \u00b7 basis A"
+  },
+  {
+   "id": "p79",
+   "type": "text",
+   "x": 1880,
+   "y": 13688,
+   "width": 460,
+   "height": 170,
+   "text": "**Symbolic models, test-time scaling** (2025, TMLR)\nGenerates a PDDL world model so classical search can plan.\n[OpenAlex](https://openalex.org/W4407309453) \u00b7 18 cites \u00b7 basis A"
+  },
+  {
+   "id": "p80",
+   "type": "text",
+   "x": 1880,
+   "y": 13878,
+   "width": 460,
+   "height": 170,
+   "text": "**Finite Automata Extraction** (2026, FDG)\nLearns a world model as programs in a small language from gameplay video.\n[OpenAlex](https://openalex.org/W4414459514) \u00b7 1 cites \u00b7 basis A"
+  },
+  {
+   "id": "p81",
+   "type": "text",
+   "x": 1880,
+   "y": 14068,
+   "width": 460,
+   "height": 170,
+   "text": "**OPINE-World** (2026, arXiv)\nExtends WorldCoder-style modelling to cases where the symbols and the goal are unknown and changing.\n[OpenAlex](https://openalex.org/W7167254436) \u00b7 15 cites \u00b7 basis A"
+  },
+  {
+   "id": "p82",
+   "type": "text",
+   "x": 1880,
+   "y": 14258,
+   "width": 460,
+   "height": 170,
+   "text": "**Executable models for ARC-AGI-3** (2026, AGI)\nExecutable world models built by coding agents for the ARC-AGI-3 interactive games.\n[OpenAlex](https://openalex.org/W7170085180) \u00b7 20 cites \u00b7 basis T"
+  },
+  {
+   "id": "p83",
+   "type": "text",
+   "x": 1880,
+   "y": 14448,
+   "width": 460,
+   "height": 196,
+   "text": "**Mind-Studio** (2026, arXiv)\nSynthesises complete pygame-style world models from state-action-next-state traces of partially observable games.\n[OpenAlex](https://openalex.org/W7164913627) \u00b7 0 cites \u00b7 basis A",
+   "color": "4"
+  },
+  {
+   "id": "p84",
+   "type": "text",
+   "x": 1880,
+   "y": 14664,
+   "width": 460,
+   "height": 196,
+   "text": "**PatchWorld** (2026, arXiv)\nTurns offline trajectories of a black-box text environment into an executable world model, without gradients.\n[OpenAlex](https://openalex.org/W7163062575) \u00b7 8 cites \u00b7 basis A"
+  },
+  {
+   "id": "p85",
+   "type": "text",
+   "x": 1880,
+   "y": 14880,
+   "width": 460,
+   "height": 170,
+   "text": "**Distilling CWM generation** (2026, arXiv)\nStudies small language models generating game environments as code.\n[OpenAlex](https://openalex.org/W7162401042) \u00b7 5 cites \u00b7 basis A"
+  },
+  {
+   "id": "p86",
+   "type": "text",
+   "x": 1880,
+   "y": 15070,
+   "width": 460,
+   "height": 170,
+   "text": "**Coding agent as world brain** (2026, arXiv)\nSeparates how the world evolves (code) from how it is drawn (a visual model).\n[OpenAlex](https://openalex.org/W7204440733) \u00b7 32 cites \u00b7 basis A"
+  },
+  {
+   "id": "b9s1",
+   "type": "text",
+   "x": 1260,
+   "y": 13731,
+   "width": 420,
+   "height": 274,
+   "color": "3",
+   "text": "### A language model writes the model\nThe model is generated as Python from interaction traces or a rules text, then checked against sampled transitions.\n\n**For this repo:** The method to try on a game that has not been reversed: the emulator supplies unlimited exact transitions to check a candidate against."
+  },
+  {
+   "id": "p88",
+   "type": "text",
+   "x": 1880,
+   "y": 15300,
+   "width": 460,
+   "height": 196,
+   "text": "**Text2World** (2025, ACL Findings)\nBenchmark for language-model generation of symbolic (PDDL) world models, built to fix indirect and noisy evaluation.\n[OpenAlex](https://openalex.org/W4412944538) \u00b7 50 cites \u00b7 basis A"
+  },
+  {
+   "id": "p89",
+   "type": "text",
+   "x": 1880,
+   "y": 15516,
+   "width": 460,
+   "height": 248,
+   "text": "**When a verified world model still loses** (2026, arXiv)\nA model at 100% sampled transition accuracy still loses at play: the under-1% it gets wrong is the pivotal rule. More data did not fix it; adequacy should be measured on the search distribution or by play.\n[OpenAlex](https://openalex.org/W7169534322) \u00b7 5 cites \u00b7 basis A",
+   "color": "4"
+  },
+  {
+   "id": "b9s2",
+   "type": "text",
+   "x": 1260,
+   "y": 15330,
+   "width": 420,
+   "height": 404,
+   "color": "3",
+   "text": "### Is the model right?\nHow a synthesised model is accepted, and what a passing check does not show.\n\n**For this repo:** The gates here are match counts on captured calls and frames (2,346 of 2,346 arrivals), the 'sampling gate' the 2026 paper warns about: a rule that fires rarely can be absent from the sample. Its remedy is to test on the states the planner visits, or by play; here that means gating a port on whole recorded games flown by the pilot. Reading the code instead of inferring it is the other defence, and the repo has it."
+  },
+  {
+   "id": "p91",
+   "type": "text",
+   "x": 1880,
+   "y": 15824,
+   "width": 460,
+   "height": 196,
+   "text": "**LLM4Decompile** (2024, EMNLP)\nOpen language models trained to decompile binary code, motivated by Ghidra output being hard to read and execute.\n[OpenAlex](https://openalex.org/W4404783570) \u00b7 220 cites \u00b7 basis A"
+  },
+  {
+   "id": "p92",
+   "type": "text",
+   "x": 1880,
+   "y": 16040,
+   "width": 460,
+   "height": 274,
+   "text": "**Super Mario Odyssey by decompilation** (2026, IEEE CoG)\nThe player-movement and collision code decompiled to C++ and recompiled natively as a simulator (no enemies, camera or damage); 8 of 13 scripted moves reproduce the console's positions; a PPO agent trained in it is moved back to the console on one stage.\n[OpenAlex](https://openalex.org/W7233756573) \u00b7 0 cites \u00b7 basis F",
+   "color": "4"
+  },
+  {
+   "id": "b9s3",
+   "type": "text",
+   "x": 1260,
+   "y": 15824,
+   "width": 420,
+   "height": 716,
+   "color": "3",
+   "text": "### From the binary\nThe program is recovered from the shipped game instead of inferred from its behaviour.\n\n**For this repo:** The direct precedent for this repo, and prior art for any post on it. Its simulator is the game's own code, decompiled to C++ on top of a community project and a release that shipped with symbols, then recompiled natively; here the code stays in the emulator and each routine gets a separate model. It has two checks. A function 'matches' when recompiling it with the game's compiler gives the same machine code, a proof for every input that hand-written 68000 has no equivalent of; most functions are only 'functional', checked by watching behaviour. End to end, 13 scripted moves are replayed on console and simulator and the position compared: 8 agree, 5 drift. The callcap gates here compare all touched memory on thousands of calls, which is finer, but nothing here yet replays whole inputs through a composed port, the test that caught their drift. Speed: 84,000 to 144,000 frames/s compiled with optimisation, against 60 on the console, falling to 363 to 9,993 once observations are sent to Python."
+  },
+  {
+   "id": "p94",
+   "type": "text",
+   "x": 1880,
+   "y": 16600,
+   "width": 460,
+   "height": 170,
+   "text": "**PIRL** (2018, arXiv)\nPolicies represented in a domain-specific language, so they can be read and verified.\n[OpenAlex](https://openalex.org/W2796284132) \u00b7 425 cites \u00b7 basis A"
+  },
+  {
+   "id": "p95",
+   "type": "text",
+   "x": 1880,
+   "y": 16790,
+   "width": 460,
+   "height": 170,
+   "text": "**Code as Policies** (2023, ICRA)\nCode-writing language models repurposed to write robot policy code.\n[OpenAlex](https://openalex.org/W4383097638) \u00b7 2,458 cites \u00b7 basis A"
+  },
+  {
+   "id": "p96",
+   "type": "text",
+   "x": 1880,
+   "y": 16980,
+   "width": 460,
+   "height": 170,
+   "text": "**Goals as reward-producing programs** (2025, Nat. Mach. Intell.)\nGoals represented as programs that produce reward.\n[OpenAlex](https://openalex.org/W4407864826) \u00b7 35 cites \u00b7 basis T"
+  },
+  {
+   "id": "b9s4",
+   "type": "text",
+   "x": 1260,
+   "y": 16764,
+   "width": 420,
+   "height": 222,
+   "color": "3",
+   "text": "### Adjacent: programs as policies and goals\nThe same idea applied to the controller or the objective instead of the game.\n\n**For this repo:** Virus's own autopilot is a programmatic policy, already documented in demo.md."
+  },
+  {
+   "id": "b9",
+   "type": "text",
+   "x": 640,
+   "y": 14241,
+   "width": 420,
+   "height": 378,
+   "color": "5",
+   "text": "## Code world models\nThe game's rules written as an executable program, which a classical planner (tree search, model-predictive control) then searches. The program is exact where it is right, fast, and readable, unlike a learned network.\n\n**For this repo:** This is what reversing/<game>/py already holds. The field infers the program from play or from a rules text; this repo extracts it from the 68000 and gates it against the emulator. One paper does the same from a binary (Super Mario Odyssey, below)."
+  },
+  {
+   "id": "root",
+   "type": "text",
+   "x": 0,
+   "y": 7423,
+   "width": 440,
+   "height": 320,
+   "color": "6",
+   "text": "# Learning to play games\nA game is a Markov decision process: state, action, transition rule, reward. The research splits on where the transition rule comes from (an emulator, extracted code, or a learned network) and on how many game steps the learner may spend."
+  },
+  {
+   "id": "legend",
+   "type": "text",
+   "x": 0,
+   "y": 7783,
+   "width": 440,
+   "height": 240,
+   "text": "**Legend**\nGreen: bears directly on a decision in this repo.\nBasis A: line from the abstract. F: full text read. T: title only. R: recalled, unchecked.\nCitations: OpenAlex, 2026-11-18.\nGenerated by build_map.py; see README.md."
+  }
+ ],
+ "edges": [
+  {
+   "id": "ep0",
+   "fromNode": "b0",
+   "fromSide": "right",
+   "toNode": "p0",
+   "toSide": "left"
+  },
+  {
+   "id": "ep1",
+   "fromNode": "b0",
+   "fromSide": "right",
+   "toNode": "p1",
+   "toSide": "left"
+  },
+  {
+   "id": "ep2",
+   "fromNode": "b0",
+   "fromSide": "right",
+   "toNode": "p2",
+   "toSide": "left"
+  },
+  {
+   "id": "ep3",
+   "fromNode": "b0",
+   "fromSide": "right",
+   "toNode": "p3",
+   "toSide": "left"
+  },
+  {
+   "id": "ep4",
+   "fromNode": "b0",
+   "fromSide": "right",
+   "toNode": "p4",
+   "toSide": "left"
+  },
+  {
+   "id": "ep5",
+   "fromNode": "b0",
+   "fromSide": "right",
+   "toNode": "p5",
+   "toSide": "left"
+  },
+  {
+   "id": "ep6",
+   "fromNode": "b0",
+   "fromSide": "right",
+   "toNode": "p6",
+   "toSide": "left"
+  },
+  {
+   "id": "ep7",
+   "fromNode": "b0",
+   "fromSide": "right",
+   "toNode": "p7",
+   "toSide": "left"
+  },
+  {
+   "id": "eb0",
+   "fromNode": "root",
+   "fromSide": "right",
+   "toNode": "b0",
+   "toSide": "left"
+  },
+  {
+   "id": "ep9",
+   "fromNode": "b1",
+   "fromSide": "right",
+   "toNode": "p9",
+   "toSide": "left"
+  },
+  {
+   "id": "ep10",
+   "fromNode": "b1",
+   "fromSide": "right",
+   "toNode": "p10",
+   "toSide": "left"
+  },
+  {
+   "id": "ep11",
+   "fromNode": "b1",
+   "fromSide": "right",
+   "toNode": "p11",
+   "toSide": "left"
+  },
+  {
+   "id": "ep12",
+   "fromNode": "b1",
+   "fromSide": "right",
+   "toNode": "p12",
+   "toSide": "left"
+  },
+  {
+   "id": "ep13",
+   "fromNode": "b1",
+   "fromSide": "right",
+   "toNode": "p13",
+   "toSide": "left"
+  },
+  {
+   "id": "ep14",
+   "fromNode": "b1",
+   "fromSide": "right",
+   "toNode": "p14",
+   "toSide": "left"
+  },
+  {
+   "id": "ep15",
+   "fromNode": "b1",
+   "fromSide": "right",
+   "toNode": "p15",
+   "toSide": "left"
+  },
+  {
+   "id": "ep16",
+   "fromNode": "b1",
+   "fromSide": "right",
+   "toNode": "p16",
+   "toSide": "left"
+  },
+  {
+   "id": "ep17",
+   "fromNode": "b1",
+   "fromSide": "right",
+   "toNode": "p17",
+   "toSide": "left"
+  },
+  {
+   "id": "eb1",
+   "fromNode": "root",
+   "fromSide": "right",
+   "toNode": "b1",
+   "toSide": "left"
+  },
+  {
+   "id": "ep19",
+   "fromNode": "b2",
+   "fromSide": "right",
+   "toNode": "p19",
+   "toSide": "left"
+  },
+  {
+   "id": "ep20",
+   "fromNode": "b2",
+   "fromSide": "right",
+   "toNode": "p20",
+   "toSide": "left"
+  },
+  {
+   "id": "ep21",
+   "fromNode": "b2",
+   "fromSide": "right",
+   "toNode": "p21",
+   "toSide": "left"
+  },
+  {
+   "id": "ep22",
+   "fromNode": "b2",
+   "fromSide": "right",
+   "toNode": "p22",
+   "toSide": "left"
+  },
+  {
+   "id": "eb2",
+   "fromNode": "root",
+   "fromSide": "right",
+   "toNode": "b2",
+   "toSide": "left"
+  },
+  {
+   "id": "ep24",
+   "fromNode": "b3",
+   "fromSide": "right",
+   "toNode": "p24",
+   "toSide": "left"
+  },
+  {
+   "id": "ep25",
+   "fromNode": "b3",
+   "fromSide": "right",
+   "toNode": "p25",
+   "toSide": "left"
+  },
+  {
+   "id": "ep26",
+   "fromNode": "b3",
+   "fromSide": "right",
+   "toNode": "p26",
+   "toSide": "left"
+  },
+  {
+   "id": "ep27",
+   "fromNode": "b3",
+   "fromSide": "right",
+   "toNode": "p27",
+   "toSide": "left"
+  },
+  {
+   "id": "ep28",
+   "fromNode": "b3",
+   "fromSide": "right",
+   "toNode": "p28",
+   "toSide": "left"
+  },
+  {
+   "id": "ep29",
+   "fromNode": "b3",
+   "fromSide": "right",
+   "toNode": "p29",
+   "toSide": "left"
+  },
+  {
+   "id": "ep30",
+   "fromNode": "b3",
+   "fromSide": "right",
+   "toNode": "p30",
+   "toSide": "left"
+  },
+  {
+   "id": "ep31",
+   "fromNode": "b3",
+   "fromSide": "right",
+   "toNode": "p31",
+   "toSide": "left"
+  },
+  {
+   "id": "ep32",
+   "fromNode": "b3",
+   "fromSide": "right",
+   "toNode": "p32",
+   "toSide": "left"
+  },
+  {
+   "id": "ep33",
+   "fromNode": "b3",
+   "fromSide": "right",
+   "toNode": "p33",
+   "toSide": "left"
+  },
+  {
+   "id": "eb3",
+   "fromNode": "root",
+   "fromSide": "right",
+   "toNode": "b3",
+   "toSide": "left"
+  },
+  {
+   "id": "ep35",
+   "fromNode": "b4",
+   "fromSide": "right",
+   "toNode": "p35",
+   "toSide": "left"
+  },
+  {
+   "id": "ep36",
+   "fromNode": "b4",
+   "fromSide": "right",
+   "toNode": "p36",
+   "toSide": "left"
+  },
+  {
+   "id": "eb4",
+   "fromNode": "root",
+   "fromSide": "right",
+   "toNode": "b4",
+   "toSide": "left"
+  },
+  {
+   "id": "ep38",
+   "fromNode": "b5",
+   "fromSide": "right",
+   "toNode": "p38",
+   "toSide": "left"
+  },
+  {
+   "id": "ep39",
+   "fromNode": "b5",
+   "fromSide": "right",
+   "toNode": "p39",
+   "toSide": "left"
+  },
+  {
+   "id": "ep40",
+   "fromNode": "b5",
+   "fromSide": "right",
+   "toNode": "p40",
+   "toSide": "left"
+  },
+  {
+   "id": "ep41",
+   "fromNode": "b5",
+   "fromSide": "right",
+   "toNode": "p41",
+   "toSide": "left"
+  },
+  {
+   "id": "ep42",
+   "fromNode": "b5",
+   "fromSide": "right",
+   "toNode": "p42",
+   "toSide": "left"
+  },
+  {
+   "id": "ep43",
+   "fromNode": "b5",
+   "fromSide": "right",
+   "toNode": "p43",
+   "toSide": "left"
+  },
+  {
+   "id": "ep44",
+   "fromNode": "b5",
+   "fromSide": "right",
+   "toNode": "p44",
+   "toSide": "left"
+  },
+  {
+   "id": "eb5",
+   "fromNode": "root",
+   "fromSide": "right",
+   "toNode": "b5",
+   "toSide": "left"
+  },
+  {
+   "id": "ep46",
+   "fromNode": "b6",
+   "fromSide": "right",
+   "toNode": "p46",
+   "toSide": "left"
+  },
+  {
+   "id": "ep47",
+   "fromNode": "b6",
+   "fromSide": "right",
+   "toNode": "p47",
+   "toSide": "left"
+  },
+  {
+   "id": "ep48",
+   "fromNode": "b6",
+   "fromSide": "right",
+   "toNode": "p48",
+   "toSide": "left"
+  },
+  {
+   "id": "ep49",
+   "fromNode": "b6",
+   "fromSide": "right",
+   "toNode": "p49",
+   "toSide": "left"
+  },
+  {
+   "id": "ep50",
+   "fromNode": "b6",
+   "fromSide": "right",
+   "toNode": "p50",
+   "toSide": "left"
+  },
+  {
+   "id": "ep51",
+   "fromNode": "b6",
+   "fromSide": "right",
+   "toNode": "p51",
+   "toSide": "left"
+  },
+  {
+   "id": "ep52",
+   "fromNode": "b6",
+   "fromSide": "right",
+   "toNode": "p52",
+   "toSide": "left"
+  },
+  {
+   "id": "ep53",
+   "fromNode": "b6",
+   "fromSide": "right",
+   "toNode": "p53",
+   "toSide": "left"
+  },
+  {
+   "id": "eb6",
+   "fromNode": "root",
+   "fromSide": "right",
+   "toNode": "b6",
+   "toSide": "left"
+  },
+  {
+   "id": "ep55",
+   "fromNode": "b7",
+   "fromSide": "right",
+   "toNode": "p55",
+   "toSide": "left"
+  },
+  {
+   "id": "ep56",
+   "fromNode": "b7",
+   "fromSide": "right",
+   "toNode": "p56",
+   "toSide": "left"
+  },
+  {
+   "id": "ep57",
+   "fromNode": "b7",
+   "fromSide": "right",
+   "toNode": "p57",
+   "toSide": "left"
+  },
+  {
+   "id": "ep58",
+   "fromNode": "b7",
+   "fromSide": "right",
+   "toNode": "p58",
+   "toSide": "left"
+  },
+  {
+   "id": "eb7",
+   "fromNode": "root",
+   "fromSide": "right",
+   "toNode": "b7",
+   "toSide": "left"
+  },
+  {
+   "id": "ep60",
+   "fromNode": "b8",
+   "fromSide": "right",
+   "toNode": "p60",
+   "toSide": "left"
+  },
+  {
+   "id": "ep61",
+   "fromNode": "b8",
+   "fromSide": "right",
+   "toNode": "p61",
+   "toSide": "left"
+  },
+  {
+   "id": "ep62",
+   "fromNode": "b8",
+   "fromSide": "right",
+   "toNode": "p62",
+   "toSide": "left"
+  },
+  {
+   "id": "ep63",
+   "fromNode": "b8",
+   "fromSide": "right",
+   "toNode": "p63",
+   "toSide": "left"
+  },
+  {
+   "id": "ep64",
+   "fromNode": "b8",
+   "fromSide": "right",
+   "toNode": "p64",
+   "toSide": "left"
+  },
+  {
+   "id": "ep65",
+   "fromNode": "b8",
+   "fromSide": "right",
+   "toNode": "p65",
+   "toSide": "left"
+  },
+  {
+   "id": "ep66",
+   "fromNode": "b8",
+   "fromSide": "right",
+   "toNode": "p66",
+   "toSide": "left"
+  },
+  {
+   "id": "eb8",
+   "fromNode": "root",
+   "fromSide": "right",
+   "toNode": "b8",
+   "toSide": "left"
+  },
+  {
+   "id": "ep68",
+   "fromNode": "b9s0",
+   "fromSide": "right",
+   "toNode": "p68",
+   "toSide": "left"
+  },
+  {
+   "id": "ep69",
+   "fromNode": "b9s0",
+   "fromSide": "right",
+   "toNode": "p69",
+   "toSide": "left"
+  },
+  {
+   "id": "ep70",
+   "fromNode": "b9s0",
+   "fromSide": "right",
+   "toNode": "p70",
+   "toSide": "left"
+  },
+  {
+   "id": "ep71",
+   "fromNode": "b9s0",
+   "fromSide": "right",
+   "toNode": "p71",
+   "toSide": "left"
+  },
+  {
+   "id": "eb9s0",
+   "fromNode": "b9",
+   "fromSide": "right",
+   "toNode": "b9s0",
+   "toSide": "left"
+  },
+  {
+   "id": "ep73",
+   "fromNode": "b9s1",
+   "fromSide": "right",
+   "toNode": "p73",
+   "toSide": "left"
+  },
+  {
+   "id": "ep74",
+   "fromNode": "b9s1",
+   "fromSide": "right",
+   "toNode": "p74",
+   "toSide": "left"
+  },
+  {
+   "id": "ep75",
+   "fromNode": "b9s1",
+   "fromSide": "right",
+   "toNode": "p75",
+   "toSide": "left"
+  },
+  {
+   "id": "ep76",
+   "fromNode": "b9s1",
+   "fromSide": "right",
+   "toNode": "p76",
+   "toSide": "left"
+  },
+  {
+   "id": "ep77",
+   "fromNode": "b9s1",
+   "fromSide": "right",
+   "toNode": "p77",
+   "toSide": "left"
+  },
+  {
+   "id": "ep78",
+   "fromNode": "b9s1",
+   "fromSide": "right",
+   "toNode": "p78",
+   "toSide": "left"
+  },
+  {
+   "id": "ep79",
+   "fromNode": "b9s1",
+   "fromSide": "right",
+   "toNode": "p79",
+   "toSide": "left"
+  },
+  {
+   "id": "ep80",
+   "fromNode": "b9s1",
+   "fromSide": "right",
+   "toNode": "p80",
+   "toSide": "left"
+  },
+  {
+   "id": "ep81",
+   "fromNode": "b9s1",
+   "fromSide": "right",
+   "toNode": "p81",
+   "toSide": "left"
+  },
+  {
+   "id": "ep82",
+   "fromNode": "b9s1",
+   "fromSide": "right",
+   "toNode": "p82",
+   "toSide": "left"
+  },
+  {
+   "id": "ep83",
+   "fromNode": "b9s1",
+   "fromSide": "right",
+   "toNode": "p83",
+   "toSide": "left"
+  },
+  {
+   "id": "ep84",
+   "fromNode": "b9s1",
+   "fromSide": "right",
+   "toNode": "p84",
+   "toSide": "left"
+  },
+  {
+   "id": "ep85",
+   "fromNode": "b9s1",
+   "fromSide": "right",
+   "toNode": "p85",
+   "toSide": "left"
+  },
+  {
+   "id": "ep86",
+   "fromNode": "b9s1",
+   "fromSide": "right",
+   "toNode": "p86",
+   "toSide": "left"
+  },
+  {
+   "id": "eb9s1",
+   "fromNode": "b9",
+   "fromSide": "right",
+   "toNode": "b9s1",
+   "toSide": "left"
+  },
+  {
+   "id": "ep88",
+   "fromNode": "b9s2",
+   "fromSide": "right",
+   "toNode": "p88",
+   "toSide": "left"
+  },
+  {
+   "id": "ep89",
+   "fromNode": "b9s2",
+   "fromSide": "right",
+   "toNode": "p89",
+   "toSide": "left"
+  },
+  {
+   "id": "eb9s2",
+   "fromNode": "b9",
+   "fromSide": "right",
+   "toNode": "b9s2",
+   "toSide": "left"
+  },
+  {
+   "id": "ep91",
+   "fromNode": "b9s3",
+   "fromSide": "right",
+   "toNode": "p91",
+   "toSide": "left"
+  },
+  {
+   "id": "ep92",
+   "fromNode": "b9s3",
+   "fromSide": "right",
+   "toNode": "p92",
+   "toSide": "left"
+  },
+  {
+   "id": "eb9s3",
+   "fromNode": "b9",
+   "fromSide": "right",
+   "toNode": "b9s3",
+   "toSide": "left"
+  },
+  {
+   "id": "ep94",
+   "fromNode": "b9s4",
+   "fromSide": "right",
+   "toNode": "p94",
+   "toSide": "left"
+  },
+  {
+   "id": "ep95",
+   "fromNode": "b9s4",
+   "fromSide": "right",
+   "toNode": "p95",
+   "toSide": "left"
+  },
+  {
+   "id": "ep96",
+   "fromNode": "b9s4",
+   "fromSide": "right",
+   "toNode": "p96",
+   "toSide": "left"
+  },
+  {
+   "id": "eb9s4",
+   "fromNode": "b9",
+   "fromSide": "right",
+   "toNode": "b9s4",
+   "toSide": "left"
+  },
+  {
+   "id": "eb9",
+   "fromNode": "root",
+   "fromSide": "right",
+   "toNode": "b9",
+   "toSide": "left"
+  }
+ ]
+}
