@@ -2,7 +2,7 @@
 
 ## Resume point
 
-- Last commit of this workstream: group 1 emptied (`captain_empty.py`), after `a4300fa`, the second-group pass (`captain_trace.py`, `captain_rout.py`, `captain_take.py`), after
+- Last commit of this workstream: the 80M-horizon arm (README "A horizon twice as long"), after `9406a80` group 1 emptied (`captain_empty.py`), after `a4300fa`, the second-group pass (`captain_trace.py`, `captain_rout.py`, `captain_take.py`), after
   `2463b49` (pending word and LLM wording). Before them: `77254ad` wall following against A* (`bug2/`, promoted from a subagent by an
   overseer session on 2026-11-14; no emulator arm was run for it beyond one live pair). Before it: `52a1013` rollout
   at the LLM's 20M cadence wins land 2 7/30. Before that: `24cc325` hybrid placebo (`--backend rand`) wins land 2 7/30 against the Haiku
@@ -11,8 +11,9 @@
 - Builds: scripted, llm_haiku, hybrid_haiku and rollout o6..o29 (cmd14, last final snapshot 01:29) ran before merge
   7df69a2, which went into `bin/` after 01:39; hybrid_rand and rollout_e20 (cmd15) on 7df69a2. `bin/`'s mtime
   (23:10:04) is the obj/ compile time, kept by the copy, not the install time.
-  `cmd15/rebase` shows the merge does not move these games (665/665 decision hashes, 6/6 end steps). `bin/` is 7df69a2.
-- Working data: `M68000/scratchpad/cmd16/` (`rout`, `take`: rebuilt by `captain_rout.py`, `captain_take.py` from
+  `cmd15/rebase` shows the merge does not move these games (665/665 decision hashes, 6/6 end steps). `bin/` is now
+  3b26da7, which does not repeat them (`cmd17/rebase`: 521/524 scripted hashes): cmd17 arms are on 3b26da7.
+- Working data: `M68000/scratchpad/cmd17/` (README: the horizon arms), `M68000/scratchpad/cmd16/` (`rout`, `take`: rebuilt by `captain_rout.py`, `captain_take.py` from
   `cmd11/so/scripted/o1/decisions.jsonl`; `empty`: `captain_empty.py`; `chase`: the attacks that did not engage and the first, hand-run copy of the march, with `rout/p4s` its 210M/230M/250M snapshots), `M68000/scratchpad/cmd15/` (README: `rebase`, `l2s30` with all six arms linked), `cmd14/` (README),
   `cmd12/r1s3`, `cmd13/r1s3b`, `cmd9/`. Tables: `outcomes.py scratchpad/cmd15/l2s30 1 scripted llm_haiku rollout
   rollout_e20 hybrid_haiku hybrid_rand`; `pairs.py scratchpad/cmd13/r1s3b 3 --at 300,440`.
@@ -68,6 +69,10 @@ All in `reversing/powermonger/commander/README.md`; every gate re-run from its p
   camps at (39,88), so the window is 3 to 4M steps. Attacks ordered from the Base never engage: they stall at a
   shore (`scratchpad/cmd16/chase`, twelve arms, 14 followers kept in each).
   The chain works under the harness on land 1: 15 of 24 `pm123` side-1 logs get a group 1, 0 of 488 land-2 logs.
+- **An 80M horizon wins no more than 40M** (README "A horizon twice as long"): rollout at `--every 20e6 --N 80e6`
+  wins 6/30 (killed 14, no-lord 3, alive 7) against the 7df69a2 40M arm's 7/30 (sign p = 0.46). The pair differs in
+  build; the same-build control is the run under "Running". On its first 12 starts: control won 1, killed 9; 80M won
+  2, killed 4.
 - **Wall following against A*** (README "Wall following against A*", `bug2/`; data `scratchpad/pm_bug2/`): the
   census's 4230 stuck pairs hold 2417 reachable ones whose line crosses water (2202 distinct pairs, 133 men, six
   maps: `bug2/extract_pairs.py`). The game-rule movement model calls 3751/3957 census-stuck pairs stuck; a
@@ -80,7 +85,11 @@ All in `reversing/powermonger/commander/README.md`; every gate re-run from its p
 
 ## Running
 
-Nothing running.
+The 40M control of the horizon pair, `scratchpad/cmd17/l2s30/rollout_e20b` (12 of 30 starts done at 00:28 on
+2026-11-18, about 2 hours left). A detached finisher, `bash scratchpad/cmd17/finish.sh 64231` (PID 62440), waits for
+the session's seeds run and re-runs it, skipping finished starts. Alive: `pgrep -fl 'cmd17'`. Done when
+`scratchpad/cmd17/l2s30/seeds_n80.log` has a "finish.sh done" line and `rollout_e20b` holds 30 `final.snap`. Then:
+`outcomes.py scratchpad/cmd17/l2s30 1 rollout_e20b rollout_e20n80`.
 
 ## Open, in priority order
 
@@ -95,11 +104,10 @@ Nothing running.
    later: `captain_trace.py` over a longer no-order run from the fight's end), and whether an attack arriving
    while he camps at (39,88) can wait for him. If the Capital cannot be taken in a window, land 2 has no
    second-group lever.
-2. **Rollout food blindness**: inside a 40M horizon food costs nothing until it hits 0; try a longer horizon for
-   get-food candidates or score food left against the eating rate. The placebo result says the 40M score picks
-   locally better moves that do not win more, so the horizon or the score is the search's weak point. Deciding every
-   20M wins as often as every 5M (7 against 4 of 30) at about 70% of the run time, so a longer horizon can be
-   bought by cutting cadence: `--every 20e6` with N 80M against the 5M/40M arm on the same 30 starts.
+2. **Score the horizon pair** once the control ends (command under "Running"); replace the README paragraph's
+   last sentences with the same-build counts and tests. If captain deaths are lower at 80M on the same build (14
+   against the old build's 17 so far), the horizon turns deaths into stalemates without wins: say so. Food
+   blindness itself (food costs nothing inside the horizon until it hits 0) is untested by a score change.
 3. **Does breadth help?** Hybrid and placebo pooled win 15/60 against rollout's 4/30 (not significant). A rollout
    with K 6 or 7 against K 5 on the same 30 starts tests it without an LLM (no API cost; at `--every 20e6` about
    2 hours, the 20M arm's measured 1h47 scaled by K).
@@ -163,6 +171,11 @@ The PowerMonger traps in `sessions/powermonger.md` apply.
   hybrid's order mix; refit its weights if the prompt or model changes.
 - Land-2 wins at 30 starts fall on mostly different starts between rollout and hybrid: a single start's outcome is a
   trajectory property, so a per-start "this start is winnable" reading is wrong.
+- A new arm is compared only with arms of its own build: read `git_commit` in a run's `final.snap.prov.json` and
+  re-run scripted o0..o5 against the old arm's hashes first (`cmd17/rebase` found 521/524 and moved end steps where
+  this file still said `bin/` was 7df69a2). A different build costs a second control arm.
+- A seeds run started from a session's background shell dies with the session: start a detached finisher
+  (`scratchpad/cmd17/finish.sh`) or launch with `nohup` from the start.
 - A seeds arm's wall time is set by its slowest runs, not median x starts / par: the 20M rollout (median 12 minutes,
   longest 39, par 4) took 1h47 against an estimate of 1h. Estimate from the previous arm's measured wall time.
 - Six starts per LLM arm cannot resolve a prompt change: across v1/v2/v3 one start moves by up to 6 lords at 300M
@@ -178,7 +191,10 @@ The PowerMonger traps in `sessions/powermonger.md` apply.
 
 ## Next session
 
-Open 1 (the Capital inside the window, from `scratchpad/cmd16/empty`), unless Dave wants Open 2's longer-horizon
-arm or Open 3's K sweep first. An outside review (2026-11-16) proposed a learned continuation-value model on the
-rollout; the answer given was not before a diagnostic shows the spread between candidates exceeds the spread
-within one candidate under perturbed continuations (a 30-start arm is one state at p about 0.13 to 0.27). Any new arm records its build (`bin/` is 7df69a2). The prompt that starts it is `/resume commander`.
+Dave called this line a day on 2026-11-18 to rethink: every search arm sits at 4 to 8 wins of 30 and doubling the
+horizon did not move it. First score the horizon pair (Open 2) and fold it into the README. Then put the choice to
+Dave before more arms: Open 1 (the Capital inside the window, from `scratchpad/cmd16/empty`), the only line that
+produced a new mechanism this pass, or stop land-2 search arms. The outside review's learned continuation-value
+model is weaker after the 80M result (a longer exact horizon is its simplest form) and still needs the diagnostic:
+candidate spread against within-candidate spread under perturbed continuations. The prompt that starts it is
+`/resume commander`.
