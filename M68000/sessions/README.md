@@ -18,6 +18,7 @@ continuation record: the next-session prompt is always the one line `/resume <wo
 | `final_fight.md` | Final Fight reversing, CPS1 arcade under MAME (`reversing/finalfight/`) |
 | `impossamole.md` | Impossamole reversing (`reversing/impossamole/`) |
 | `midwinter.md` | Midwinter reversing, first 3D game (`reversing/midwinter/`) |
+| `learning.md` | game-learning research map and the emulator's standing as the judge of game models, Hatari as a second oracle (`reversing/learning/`) |
 | `lemmings.md` | Lemmings reversing, lemming behaviour first (`reversing/lemmings/`) |
 | `lcp.md` | Little Computer People reversing: the man's behaviour scheduler, needs and queries (`reversing/lcp/`) |
 | `populous.md` | Populous reversing (`reversing/populous/`) |
