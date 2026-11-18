@@ -124,7 +124,7 @@ RNG advance). The remaining emulator-side lever is the mutable `Cpu` listed in `
 | `$42a58` | height map: 256 x 256 bytes, index `(y << 8) | x` | terrain gate |
 | `$5ab58` | slope table, longs (the signed index covers `$52b58..$62b57`; the byte `$62a58` is a flag in it) | slope gate |
 | `$70000`, `$78000` | the two screen buffers (the shifter base alternates) | `snap_render.py` |
-| `$2f6f6` | the 64x64 four-plane minimap in the HUD corner | (read) |
+| `$2f6f6` | the 64x64 four-plane minimap in the HUD corner; the radar's dot list follows it at `$2fef6` (end pointer `$27076`) | `behaviours.md` "What the radar shows" |
 
 Names are in `virus.sym`.
 

@@ -284,6 +284,33 @@ spawned at random places by an RNG that is never reseeded, that varies from game
 24 unpoked games with no trend (`demo.md`, the chain). A memory of the demo reaching higher waves on repeats is
 consistent with that spread, or with the Archimedes original, which is not this code.
 
+## What the radar shows (gated)
+
+The HUD routine `$23a2c` copies the 64 x 64 minimap `$2f6f6` to the screen (the pointer `$2705e`), appends the ship to a dot
+list and plots the list over the copy, then draws the fuel and height bars. The list starts at `$2fef6` and holds three words
+a dot: x, z and a type; the pointer `$27076` is its end and is put back to `$2fef6` after the plot. A dot is one pixel at
+`((x + $8000) >> 10, (-(z + $8000)) >> 10)`, so a pixel is `$400` units on a side and the 64 pixels cover the whole wrapped
+world; the height is not shown. The type indexes the plot table `$239ec`, which sets the pixel to that colour number, and only
+where the screen under it is not colour 0 (read).
+
+Each live behaviour appends its own dot with the record's x and z (16 sites, `$21800..$22a46`, read). No `_Wait` body has a
+site, so an enemy that has not hatched is not on the radar. The types: every seeder state 5 (cyan `077`); chaser `$d` (pink
+`736`); the patrol's three states `$b` (orange `641`), and the cruise state appends although it skips the 3D draw; pursuer `$b`
+and 3 (red `711`) on alternate ticks; `$2202c`, `$221ac` and the bomber 0 on even ticks (the table's default routine `$23750`,
+which clears the pixel: the dot flashes) and 7, 7 and 5; attractor 0 and 3, mothership 0 and 6; the mothership's chaser 3; the
+player's rocket and the ship `$f` (white). The infection is in the minimap itself: a plant recolours its cell there (`demo.md`).
+
+`py/scan/radar_check.py` stops after the plot loop (`$23aa6`) on every frame of the autopilot's wave 0 from `demo/S1b.snap`:
+the dot list equals the pool's hatched records in pool order, then the ship, on 1,100/1,100 frames (x, z and type; every
+frame also holds a waiting record, which never has a dot). The pixel read back from the screen buffer is the dot's colour for
+900 of 900 patrol and 1,100 of 1,100 ship dots and 1,356 of 1,550 seeder dots; the other 194 seeder dots read white,
+the ship's dot plotted after them on the same pixel. That run reaches the seeder's and the patrol's states only; the other
+kinds' types are read.
+
+So the radar gives a player each hatched enemy's kind and its x and z to `$400` units, every frame, and nothing about height,
+velocity, state, or the enemies still to hatch. A shot's box is `$a0` a side, so the radar is enough to fly to a target and not
+enough to aim at it.
+
 ## Open
 
 1. Drive the mothership and the rocket: a played or poked run to wave index 5 (`wb 32a50 05` before a wave end, labelled
@@ -308,6 +335,7 @@ consistent with that spread, or with the Archimedes original, which is not this 
 | `census.sh` | `hits` on every behaviour entry and helper over game 1 (600M steps from `main_g001`) | `scratchpad/virus/scan/census.out` | the census column above |
 | `waveend.sh` | four `bp 20fb4` stops with tick, wave and pool count | `scratchpad/virus/scan/waveend.out` | ticks `$04a6`, `$12b6`, `$2452`, `$0569`; waves 0, 1, 2, 0 |
 | `watch_deep.sh` | `watch 29703 $6e` over game 1 | `scratchpad/virus/scan/watch_deep.err` | 53 `WATCH` lines from `$1fb68`, `$1fb6e`, `$1fb9e`, `$1fba0` |
+| `radar_check.py` | the radar's dot list against the pool, and the dots' pixels, on 1,100 frames from `demo/S1b.snap` (through `stserver`) | stdout; the server's log in `scratchpad/virus/radar/` | `1100 / 1100`; screen colours 5, 11 and 15 only |
 | `residue.sh` | game 2 flown unpoked, with the bucket area zeroed, and filled with `$ff` | `scratchpad/virus/scan/res_*.txt` | `zero 500 of 500 identical`, `ff 500 of 500 identical` |
 
 They read the chain's start snapshots from `scratchpad/virus/chain/long/starts/` (`py/chain/gate_chain.sh long 24`) or, when that
