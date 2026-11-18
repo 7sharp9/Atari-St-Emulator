@@ -1,12 +1,13 @@
 # Learning: handoff
 
-Updated 2026-11-18 by the session that ended at commit `ea383a8`. Workstream: how game models are defined and learned in the research literature, how this repo's
+Updated 2026-11-18 by the session that ended at commit `6870dc0`. Workstream: how game models are defined and learned in the research literature, how this repo's
 extracted models compare, and how far the emulator can be trusted as their judge (`reversing/learning/`).
 
 ## Resume point
 
-- Last commit of this workstream: `ea383a8` DEVELOPING: hatari_game.py in the tool index (the work is `8ffa8ee`, the
-  whole-game Hatari check; `5165a9a` corrects CLAUDE.md's repeated-breakpoint-stop rule).
+- Last commit of this workstream: `6870dc0` CLAUDE.md: the repeated-stop rule shortened (the work is `8ffa8ee`, the
+  whole-game Hatari check; `ea383a8` adds its tool-index row; `5165a9a` and `6870dc0` correct CLAUDE.md's
+  repeated-breakpoint-stop rule).
 - Working data: `scratchpad/learning/hatari_game/` (rebuild: `bash reversing/learning/py/gate_hatari_game.sh full`, about
   6 minutes, 210 MB) and `scratchpad/learning/hatari_callcap/` (`bash reversing/learning/py/gate_hatari_callcap.sh`,
   about 90 s); `scratchpad/learning/profile/` (the planner profile, a record: see "Proven so far");
