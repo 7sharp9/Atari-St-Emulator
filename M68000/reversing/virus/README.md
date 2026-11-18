@@ -244,6 +244,7 @@ subtract the camera, take a bucket `D6 = ((z - $900) >> 5) & $fff8` (ten buckets
 copied from `$23cfa`), project the point with the same two `divs` (`+$a0`, `+$46`) and append an 8-byte record, whose first
 long is a draw routine, to that bucket's list. After each row of tiles the painter (`$243ec..$24474`) draws the list of the
 matching bucket by `jsr (A0)` on each record. So the order is a painter's algorithm with one bucket per tile row, far to near.
+The actor loop queues only the records inside a window around the camera (gated: `behaviours.md`, "What the 3D view shows").
 
 ## The flight model (gated, mouse run; autopilot poked)
 

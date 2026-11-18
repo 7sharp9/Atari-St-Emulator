@@ -295,7 +295,7 @@ where the screen under it is not colour 0 (read).
 
 Each live behaviour appends its own dot with the record's x and z (16 sites, `$21800..$22a46`, read). No `_Wait` body has a
 site, so an enemy that has not hatched is not on the radar. The types: every seeder state 5 (cyan `077`); chaser `$d` (pink
-`736`); the patrol's three states `$b` (orange `641`), and the cruise state appends although it skips the 3D draw; pursuer `$b`
+`736`); the patrol's three states `$b` (orange `641`), and the cruise state appends although it skips the 3D draw (next section); pursuer `$b`
 and 3 (red `711`) on alternate ticks; `$2202c`, `$221ac` and the bomber 0 on even ticks (the table's default routine `$23750`,
 which clears the pixel: the dot flashes) and 7, 7 and 5; attractor 0 and 3, mothership 0 and 6; the mothership's chaser 3; the
 player's rocket and the ship `$f` (white). The infection is in the minimap itself: a plant recolours its cell there (`demo.md`).
@@ -310,6 +310,34 @@ kinds' types are read.
 So the radar gives a player each hatched enemy's kind and its x and z to `$400` units, every frame, and nothing about height,
 velocity, state, or the enemies still to hatch. A shot's box is `$a0` a side, so the radar is enough to fly to a target and not
 enough to aim at it.
+
+## What the 3D view shows (gated)
+
+Every behaviour that draws its record ends by jumping to the tail `$215ea` of the actor loop `$2157c`. The tail queues the
+record for the painter only when it is inside a window around the camera, tested unsigned so that it wraps with the world:
+
+```
+(x - (camx - $680)) & $ffff < $d00        (z - (camz - $600)) & $ffff < $c00
+```
+
+The window's corner is put in `$270e6` once a tick. There is no test on height. A record that passes gets the depth
+`z - camz + $e00` (`$800..$13ff`), which picks its bucket (`README.md`, "The renderer"); one that fails goes straight to the
+next record (`$216c2`) and is not drawn at all. The ship-contact test (within `$c0` on each axis: "The ship box") is inside the same branch, so only
+a record in the window can hit the ship. The patrol's cruise state `$21c64` ends at `$216c2` and not at the tail: it is
+on the radar and never in the 3D view.
+
+`py/scan/view_check.py` stops at `$215ea`, `$2165c` (past the window test) and `$216c2` over the autopilot's wave 0 from
+`demo/S1b.snap`: the test above, on D0, D2 and `$270e6`, says which records reach `$2165c` on 2,346 of 2,346 arrivals
+(404 reach it, 1,942 do not), and the records queued in a frame are the pool's hatched records inside the window of that
+frame's camera on 1,100 of 1,100 frames. The camera's x and z (`$270ce`) equal the ship's on every frame, so the window is
+`$680` either side of the ship and `$600` ahead and behind: 13 by 12 cells of a 256 by 256 world, about three radar pixels
+a side. The patrol's records arrive 796 times in the 900 frames it is on the radar; the other 104 are taken to be the cruise state (inferred from the count; that state's body is read).
+In that run an enemy is in the window on 397 of the 1,090 frames that have a hatched one (404 of 2,450 enemy-frames:
+384 seeder, 20 patrol), with the autopilot flying at them.
+
+Inferred from the projection (`sx = (dx << 8) / depth + $a0`, read): over the measured depths 2,053 to 5,095 a screen
+pixel is 8 to 20 units across, an eighth of a shot's `$a0` box or less. So an enemy in the window can be placed well
+enough to aim at, and one outside it is known only as a radar pixel, `$400` units.
 
 ## Open
 
@@ -336,6 +364,7 @@ enough to aim at it.
 | `waveend.sh` | four `bp 20fb4` stops with tick, wave and pool count | `scratchpad/virus/scan/waveend.out` | ticks `$04a6`, `$12b6`, `$2452`, `$0569`; waves 0, 1, 2, 0 |
 | `watch_deep.sh` | `watch 29703 $6e` over game 1 | `scratchpad/virus/scan/watch_deep.err` | 53 `WATCH` lines from `$1fb68`, `$1fb6e`, `$1fb9e`, `$1fba0` |
 | `radar_check.py` | the radar's dot list against the pool, and the dots' pixels, on 1,100 frames from `demo/S1b.snap` (through `stserver`) | stdout; the server's log in `scratchpad/virus/radar/` | `1100 / 1100`; screen colours 5, 11 and 15 only |
+| `view_check.py` | the 3D view's window test at `$215ea` record by record, and the records queued per frame against the pool, on 1,100 frames from `demo/S1b.snap` (through `stserver`) | stdout; optional JSON | `2346 / 2346`; `1100 / 1100` |
 | `residue.sh` | game 2 flown unpoked, with the bucket area zeroed, and filled with `$ff` | `scratchpad/virus/scan/res_*.txt` | `zero 500 of 500 identical`, `ff 500 of 500 identical` |
 
 They read the chain's start snapshots from `scratchpad/virus/chain/long/starts/` (`py/chain/gate_chain.sh long 24`) or, when that
