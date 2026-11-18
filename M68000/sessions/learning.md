@@ -1,121 +1,135 @@
 # Learning: handoff
 
-Updated 2026-11-18 by the session that ended at commit `6870dc0`. Workstream: how game models are defined and learned in the research literature, how this repo's
+Updated 2026-11-18 by the session that ended at commit `610edd1`. Workstream: how game models are defined and learned in the research literature, how this repo's
 extracted models compare, and how far the emulator can be trusted as their judge (`reversing/learning/`).
 
 ## Resume point
 
-- Last commit of this workstream: `6870dc0` CLAUDE.md: the repeated-stop rule shortened (the work is `8ffa8ee`, the
-  whole-game Hatari check; `ea383a8` adds its tool-index row; `5165a9a` and `6870dc0` correct CLAUDE.md's
-  repeated-breakpoint-stop rule).
-- Working data: `scratchpad/learning/hatari_game/` (rebuild: `bash reversing/learning/py/gate_hatari_game.sh full`, about
-  6 minutes, 210 MB) and `scratchpad/learning/hatari_callcap/` (`bash reversing/learning/py/gate_hatari_callcap.sh`,
-  about 90 s); `scratchpad/learning/profile/` (the planner profile, a record: see "Proven so far");
-  `scratchpad/papers/` holds the Mario Odyssey decompilation paper PDF.
+- Last commit of this workstream: `610edd1` DEVELOPING: hatari_calls.py in the tool index (the work is `9cbc476`, the
+  cold boot in Hatari, and `500b3f3`, the call corpus in one Hatari flight; `7488dfc` and `610edd1` add their
+  tool-index rows).
+- Working data, all rebuilt by the gates in `reversing/learning/py/` (README table there):
+  `scratchpad/learning/hatari_game/` (`gate_hatari_game.sh full`, about 6 minutes, 210 MB),
+  `scratchpad/learning/hatari_boot/` (`gate_hatari_boot.sh full`, about 5 minutes, 150 MB; needs the game gate's
+  `ours.json` first), `scratchpad/learning/hatari_calls/` (`gate_hatari_calls.sh`, about 3 minutes, 100 MB),
+  `scratchpad/learning/hatari_callcap/` (`gate_hatari_callcap.sh`, about 90 s); `scratchpad/learning/profile/` (the
+  planner profile, a record); `scratchpad/papers/` holds the Mario Odyssey decompilation paper PDF.
 - Start from: `scratchpad/virus/demo/S1b.snap` (Virus demo flight start `$230c0`; `bash reversing/virus/py/demo/capture.sh`).
+  The cold boot needs `scratchpad/virus/aha.st` (`reversing/virus/README.md`, "Provenance").
 - Hatari binary: `~/Downloads/hatari-snapshot/Hatari.app/Contents/MacOS/Hatari` (universal, 2.6.1-devel), outside the repo.
-- Gates run this session: `gate_hatari_game.sh` (2,000/2,000 and the control, exit 0) and its `full` form by hand
-  (11,782/11,782). No emulator code changed. Virus dry run: 0 MISSING, 0/6 gates declare no inputs; `learning` has no
+- Gates run this session, all exit 0 except as said: `gate_hatari_game.sh` (2,000/2,000, control 0/20, before and
+  after `hatari_game.py`'s parser and compare were split into functions); `gate_hatari_boot.sh` (2,000/2,000, control
+  0/20; its exit code was not captured, the three conditions it tests were read from its output) and the `full` form by
+  hand through `hatari_boot.py` (11,782/11,782); `gate_hatari_calls.sh` (3,496/3,496 at entry and at return, control
+  0/20). No emulator code changed. Virus dry run: 0 MISSING, 0/6 gates declare no inputs; `learning` has no
   `gates.toml` (see "Waiting on Dave").
 - Uncommitted work left behind: none. `.obsidian/` at the repo root is Dave's Obsidian vault config, untracked on purpose.
+- Master is 10 commits ahead of `origin/master`: not pushed.
 
 ## Proven so far
 
-- A whole Virus demo flight agrees on both emulators: from `S1b.snap` to the game over `$25bc0`, 11,782/11,782 arrivals at
-  `Ship_Tick` `$255c2` equal on ship, fuel/attitude, RNG, score, pool count, wave and the 2,560-byte actor pool, with
-  Hatari's interrupts live and its frame timing different (50,588 frames, 4.3 per tick); control 0/20 with one pool byte
-  changed. `reversing/learning/py/gate_hatari_game.sh full`; `hatari_oracle.md`, "a whole game, same start state".
-- Hatari's CPU and this emulator's agree on Virus routine calls: 24/24 calls (eight routines, three calls each, 139,904
-  instructions) equal on RAM `$8-$fffff` and 16/16 registers. `reversing/learning/py/gate_hatari_callcap.sh`;
-  `hatari_oracle.md`, "one routine call".
-- Virus's random generator is seeded with constants at `$2300a` and never from a timer (`reversing/virus/README.md`,
-  "Object scatter and the RNG"; `demo.md`), which the flight check confirms: the RNG state is equal at every tick.
+- Virus's demo flight from a cold boot of the disk in Hatari (its own loader, the crack's menus driven over the
+  control socket) equals this emulator's flight: 11,782/11,782 `Ship_Tick` arrivals on every logged range, control
+  0/20. At the game start 549 of 1,048,568 RAM bytes differ from `S1b.snap`, one of them in Virus's own memory
+  (`$62a65`, the last key code). `reversing/learning/py/gate_hatari_boot.sh full`; `hatari_oracle.md`, "the same
+  flight from a cold boot".
+- The whole pilot corpus agrees on Hatari inside one flight: 3,496/3,496 calls of `Input_Autopilot` `$2538c` at entry
+  (16 registers, condition codes, 3,341 input bytes) and at return (16 registers, 33 output bytes), control 0/20.
+  `reversing/learning/py/gate_hatari_calls.sh`; `hatari_oracle.md`, "a whole callcap corpus inside one Hatari flight".
+- From this emulator's snapshot the flight agrees too: 11,782/11,782, control 0/20, with Hatari's frame timing
+  different (4.3 frames per tick). `gate_hatari_game.sh full`; `hatari_oracle.md`, "a whole game, same start state".
+- One call at a time with all of RAM compared: 24/24 calls of eight Virus routines, 16/16 registers.
+  `gate_hatari_callcap.sh`; `hatari_oracle.md`, "one routine call".
 - Record, not a gate (it times the scratchpad-only pilot `scratchpad/virus/mpc/duel/fly_v7.py`): one planner game,
-  seed 2, 1,302 ticks, 343.2 s; the planner 311.3 s (90.7%: autograd backward 152.7 s, the 64-tick rollout 114.5 s over
-  8,240 iterations, 38 ms each), the emulator 29.7 s (8.7%, 81.5M steps). Load average 17.9 falling to 11.1. Same kills
-  and end as `pv/d2_s2.json`. `python3 scratchpad/learning/profile/make_prof.py` builds the timed copy `fly_prof.py`;
-  the output is `s2.log`.
-- The field map: 84 papers in 10 branches, each with what it means for this repo, as `reversing/learning/README.md` and
-  `field-map.canvas`, both generated by `build_map.py` (`python3 build_map.py` prints "10 branches, 84 papers"; edit
-  the generator, not the README). Only the entries with basis F were read in full; the rest rest on abstracts.
+  seed 2, 1,302 ticks, 343.2 s; the planner 311.3 s (90.7%), the emulator 29.7 s (8.7%, 81.5M steps). Load average 17.9
+  falling to 11.1. `python3 scratchpad/learning/profile/make_prof.py` builds the timed copy; the output is `s2.log`.
+- The field map: 84 papers in 10 branches, as `reversing/learning/README.md` and `field-map.canvas`, both generated by
+  `build_map.py` (`python3 build_map.py` prints "10 branches, 84 papers"; edit the generator, not the README). Only
+  the entries with basis F were read in full; the rest rest on abstracts.
 
 ## Running
 
-Nothing running.
+Nothing running. (A `stserver.dll` process started with the session is the app's `stserver` tool server, not a job.)
 
 ## Open, in priority order
 
-1. A cold boot of Virus in Hatari: the whole-game check starts from this emulator's snapshot, so the boot, the loader
-   and the keyboard path ran only here. Drive `scratchpad/virus/aha.st` through the crack's menu (F1, N five times,
-   Return; `reversing/virus/README.md` "Running it") over Hatari's control socket
-   (`reversing/populous/py/systems/hatari_edges.py` has the socket, pty and key plumbing), wait at the title for the
-   demo, and log with `hatari_game.py`'s `tick.dbg`. Target: 11,782/11,782 against `flight1/ours.json`, or the first
-   differing tick and range.
+1. The same checks on a game with a different code style and input path (PowerMonger's executor `$6b38` or
+   Midwinter): this is where the two emulators should first differ, and a difference is a finding about this
+   emulator's hardware model. Set `RANGES` in `hatari_game.py` from that game's memory map and pick its once-per-tick
+   routine; `hatari_boot.py` is the template for the drive (keys gated on trace-breakpoint markers), with the game's
+   own marker addresses. Target: every tick equal, or the first differing tick and range. A game that reads the MFP
+   timers, the video counter, the status register's interrupt mask (this emulator has no horizontal-blank interrupt,
+   so it runs at mask 0 where Hatari runs at 3) or the keyboard inside its tick is the likeliest to differ.
 2. A human-flown game on both: the demo reads no input. Replay a recorded control sequence
    (`reversing/virus/py/mpc/replay.py` writes D0-D2 at `$255d4`) on Hatari by having the tick breakpoint's command file
    set the three registers. Hatari's `:file` runs fixed commands, so either generate one `:once` breakpoint per tick
-   with a hit count, or poke the controls into a RAM table and patch nothing. Target: every tick of a planner game
+   with a hit count, or poke the controls into a RAM table. Target: every tick of a planner game
    (`scratchpad/virus/mpc/duel/pv/d2_s2.json`, 1,302 ticks) equal.
-3. Hatari call check at corpus size. `hatari_game.py` shows trace breakpoints are cheap inside one process: 11,782
-   stops, each dumping 2,602 bytes, in about 3 minutes, against 3 s per call for one process per call. Chain the
-   3,496-call pilot corpus (`reversing/virus/demo.md`, `callcap 2538c`) the same way: since the flight is equal tick
-   for tick, the natural run already visits every call, so log each routine's entry and exit state in one flight and
-   compare with this emulator's `callcap` deltas. Target: 3,496/3,496.
-4. The same two checks on a game with a different code style and input path (PowerMonger's executor `$6b38` or
-   Midwinter): set `RANGES` in `hatari_game.py` from that game's memory map and pick its once-per-tick routine.
-   A game that reads the MFP timers, the video counter or the keyboard inside its tick is where the two emulators
-   should first differ; such a difference is a finding about this emulator's hardware model, not a failure.
+3. More routines through `hatari_calls.py`. It fits a routine with one call site and a corpus that dumps its inputs;
+   only the pilot has been run. The flight tick `$255d4` (gate `mpc_flight`) and the chain gate's corpus are the next
+   candidates: set `ENTRY`, `RETURN`, `INPUTS`, `OUTPUTS` per routine (make them arguments once a second routine
+   needs them). Target: each corpus n/n at entry and at return.
+4. All of RAM at checkpoints. The flight comparison covers the logged ranges; the cold boot compares all of RAM once,
+   at the game start (549 bytes differ). Repeat that `savebin` at a few later ticks against `stserver` `read` of 1 MB
+   to see whether the differing set stays in system variables and the stacks.
 5. A faster planner, if the pilot work needs more games per hour: the profile says the rollout and its gradient are
-   the cost, so the candidates are a batched rollout (all 64 ticks as one tensor recurrence is not possible, but many
-   candidate plans in one batch is), a hand-written adjoint of the float flight tick, or fewer iterations with a warm
-   start. Measure each as an interleaved A/B on a fixed seed, same kills required. A faster game simulator saves at
-   most 8.7% for this pilot; it would matter only for a method that plays many games without a planner (a learned
-   policy or an outcome-ranked search), which `sessions/blog.md` item 3 should say.
-6. The comparison compares logged ranges only. A stronger form saves all of RAM on both sides at a few checkpoint
-   ticks (`savebin` from a `:<count> :once` breakpoint; `stserver` `read` of 1 MB) and reports the bytes that differ:
-   that separates game state from timing-dependent scratch (stack, screen, sound buffers) and says how much of RAM
-   the claim covers.
-7. The canvas has never been opened in Obsidian: open `field-map.canvas` and check the layout reads as a tree.
-8. Cost of the method: the claim that frontier models made it cheap is unmeasured. Count sessions and commits per game
+   the cost (many candidate plans in one batch, a hand-written adjoint of the float flight tick, or fewer iterations
+   with a warm start). Measure each as an interleaved A/B on a fixed seed, same kills required. A faster game
+   simulator saves at most 8.7% for this pilot.
+6. The canvas has never been opened in Obsidian: open `field-map.canvas` and check the layout reads as a tree.
+7. Cost of the method: the claim that frontier models made it cheap is unmeasured. Count sessions and commits per game
    from `git log` against the routines gated, if a write-up needs the figure.
 
 ## Known traps
 
-- `echo` in a Hatari breakpoint command file ends without a newline, so the first `m` dump line follows the echoed text
-  on the same line; `hatari_game.py` splits it at the address.
+- A marker searched for anywhere in a Hatari log can match a memory dump's ASCII column: `hatari_boot.py`'s first
+  whole flight quit at tick 1,132 on `@Q` inside a pool dump. `hatari_calls.py` puts each marker on its own line and
+  matches it anchored; `hatari_game.py`'s parser still splits on an unanchored `@T ` (it has passed every run, and a
+  false split would show as a wrong arrival count, not a silent pass).
+- A control poke placed before the game initialises the byte is void: `$62a60` changed in the RAM handed to Hatari
+  passed 20/20, because Virus's start-up rewrites it. Change the byte from a breakpoint at the first use, and read the
+  control's "first difference" line, not only its exit code.
+- `capture_pilot.py`'s log holds 3,500 `callcap` blocks for 3,496 entries: a `bp` that runs out of its 3M-step budget
+  prints no breakpoint header, so its callcap (taken at some other PC) trails the previous record.
+  `hatari_calls.py` takes the first callcap of each block.
+- zsh has `$pipestatus`, not `${PIPESTATUS[0]}`: the bash form prints empty, which reads as no exit code. Run a gate
+  on its own line and read `$?`.
+- Hatari's control-socket keys are sent on wall-clock time; under `--fast-forward` a 0.3 s hold is a hundred or more
+  frames and the frame a key lands on differs per boot. Gate each drive stage on a trace-breakpoint marker, not a delay.
+- `echo` in a Hatari breakpoint command file ends without a newline, so the next output follows on the same line
+  (`hatari_game.py` splits it at the address; `hatari_calls.py` echoes `\n` around the marker).
 - After `r sr=` puts Hatari in user mode, `r usp=` alone leaves A7 at 0 and the first `jsr` double-bus-errors: set
   `r a7=` as well.
 - A first result of 5,254/11,784 was a counting error on this emulator's side (repeated breakpoint stops, now in
-  CLAUDE.md), visible as two consecutive arrivals with identical state. Before reading a divergence, check both logs
-  for identical consecutive records and whether one side matches the other shifted by one.
-- The Virus scripts that count ticks at `$255d4` still use the 64-step rule (`reversing/virus/py/mpc/replay.py`,
-  `gate_danger.py`, `shot_capture.py`, `scan/radar_check.py`, `view_check.py`, and the scratchpad pilots). Whether an
-  interrupt with a longer handler is ever taken at `$255d4` is unmeasured; a doubled tick would show as two log entries
-  with equal state. Not edited here: they belong to the virus and blog workstreams.
+  CLAUDE.md). Before reading a divergence, check both logs for identical consecutive records and whether one side
+  matches the other shifted by one.
+- The Virus scripts that count ticks at `$255d4` still use the 64-step repeated-stop rule
+  (`reversing/virus/py/mpc/replay.py`, `gate_danger.py`, `shot_capture.py`, `scan/radar_check.py`, `view_check.py`, and
+  the scratchpad pilots). Not edited here: they belong to the virus and blog workstreams.
 - Hatari bus-errors fetching a return address outside RAM before it tests a breakpoint there, so `callcap`'s `$00DEAD00`
   cannot be the Hatari-side return address; `hatari_callcap.py` uses `$00FC0000` and skips the return slot.
-- `bpc <addr> <n>` that runs out of its step budget stops at some other PC and the REPL carries on: `hatari_callcap.py`
-  checks the stop PC and refuses (Target_FindNearest's 150th call is beyond 50M steps from `S1b`).
-- The full flight's `hatari.log` is 148 MB and is held in memory by `subprocess.run`; a longer run should stream it.
+- The full flight's `hatari.log` is 148 MB; `hatari_game.py` holds it in memory through `subprocess.run`.
 - OpenAlex rejects a query with more than five boolean operators, and has no record for some arXiv-only papers
   (listed under "Not found in OpenAlex" in the README).
 
 ## Waiting on Dave
 
-- Should the two Hatari gates join `tools/gates.py` (a `reversing/learning/gates.toml`)? They need a Hatari binary
+- Should the four Hatari gates join `tools/gates.py` (a `reversing/learning/gates.toml`)? They need a Hatari binary
   outside the repo, so they would report ERROR on a machine without one.
-- Proposed skill line (`reverse-engineer-st-game`, section 5): after a routine's model passes its callcap gate, run
-  `reversing/learning/py/hatari_callcap.py` on a few of its calls, and for a game with a once-per-tick routine run
-  `hatari_game.py` over one game, so the gate's judge is checked by a second machine.
-- The virus and blog sessions should know two things from here: the planner, not the emulator, is 90.7% of a pilot
-  game (blog item 3, "Fast simulator"), and the 64-step repeated-stop rule in their tick scripts is too small in
-  principle (trap above).
-- Whether to write this up (the comparison with the Mario Odyssey decompilation paper and the two-oracle argument,
-  now with a whole game agreeing across two machines that disagree on time).
+- Proposed skill line (`reverse-engineer-st-game`, section 5): after a routine's model passes its callcap gate, run its
+  corpus through `reversing/learning/py/hatari_calls.py` (one Hatari flight, every call), and for a game with a
+  once-per-tick routine run `hatari_game.py` over one game, so the gate's judge is checked by a second machine.
+- The virus and blog sessions should know: the planner, not the emulator, is 90.7% of a pilot game (blog item 3,
+  "Fast simulator"); the 64-step repeated-stop rule in their tick scripts is too small in principle (trap above); and
+  the pilot model's corpus is now checked call for call on Hatari.
+- Whether to write this up (the comparison with the Mario Odyssey decompilation paper and the two-oracle argument: a
+  whole game from a cold boot and a whole model corpus agreeing across two machines that disagree on time).
 
 ## Next session
 
-`/resume learning`. Read `reversing/learning/hatari_oracle.md` first. Start with open item 1 (the cold boot): it closes
-the largest stated gap in the whole-game claim and reuses `hatari_edges.py`'s control-socket code. Then item 3, which
-turns the 24-call sample into the full corpus at little cost now that one Hatari process is known to handle thousands
-of trace stops. Item 4 (a second game) is the one most likely to find a real emulator difference.
+`/resume learning`. Read `reversing/learning/hatari_oracle.md` first. Start with open item 1 (a second game): Virus now
+agrees from a cold boot, over a whole flight and over a whole corpus, so another Virus check adds little, and a game
+that reads hardware inside its tick is the one most likely to find a real emulator difference. Pick the game whose
+session file has a deterministic no-input stretch and a once-per-tick routine (PowerMonger's executor `$6b38` is named
+in `CLAUDE.md`), build its drive from `hatari_boot.py`, and expect the first run to differ: report the first differing
+tick and range before changing anything.
