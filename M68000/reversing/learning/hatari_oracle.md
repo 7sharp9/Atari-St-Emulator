@@ -66,11 +66,10 @@ tick takes, and the generator, which is seeded with two constants at `$2300a` an
 What this does not show:
 
 - **The start state is this emulator's.** Both runs begin from `S1b.snap`, so the boot, the disk loader and the
-  set-up before `$230c0` ran only here. A cold boot of the disk in Hatari, driven through the crack's menu, has not
-  been tried.
+  set-up before `$230c0` ran only here. The next section removes this limit.
 - **Hatari's hardware registers are its own.** Video, MFP, sound, keyboard and floppy registers are whatever its boot
   of the desktop left; only RAM and the CPU cross over. The demo flight reads no input, so the keyboard and mouse path
-  is not exercised.
+  inside the game is not exercised.
 - **Only the logged ranges are compared**, at tick boundaries, not all of RAM and not the screen.
 - **One flight of one game**, flown by the game's own autopilot.
 
@@ -78,6 +77,48 @@ A stop of this emulator's `stserver` at the tick breakpoint is sometimes a retur
 new arrival: seven such stops in the flight, 6 to 207 instructions after the previous one. The script counts a stop
 within 3,000 instructions of the last as the same arrival; with a 64-instruction rule two of them were counted as
 ticks and every later tick compared one out of step.
+
+## What is proven: the same flight from a cold boot of the disk in Hatari
+
+`py/hatari_boot.py <ours.json>` gives Hatari nothing from this emulator. Hatari boots a copy of
+`scratchpad/virus/aha.st` itself; the keys `../virus/drive.sh` sends here go in over Hatari's control socket (F1 at
+the crack's menu until the trainer runs, then N five times and Return until Virus's seed code at `$2300a` executes);
+after that no key is sent and the title and the "Press R" page time out into the demo. As `demo/capture.sh` does
+here, the game start is the first `$230c0` after the first enemy spawn `$20e74`; from there the same trace breakpoint
+logs the same ranges at every `Ship_Tick`, and they are compared with this emulator's flight from `S1b.snap`
+(`ours.json` of the section above).
+
+Result: **11,782/11,782 arrivals agree on every range**, to the game over. Control: with pool byte `$31d57` changed
+by Hatari's debugger at the game start, 0/20 arrivals agree. `py/gate_hatari_boot.sh` runs 2,000 ticks and the
+control in about 2 minutes, `py/gate_hatari_boot.sh full` the whole flight in about 5.
+
+So Hatari's own floppy controller, loader, keyboard path through TOS and the two menus, and its own set-up of Virus
+lead to the game state this emulator reaches. The keys are sent on wall-clock time against a fast-forwarded machine,
+so the frame they land on differs from boot to boot: in six boots the trainer was first seen at frame 1,770 to
+1,845 and the game started at frame 5,855 to 6,150. The interval from `$2300a` to the game start was 1,326 frames
+in every one of them, and the flight was the same in each for as long as it was logged (11,782, 2,000, 1,132 and 50
+ticks; the other two were controls).
+
+At the game start Hatari saves all of RAM, which is compared with `S1b.snap` (the counts are from the whole-flight
+boot; they vary by a few tens between boots, 527 to 592 in four boots):
+
+| region | bytes differing |
+|---|---|
+| `$8-$afff` (system variables, TOS and GEMDOS data, the supervisor stack) | 498 |
+| `$b000-$6feff` (Virus's code and data) | 1 |
+| `$6ff00-$6ffff` (the user stack below `$70000`) | 50 |
+| `$70000-$fffff` (the two screen buffers and above) | 0 |
+| all of `$8-$fffff` | 549 of 1,048,568 |
+
+The one byte in Virus's own memory is `$62a65`, the last key make code its keyboard handler stores (`../virus/demo.md`,
+"Where the inputs enter"): `$1c` (Return) here and 0 on Hatari. Inferred, not driven: the Return that leaves the
+trainer reaches Virus's handler here and not there, because the key is held for a different time relative to the
+load. The sixteen CPU registers D0-A7 are equal. The status register is `$0000` here and `$0300` on Hatari: this
+emulator raises no horizontal-blank interrupt, and TOS's handler for it is what sets the mask to 3
+(`DEVELOPING.md`, "MAME as a second oracle for the ST core", model gap 1). Neither difference reaches the tick state in 11,782 ticks.
+
+What this still does not show: the demo reads no input, so the keyboard and mouse path inside the game is not
+exercised; only the logged ranges are compared after the start; and it is one flight of one game.
 
 ## What the call check leaves out
 
@@ -97,11 +138,8 @@ ticks and every later tick compared one out of step.
 
 These follow from Hatari's debugger and options as read in its source (`src/debug/*.c`, `src/control.c`,
 `src/options.c`), and from the two existing drivers (`reversing/cadaver/py/secrets/hatari_xp_check.py`,
-`reversing/populous/py/systems/hatari_edges.py`). None was run in this pass.
+`reversing/populous/py/systems/hatari_edges.py`). None has been run.
 
-- **A whole game from a cold boot in Hatari.** Boot the disk in Hatari, drive the crack's menu and the title through
-  the control socket, and log state at each tick as `py/hatari_game.py` does. It adds the boot, the loader and the
-  keyboard path to what the whole-game check above covers.
 - **Instruction-level first divergence.** `--trace cpu_disasm` gives one line per instruction, comparable with this
   emulator's `ATARI_TRACE=1` log over a bounded window started from the same loaded state.
 - **A timing reference.** Hatari's profiler counts cycles per address. This emulator has no cycle counts
@@ -113,8 +151,10 @@ These follow from Hatari's debugger and options as read in its source (`src/debu
 
 `HATARI` names the binary. The default is a universal macOS build of Hatari 2.6.1-devel at
 `~/Downloads/hatari-snapshot/Hatari.app/Contents/MacOS/Hatari`, which runs headless with `SDL_VIDEODRIVER=dummy`; a
-source build (`DEVELOPING.md`, "macOS") works the same way. Both gates need `scratchpad/virus/demo/S1b.snap`
+source build (`DEVELOPING.md`, "macOS") works the same way. All three gates need `scratchpad/virus/demo/S1b.snap`
 (`bash reversing/virus/py/demo/capture.sh`). The call gate takes about 90 s and writes
 `scratchpad/learning/hatari_callcap/gate.log` plus one directory per call (both emulators' logs, the debugger scripts,
-the RAM images); the game gate writes `scratchpad/learning/hatari_game/gate.log` and one directory per run. Neither is
-in a `gates.toml`: they depend on a Hatari binary outside the repo.
+the RAM images); the game gate writes `scratchpad/learning/hatari_game/gate.log` and one directory per run. The boot gate needs
+`scratchpad/virus/aha.st` and this emulator's side from the game gate (`t2000/ours.json`, or `flight1/ours.json` for
+`full`), and writes `scratchpad/learning/hatari_boot/gate.log`. None is in a `gates.toml`: they depend on a Hatari
+binary outside the repo.

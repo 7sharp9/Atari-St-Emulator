@@ -88,6 +88,11 @@ def hatari(ram, reg, sr, usp, ssp, pc, addr, n, out):
     r = subprocess.run(cmd, stdin=subprocess.DEVNULL, capture_output=True, text=True, env=env, cwd=out)
     log = r.stdout + r.stderr
     open(p('hatari.log'), 'w').write(log)
+    return parse_log(log)
+
+
+def parse_log(log):
+    """the RANGES at each `@T <VBL>` record of a Hatari log written by tick.dbg: (ticks, vbls)"""
     ticks = []; vbls = []
     for blk in log.split('@T ')[1:]:
         body = blk.split('\n')
@@ -104,22 +109,8 @@ def hatari(ram, reg, sr, usp, ssp, pc, addr, n, out):
     return ticks, vbls
 
 
-def main():
-    a = sys.argv[1:]
-    ctl = '--control' in a
-    a = [x for x in a if x != '--control']
-    until = None
-    if '--until' in a: k = a.index('--until'); until = int(a[k + 1], 16); a = a[:k] + a[k + 2:]
-    if len(a) < 3: sys.exit(__doc__)
-    snap, addr, n = os.path.abspath(a[0]), int(a[1], 16), int(a[2])
-    out = os.path.abspath(a[3] if len(a) > 3 else os.path.join(ROOT, 'scratchpad', 'learning', 'hatari_game', '%x_%d' % (addr, n)))
-    os.makedirs(out, exist_ok=True)
-    reg, sr, usp, ssp, pc = regs_of(snap, out)
-    ram = bytearray(open(snap, 'rb').read()[RAM_OFF:RAM_OFF + RAM_LEN])
-    if ctl: ram[0x31d54 + 3] ^= 0xff
-    o = ours(snap, addr, n, out, until)
-    if until: n = len(o)
-    h, vbls = hatari(bytes(ram), reg, sr, usp, ssp, pc, addr, n, out)
+def compare(o, h, vbls, addr, n):
+    """print the arrival-by-arrival comparison; True when all n arrivals agree on every range"""
     print('arrivals at $%x: this emulator %d, Hatari %d (asked %d); Hatari VBL at first %s, at last %s' % (
         addr, len(o), len(h), n, vbls[0] if vbls else '?', vbls[len(h) - 1] if h else '?'))
     if not o or not h: sys.exit(2)
@@ -139,7 +130,26 @@ def main():
             i = next(i for i in range(0, len(x), 2) if x[i:i + 2] != y[i:i + 2])
             ad = dict((n_, a_) for n_, a_, _ in RANGES)[nm] + i // 2
             print('  %s at $%x: this emulator %s  Hatari %s' % (nm, ad, x[i:i + 16], y[i:i + 16]))
-    sys.exit(0 if eq == m == n else 1)
+    return eq == m == n
+
+
+def main():
+    a = sys.argv[1:]
+    ctl = '--control' in a
+    a = [x for x in a if x != '--control']
+    until = None
+    if '--until' in a: k = a.index('--until'); until = int(a[k + 1], 16); a = a[:k] + a[k + 2:]
+    if len(a) < 3: sys.exit(__doc__)
+    snap, addr, n = os.path.abspath(a[0]), int(a[1], 16), int(a[2])
+    out = os.path.abspath(a[3] if len(a) > 3 else os.path.join(ROOT, 'scratchpad', 'learning', 'hatari_game', '%x_%d' % (addr, n)))
+    os.makedirs(out, exist_ok=True)
+    reg, sr, usp, ssp, pc = regs_of(snap, out)
+    ram = bytearray(open(snap, 'rb').read()[RAM_OFF:RAM_OFF + RAM_LEN])
+    if ctl: ram[0x31d54 + 3] ^= 0xff
+    o = ours(snap, addr, n, out, until)
+    if until: n = len(o)
+    h, vbls = hatari(bytes(ram), reg, sr, usp, ssp, pc, addr, n, out)
+    sys.exit(0 if compare(o, h, vbls, addr, n) else 1)
 
 
 if __name__ == '__main__':
