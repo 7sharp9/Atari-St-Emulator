@@ -236,6 +236,9 @@ before spawning agents. The ones most often missed:
   matches. `stserver`'s `run` `until_pc` and `bp_set` compare all 32 bits (`server/Server.fs`, `run`): code entered
   through a flagged action-table `jsr` keeps the top bit in every `bsr` target (Midwinter's `$ec8c` runs at
   `$8000ec8c`), so pass both `a` and `a | 0x80000000` (`reversing/midwinter/py/army/gate_period.py`).
+  `stserver`'s `run` also stops twice at a breakpoint when an interrupt is taken at that address: the RTE returns to it and the second stop comes a few
+  steps later with the instruction not yet run, so a per-tick driver that acts on every stop applies its input one tick early from there on. Count a
+  return in under 64 steps as the same stop (`reversing/virus/py/mpc/replay.py`, `replay`: 58 false mismatches in one 300-tick replay).
 - A `kbd`/`mouse` status byte is a raw level in RAM, not an edge-latched event. A pulse shorter than
   the game's poll cycle never registers. The VBL is raised every 12,000 steps exactly
   (`instructionsPerFrame`, a literal in `Program.fs`), so a game that polls every second VBL needs
