@@ -146,6 +146,7 @@ minutes = 1
 [[gate]]
 name = "ticks"
 cmd = "{python} reversing/powermonger/commander/gate_ticks.py"
+inputs = ["scratchpad/powermonger.st", "scratchpad/cmd1/rollout/mid/decisions.jsonl", "scratchpad/cmd1/rollout/mid/dec/40000000.snap", "scratchpad/cmd1/rollout/mid/dec/80000000.snap", "scratchpad/cmd1/rollout/mid/dec/120000000.snap"]
 expect = ["20/20", "re:control: stub \\$3e06 changes 5/5"]
 cite = 'commander/README.md "Rollouts", tick mode (needs the <CMD_WORK>/rollout/mid run of gate_rollout.sh)'
 minutes = 2

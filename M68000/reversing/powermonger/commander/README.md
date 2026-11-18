@@ -419,6 +419,16 @@ for 1143 Haiku calls (47 orders dropped as invalid); the placebo made 968 calls 
 `scratchpad/cmd15/l2s30/<arm>/o<k>`; scored by
 `outcomes.py scratchpad/cmd15/l2s30 1 scripted llm_haiku rollout rollout_e20 hybrid_haiku hybrid_rand`.
 
+**A horizon twice as long.** The rollout deciding every 20M with an 80M horizon (`--every 20e6 --N 80e6`, build
+3b26da7, `scratchpad/cmd17/l2s30/rollout_e20n80`) wins 6 of 30 (o0 o2 o19 o21 o23 o26): captain killed 14, no-lord 3,
+alive at 2000M 7, loss median 527M (247M..1220M). Against the 40M arm above (7 wins, build 7df69a2) it is below from
+17 starts and above from 12 (sign p = 0.46; starts only one won: 2 against 3, McNemar p = 1), so no gain in wins is
+shown from doubling the horizon. That pair differs in build as well as horizon: build 3b26da7 repeats 521 of 524
+scripted decision hashes of the 7df69a2 runs on o0..o5 with end steps tens of steps apart (`scratchpad/cmd17/rebase`),
+and one changed decision redirects a land-2 game. The one-variable comparison is the 40M arm on build 3b26da7,
+`cmd17/l2s30/rollout_e20b`, scored by `outcomes.py scratchpad/cmd17/l2s30 1 rollout_e20b rollout_e20n80`; it is not
+scored here. The 80M arm took 4h20 at par 4 against the 40M arm's 1h47.
+
 **How the captain dies.** What decides it is whether a healthy enemy man reaches the lead. A lead carries a bow (grade 6 from spawn) and in a
 fight stands off shooting: mode `$34`, the shot cool-down. On o1 (`cmd9/o1_health`) the captain's lead was in `$34` at
 full health 95 from 190M to 205M; from 208M he was in `$32` on (26,52), the lord he had been ordered to attack, against
