@@ -123,6 +123,64 @@ sprays infection from a destroyed infected object; not checked on screen) and ca
 patrol: `$21c64`, `$21d08`, `$21df6`) within `$800` on all three axes into a `Pursuer` (`$21f00`). Census: `$201b4` 7
 calls, the `$20206` store 8 times, and `$21f00` first ran 4,600 steps after the first `$201b4` call.
 
+## The player's shot, the targets and the ship box (gated)
+
+`py/mpc/shot.py` holds these as functions; gate `mpc_shot` (`bash reversing/virus/py/mpc/gate_shot.sh`) checks them against
+four fresh captures of demo flight 1 from `demo/S1b.snap`, each stopping at every `$255d4` arrival through `stserver`: the
+autopilot untouched (1,190 ticks), its fire bit forced on (1,190), its aim wobbled with fire forced (1,050), and its fire
+bit cleared (1,500).
+
+**Order within a frame** (read, main loop `$231a8`; every count below depends on it): the object walker `$1fa72`, the ship
+tick, the actor walker `$2157c`. So a shot fired in tick k is appended at the ship's position before that tick's move,
+with the ship's velocity after drag and thrust and before gravity; the actors then move; and in the next frame the object
+walker moves the shot once and tests it against the pool as arrival k + 1 reads it. A hit shows as life bit 15 at arrival
+k + 1, the award and the removal at arrival k + 2.
+
+**Spawn** (`$25720..$25794`, `$202fc`, `$1fc90`, `$1fd14`): with D2 bit 0 set and fuel at least 1 after the thrust's 3, fuel
+and score each lose 1 and the record is position = ship + n, velocity = ship velocity + n, life `$16`, handler `$1feb0`,
+where n is the signed high bytes of the ship's matrix words 0, 6 and 12 (the nose, at most 127 an axis). One random word
+`asr #14` per axis (-2 to 1) is added to that axis's position and its velocity. A thrust tick first makes 20 draws for its
+five exhaust particles (`$1fdca`), so the draws a shot gets depend on the thrust bit. Predicted record == appended record
+2,354/2,354, from the RNG read at the arrival; with the shift 13, 19/2,354; without the exhaust draws, 1,371/2,354 (the
+agent's run; not in the gate script). Fuel and score 4,926/4,926 ticks.
+
+**Flight and expiry**: each walker pass decrements the life and removes the record when it goes negative, then pos += vel,
+then vy += g. The shot moves 22 times. Shot set at arrival k + 1 == survivors plus the new shot 4,926/4,926 ticks, 1,384
+expiries; with gravity added before the move 2,523/4,926.
+
+**Hit**: after its move the shot is tested against every pool record in pool order, x then z then y, as -`$a0` <= actor -
+shot < `$a0` (`sub`, `addi #$a0`, `cmp #$140`, `bcc`); the first record inside gets life bit 15 and the shot is removed. No
+record is skipped (read): a record still waiting at y = `$f100` stops a shot and clears the bit itself. Predicted record ==
+the `$1ff06` stop on 15/15 real hits and 43,488/43,488 shot-ticks with none; with a half-width of `$80`, 6/15. A hit was
+seen at +159 and the nearest miss was 3 outside. The 15 hits: 10 on a flying seeder, 3 on a landed one, 2 on an attacking
+patrol; 6 of them in the wobbled run, off the autopilot's own firing pattern. Pool order was never decisive (no shot had
+two records in its box).
+
+**Ground**: the shot uses the sum-of-sines ground `$245b8`, not the cell height map `$24754` the actor walker uses. Removal
+by ground, water, object or wreck 891/891, and 42,597/42,597 shot-ticks that fly on.
+
+**Kill**: the award runs at `$216d6` one actor pass after the hit, 15/15; score and pool count at k + 2, 13/13 (two patrol
+kills end their run first). Seen: a flying seeder 100, a landed one 50, a patrol 300, each on the first hit. A shot's speed
+is the ship's plus the nose, so its reach in 22 moves grows with the ship's speed v along the nose: 22 x (v + 127), about
+2,800 units from a hover and 9,400 at v = 300. The autopilot fires inside `$900` (`demo.md`): 117 shots, 5 hits and 4 kills in wave 0.
+
+**Targets in wave 0**: three seeders (leaving `Seeder_Wait` at ticks 10, 60 and 110), one patrol (tick 200) and one chaser
+that waits 3,000 ticks, cannot be killed while waiting and does not hold the wave open. `shot.actor_step` gives a record's
+next state, all nine fields: seeder wait 732/732, fly 7,701/7,701 (spring constant `$2c0` for `$280`: 520/7,701), descend
+199/199, landed 821/821, take-off 21/21 plus the one tick that draws its new vx and vz from the RNG; patrol wait 804/804,
+cruise 615/615, homing 3,013/3,014, attack 309/309; chaser wait 4,926/4,926. The one homing miss is the patrol turned into
+a pursuer (`$21f00`), which is not modelled. A seeder is therefore predictable exactly until it takes off (positions equal
+for 1,499, 1,032 and 1,499 ticks from tick 0 in the no-fire run; the agent's run). A patrol's steering reads the ship's
+position after the tick's move and the tick counter plus its pool index, so `shot.predict` needs the ship's future path:
+given it, position after 10, 20 and 40 ticks is exact on 281/281, 251/251, 220/220 attack starts and 2,943/2,951,
+2,885/2,901, 2,732/2,765 homing starts.
+
+**The ship box** (poked): the common tail `$215ea` flags the ship when -`$c0` <= ship - actor < `$c0` on x, y and z, both
+positions after the tick's moves; the ship dies in the next tick. `py/mpc/gate_danger.py` pokes the ship to an actor's
+next position plus an offset with zero velocity: 90/90 trials agree, 36 of them hits; with the box taken as -`$c0` < d <=
+`$c0`, 62/90. A record still waiting does not collide (18/18); one that hatches that tick does. The patrol's own shots were
+not gated.
+
 ## When a wave ends
 
 `$20f82` (`Wave_CheckComplete`, once a tick from the main loop, skipped while the ship is hit or crashing) walks the pool

@@ -21,6 +21,7 @@ cwd = "."
 expect = ["3496/3496", "re:(?m)^model == callcap: 3496/3496   control=none$", "re:(?m)^  A countdown +10$", "re:(?m)^  B scan tick +436$", "re:(?m)^  D fire \\(D4 < \\$900\\) +311$", "re:(?m)^  D ground-avoid reflex +109$", "re:(?m)^  scan_skip_y_f100 +853$"]
 cite = "demo.md, \"The pilot\""
 minutes = 2
+inputs = ["scratchpad/virus/demo/S1b.snap"]
 
 [[gate]]
 name = "pilot_scan_census"
@@ -29,6 +30,7 @@ cwd = "."
 expect = ["263/1069", "re:scans \\(bp \\$253a4 stops\\) read: 1563 ", "re:PRECONDITION .*: 1069 of 1563", "re:(?m)^RESULT .*: 263$", "re:chosen record at a queue position: 0\\n"]
 cite = "demo.md, \"The pilot\""
 minutes = 4
+inputs = ["scratchpad/virus/demo/S1b.snap"]
 
 # A 2-game natural attract chain from demo/S1b.snap (one REPL lineage, nothing poked), from a fresh run into scratchpad/virus/chain/gate/.
 [[gate]]
@@ -37,4 +39,24 @@ cmd = "bash py/chain/gate_chain.sh"
 cwd = "."
 expect = ["re:(?m)^over tick, score, wave equal the six-game run: 2/2 \\(2 games run\\)$", "re:(?m)^game 1 start queue zero: True; \\$32a52 at game 2 start == game 1 wave: True \\(3 vs 3\\)$"]
 cite = "demo.md, \"Twenty-four games\""
+minutes = 6
+
+# The flight, shot and actor models behind the planner work (py/mpc/, README "The flight model" and behaviours.md "The
+# player's shot"). Both run stserver and replay or capture afresh into scratchpad/virus/mpc/gate/.
+[[gate]]
+name = "mpc_flight"
+cmd = "bash py/mpc/gate_flight.sh"
+cwd = "."
+expect = ["re:check 1 \\(positive control\\): capture states compared 120; pos 120/120, vel 120/120, att 120/120, fuel 120/120, all 120/120", "re:no overwrite, no mouse move \\(control of the control\\): .* all 0/120", "re:check 2 \\(thrust bit cleared\\): capture states compared 120; pos 0/120, vel 0/120, att 120/120", "re:state 618/618; fuel 618/618; latch 618/618; contact 618/618; outcome 618/618", "re:a\\) empty fuel, poked: 6/6 ticks equal", "re:d\\) totals over 22 out files .*'ticks': 6631, 'state': 6631, 'deaths': \\{'ground,crash,dead': 9, 'crash,dead': 5, 'low,object,crash,dead': 3\\}"]
+cite = "README.md, \"The flight model\""
+inputs = ["scratchpad/virus/fl/f1.snap", "scratchpad/virus/cap/flight_bp.txt"]
+minutes = 4
+
+[[gate]]
+name = "mpc_shot"
+cmd = "bash py/mpc/gate_shot.sh"
+cwd = "."
+expect = ["re:(?m)^  spawn_rec +2354/2354$", "re:(?m)^  tick_spawn +2354/2354$", "re:(?m)^  flight +4926/4926$", "re:(?m)^  hit +15/15$", "re:(?m)^  nohit +43488/43488$", "re:(?m)^  terrain_removed +891/891$", "re:(?m)^  kill +13/13$", "re:(?m)^  seeder/fly +7701/7701$", "re:(?m)^  patrol/attack +309/309$", "re:(?m)^  patrol/home +3013/3014$", "re:ship box: 90/90 trials agree; ship hit in 36 of them", "re:ship box \\(control: .*\\): 62/90 trials agree", "re:(?m)^  spawn_rec +19/2354$", "re:(?m)^  flight +2523/4926$", "re:(?m)^  hit +6/15$", "re:(?m)^  seeder/fly +520/7701$"]
+cite = "behaviours.md, \"The player's shot, the targets and the ship box\""
+inputs = ["scratchpad/virus/demo/S1b.snap"]
 minutes = 6

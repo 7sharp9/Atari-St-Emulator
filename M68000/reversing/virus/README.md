@@ -248,7 +248,8 @@ matching bucket by `jsr (A0)` on each record. So the order is a painter's algori
 ## The flight model (gated, mouse run; autopilot poked)
 
 The ship tick is `$255c2`. The ship state is `$270b0`: x, y, z, vx, vy, vz (words). The input routine returns a target
-attitude (D0, D1) and flags (D2) at `$255d4`; the model gates what follows.
+attitude (D0 the tilt from vertical, D1 the heading, `$10000` a full turn) and flags (D2 bit 0 fire, bit 1 thrust) at
+`$255d4`; the model gates what follows. y grows downward: gravity adds to vy and thrust at tilt 0 subtracts 15 a tick.
 
 ```
 if y < $c900 (signed): thrust off
@@ -264,16 +265,55 @@ The clamp on the negative side is unreachable (`bcc` is unsigned), so a large ne
 reads 120 `bp 255d4` stops from `fl/f1.snap` with a mouse nudge at the start and thrust held: 119 consecutive ticks,
 position 119/119, velocity 119/119, attitude 119/119, matrix 119/119 (20 thrust ticks, 99 without). Control (thrust term
 `>> 4`): 99/119, failing exactly on the 20 thrust ticks. The gravity `g` is read to be set to 3, 4, 5, 6 at wave thresholds in
-`$20f26..$20f64` (read; only the value 3 is seen in the run). Not modelled: the mouse routine `$254aa` (mouse offsets about
-`$80`, converted to an angle and tilt through the tables at `$d8fa` and `$d9fa`, read), the ground contact paths `$25a6e`,
-`$25c28` and the exhaust particles.
+`$20f26..$20f64` (read; only the value 3 is seen in the run). The mouse routine `$254aa` is read, not modelled: mouse offsets about `$80` become a heading (any word, table `$d8fa`) and a tilt, D0 = 2 x
+min(table `$d9fa`, `$3fff`), so even values 0 to `$7ffe`. The tick takes both as plain words with no range check.
 
 `$2538c` is a second input routine that picks the target and flags from the ship's position against a target list at
 `$270a6`, and `$62a5f` selects it in place of the mouse routine. **Poke:** `wb 62a5f ff` on `fl/f1.snap`. A `hits` run
 of 300,000 steps then counts 10 entries of `$2538c` and 0 of `$254aa`, and the same tick model matches position, velocity
 and attitude 119/119 (the thrust ticks 14/14, the others 105/105); control (thrust `>> 4`) 105/119. The orientation matrix
-matches 4/119 in this run (119/119 in the mouse run); the cause is not established (inferred: other drawing code rewrites
-`$270d4` between ticks, for example the call at `$23d5c`). This is a poked result, not a played one.
+matches 4/119 in this run (119/119 in the mouse run); the cause is not established. One other writer of `$270d4` is known: a
+patrol's steering builds its own matrix there on every actor pass (`behaviours.md`, read), so the attitude words, not `$270d4`,
+are the ship's orientation at a tick boundary. This is a poked result, not a played one.
+
+### Off the capture, and where free flight ends (gated)
+
+`py/mpc/replay.py` drives the game through `stserver`: at every arrival at `$255d4` it overwrites the low words of D0, D1 and D2
+with a control sequence and records the state, so any flight can be flown and compared with the model. An interrupt taken
+exactly at `$255d4` returns to it and stops the breakpoint a second time after a few steps with the tick not run; the harness
+counts a return in under 64 steps with no marker passed as the same tick. `py/mpc/exact.py` is the tick as functions
+(`step_full`, and `step_game` with the conditions below). Gate `mpc_flight` (`bash reversing/virus/py/mpc/gate_flight.sh`,
+fresh replays from `fl/f1.snap`):
+
+- The capture replayed with its own recorded controls: 120/120 states on position, velocity, attitude and fuel. With no
+  overwrite 0/120; with the thrust bit cleared position and velocity 0/120 and attitude 120/120. Capture stop j is arrival
+  j + 1, and tick 0's controls are not in the capture: they are taken to be stop 0's (inferred).
+- 21 seeded control sequences that the capture does not resemble (slow random inputs, fire, any word for D0 and D1, dives,
+  low passes) and a scripted landing: 6,631 free-flight ticks, 6,631 equal on position, velocity, attitude and fuel, of
+  which 475 are inside the low band and 1,309 above the ceiling. The 17 deaths are named by cause by the model in all 17.
+
+The model is exact until one of these, with c = ground(x, z) - `$56` - y after the tick's move (`exact.clearance`):
+
+- **A hull vertex below the ground** (5 deaths; the flag equal on every tick). The ship's draw routine (`$2629c..$264b6`,
+  shape `$ab62`, nine vertices) rotates each vertex and sets `$62a62` when it is below the ground under that vertex; the next
+  tick dies at `$257fe`. Tilted or over a slope this comes before c reaches 0 (deaths at c = 56 and c = 40).
+- **c < 0** (the ground-contact paths `$25870` and `$25c28`; 9 deaths, 1 landing). The ship dies unless vy after gravity is at most `$28`, vy + |vx| + |vz| is at most `$28`,
+  and x and z are both below `$800`; then it lands: y := `$3ca`, velocity 0, latch `$62a63` cleared.
+- **0 <= c <= `$170` over an object cell** (3 deaths, 475 safe ticks): the byte at `$32a58 + ((x + $80) >> 8) + ((z + $80) &
+  $ff00)` with any of its low five bits set and bit 4 clear.
+- **On the pad** (`$25a6e`; 39 ticks, one run): latch clear and no thrust refuels by `$19` a tick up to `$1000`, holds y and ignores
+  the inputs; thrust sets the latch and the normal tick resumes.
+- **Above the ceiling**, y < `$c900`: the thrust bit is dropped for that tick. **Fuel**: thrust needs 3 and costs 3, fire
+  costs 1; with less there is no thrust and fuel becomes 0 (6/6 ticks, fuel poked to 7).
+
+No code outside the tick wrote the ship's state, attitude or fuel in these replays; enemy contact is in `behaviours.md`,
+"The player's shot, the targets and the ship box". Landscapes 1 and 2 and g other than 3 were not flown.
+
+A plain floating-point copy of this tick is not a usable stand-in for it. `x - (x >> 6)` floors, so each tick keeps on average
+about half a unit more velocity per axis than `x - x/64`: a 300-tick flight planned through the float copy to end within 216
+units of a waypoint ended 14,712 units from it in the game, and 3,092 with the mean of the floors added to the float copy
+(one start, one waypoint; the game equalled `exact.py` on 301/301 ticks of each replay). Record, not a gate: the planner
+scripts are in `scratchpad/virus/mpc/plan/`.
 
 ## The actor pool and the seeder (gated, one behaviour)
 
@@ -343,6 +383,7 @@ the infection target queue at `$27134`, the random state). Its scripts are in `p
 | `virus.sym` | names |
 | `py/README.md` | each script, its command and expected line |
 | `py/capture.sh`, `py/gate_all.sh` | fresh captures; every model with its control |
+| `py/mpc/` | the replay harness, the tick, shot and actor models as functions, and gates `mpc_flight` and `mpc_shot` |
 | `py/virus_terrain.py`, `virus_objects.py`, `virus_grid.py`, `virus_tiles_check.py`, `virus_slope.py`, `virus_flight.py`, `virus_particles.py` | the models and gates |
 | `py/render_heightmaps.py`, `py/vcommon.py` | the heightmap renderer; shared paths |
 | `heightmaps.png` | landscapes 0, 1 and 2 from the model (256 x 256 cells each, 2x; white is water) |

@@ -50,7 +50,7 @@ The demo keeps `$2709a` (the HUD high score) at 0: `py/sample.py`, 80 samples at
 ## Where the inputs enter
 
 The main loop `$23198` calls `$255c2` (`Ship_Tick`) each tick. `$255c2` tests `$62a5f`: nonzero calls `$2538c`
-(autopilot), zero calls `$254aa` (mouse). Both return D0 (steer), D1 (pitch or magnitude) and D2 (bit 0 fire,
+(autopilot), zero calls `$254aa` (mouse). Both return D0 (the target tilt from vertical), D1 (the target heading) and D2 (bit 0 fire,
 bit 1 thrust); control then reaches `$255d4`, where the flight model (`README.md`, "Flight model") takes over.
 `$254aa` tests `$62a5f`'s neighbour `$62a5b`: nonzero goes to the keyboard reader `$2554a` (`$1f7d2..$1f7ee` hold the
 bound-key pointers; it adds `$600` to D0 on one key, subtracts it on the opposite, steps D1 by `$c00`, and sets D2 bits 0
