@@ -39,6 +39,7 @@ cmd = "bash py/chain/gate_chain.sh"
 cwd = "."
 expect = ["re:(?m)^over tick, score, wave equal the six-game run: 2/2 \\(2 games run\\)$", "re:(?m)^game 1 start queue zero: True; \\$32a52 at game 2 start == game 1 wave: True \\(3 vs 3\\)$"]
 cite = "demo.md, \"Twenty-four games\""
+inputs = ["scratchpad/virus/demo/S1b.snap"]
 minutes = 6
 
 # The flight, shot and actor models behind the planner work (py/mpc/, README "The flight model" and behaviours.md "The
