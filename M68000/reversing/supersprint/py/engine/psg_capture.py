@@ -1,8 +1,9 @@
 """Run the game's real Timer-D sound ISR ($13254) inside the emulator (the emulator never raises Timer D) and log every YM2149 write.
 
 Method: patch the page-flip routine ($1464a, 10 bytes) of the race snapshot with a jmp to scratch code at $71000 that (once, when the
-mailbox at $71100 is non-zero) calls a sound-trigger routine with one word argument, then fakes `ticks` Timer-D interrupts by pushing
-[PC][SR] and jumping to the ISR entry $13254 (the ISR ends with rte).  Two deterministic passes give the PSG write log (REPL `watch
+mailbox at $71100 is non-zero) calls a sound-trigger routine with one word argument, then fakes `ticks` Timer-D interrupts with
+`trap #0`, whose vector ($80, unused by the game) is poked to the ISR entry $13254: the game runs in user mode and the ISR ends with
+rte, which is privileged, so the handler has to be entered through a real exception.  Two deterministic passes give the PSG write log (REPL `watch
 ff8800 4`) and the tick boundaries (`watch` on the ISR's divider counter -12(A4)); merged by emulator step number.
 usage: psg_capture.py <trigger_hex> <arg> <ticks> [out.json]
 """
@@ -13,7 +14,7 @@ from common import *
 SCR = 0x71000; MB = 0x71100
 CODE = bytes.fromhex(
     '4ab900071100' '6732' '48e7fffe' '207900071100' '42b900071100' '3f3900071104' '4e90' '548f'
-    '487a000a' '40e7' '4ef900013254' '537900071106' '6aec' '4cdf7fff'
+    '4e40' '4e714e714e714e714e71' '537900071106' '6aec' '4cdf7fff'
     '4e56fffc' '2d6cffb2fffc' '4ef900014654')
 assert len(CODE) == 0x4c - 0x0 + 0x0 or True
 
@@ -26,6 +27,7 @@ def build_cmds(trigger, arg, ticks, watch):
     for i in range(0, len(blob), 4):
         cmds.append('w %x %s' % (SCR + i, blob[i:i + 4].hex()))
     assert bytes(ram.b[0x14654:0x14656]) == bytes.fromhex('296c')
+    cmds.append('w 80 00013254')        # trap #0 enters the Timer-D ISR in supervisor mode with an interrupt's [SR][PC] frame
     cmds.append('w 1464a 4ef90007')     # jmp $71000.l over the 10 bytes (link a6,#-4 / move.l -78(a4),-4(a6)) ...
     cmds.append('w 1464e 10004e71')     # ... padded with two nops; the displaced pair is re-executed at the end of the scratch code
     cmds.append('w 14652 4e71296c')     # (keeps the following opcode word $296c)
