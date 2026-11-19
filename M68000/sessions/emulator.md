@@ -6,7 +6,7 @@ added the user-mode privilege checks, both behind the net.
 ## Resume point
 
 - Last commit of this workstream: `c337526` emulator: 15% faster, privileged instructions trap in user mode; with
-  `9a017aa` (Super Sprint `psg_capture.py` enters its ISR through `trap #0`) and the tool and CLAUDE.md commits after it.
+  `9a017aa` (Super Sprint `psg_capture.py` enters its ISR through `trap #0`) and `9c97fa3` (`tools/bench_builds.py`).
 - Installed build: `bin/` and `server/bin/` `M68000.dll` SHA-256 `b17b5ad14363aba6…` (embedding commit `c337526`; a
   rebuild after the later commits changes the hash with no source edit), `stserver.dll` `adec5d78c43d7f4c…`.
   `checkpoint.txt` unchanged (`5000000 verify` passes).
@@ -80,7 +80,7 @@ Nothing running.
 
 ## Waiting on Dave
 
-- Push: `master` is 16 commits ahead of `origin/master` with this file's commit, only on this Mac.
+- Push: `master` is 18 commits ahead of `origin/master` with this file's commit, only on this Mac.
 - Which of Open 2's defects to fix next; the MFP group changes interrupt delivery, so it is a behaviour change for
   every game and wants the full gate run.
 - Stale in other workstreams' handoffs (not edited here): `sessions/archipelagos.md` Open 1 and its "Both loader pokes
