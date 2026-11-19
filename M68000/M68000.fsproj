@@ -11,7 +11,11 @@
        regression. Set Optimize=false here when stepping the emulator itself in a debugger. -->
   <PropertyGroup Condition="'$(Configuration)' == 'Debug'">
     <Optimize>true</Optimize>
-    <Tailcalls>true</Tailcalls>
+    <!-- Tailcalls stays off (the Debug default). With it on, F# emits a `.tail` prefix on every
+         call in tail position (`cpu.WithDataRegister r v`, `x.FetchTargetOrFault ...`), and the JIT
+         does not inline an explicitly tail-prefixed call: the boot ran about 4% slower and a game
+         snapshot about 8% (DEVELOPING.md, "Performance"). -->
+    <Tailcalls>false</Tailcalls>
   </PropertyGroup>
 
   <ItemGroup>

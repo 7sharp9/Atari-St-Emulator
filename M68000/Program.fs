@@ -677,39 +677,45 @@ type AtartSt(romPath: string, ?diskAPath: string, ?monitor: string) =
         | _ -> ()
         mmu.WatchPc <- cpu.PC
         mmu.WatchStep <- stepCount
-        let state = MachineState.Of cpu
-        let currentMutations = mmu.Mutations
-        let currentPhase = mmu.PeripheralPhase
         if mmu.InterruptAcks <> loopLastAckCount then
             loopLastAckCount <- mmu.InterruptAcks
             loopLastAckStep <- stepCount
-        if currentMutations <> loopAnchorMutations || currentPhase <> loopAnchorPhase then
-            loopAnchor <- state
-            loopAnchorMutations <- currentMutations
-            loopAnchorPhase <- currentPhase
-            loopPower <- 1
-            loopLambda <- 0
-        //A halted CPU (double bus fault) is a final state, not a stuck loop: Cpu.EnterGroup0OrHalt
-        //has already reported it, so let the run use up its budget and stop normally.
-        elif not cpu.Halted && state.SameAs loopAnchor && stepCount - loopLastAckStep >= instructionsPerFrame then
-            //Now a genuine proof, not a heuristic: identical CPU state, `mmu.Mutations` unchanged
-            //AND `mmu.PeripheralPhase` unchanged (so no latent device counter - Timer B prescaler,
-            //FDC INTRQ countdown, DMA sector count - has moved toward an event either), and no
-            //interrupt acked for a full frame (so IPL-masked, not just "next VBL not reached yet").
-            //Step() is a pure function of (Cpu, MMU) state + stepCount's periodic raises, and the
-            //frame gate rules the last of those out - so the next step's inputs are byte-identical
-            //to an earlier step's and execution cannot progress. (Residual: an armed self-reloading
-            //event-count timer keeps PeripheralPhase churning, which suppresses this check rather
-            //than firing it falsely - a missed detection, never a false positive.)
-            eprintfn "LOOP DETECTED at PC=$%08x (not a missing instruction) - this exact CPU state has recurred with the MMU mutation counter AND all latent device phase (timers, FDC INTRQ countdown, DMA) unchanged, and no interrupt taken for a full frame, so the next step's inputs are identical to an earlier step's: execution is provably stuck. Further stepping is pointless until the MMU/peripheral behavior it depends on changes." cpu.PC
-            eprintfn "%A" cpu
-            failwithf "Loop detected at PC=$%08x" cpu.PC
-        else
-            loopLambda <- loopLambda + 1
-            if loopLambda >= loopPower then
+        //The detector samples one step in 16. A stuck machine repeats its whole state with some
+        //period, so every 16th state repeats too and Brent's search over the samples still finds
+        //it; `mutations` is a monotone counter, so "unchanged since the anchor" at a sample means
+        //unchanged at every step between. Checking every step cost about 9% of a run
+        //(DEVELOPING.md, "Performance").
+        if stepCount &&& 15UL = 0UL then
+            let state = MachineState.Of cpu
+            let currentMutations = mmu.Mutations
+            let currentPhase = mmu.PeripheralPhase
+            if currentMutations <> loopAnchorMutations || currentPhase <> loopAnchorPhase then
                 loopAnchor <- state
-                loopPower <- min (loopPower * 2) 0x40000000
+                loopAnchorMutations <- currentMutations
+                loopAnchorPhase <- currentPhase
+                loopPower <- 1
                 loopLambda <- 0
+            //A halted CPU (double bus fault) is a final state, not a stuck loop: Cpu.EnterGroup0OrHalt
+            //has already reported it, so let the run use up its budget and stop normally.
+            elif not cpu.Halted && state.SameAs loopAnchor && stepCount - loopLastAckStep >= instructionsPerFrame then
+                //Now a genuine proof, not a heuristic: identical CPU state, `mmu.Mutations` unchanged
+                //AND `mmu.PeripheralPhase` unchanged (so no latent device counter - Timer B prescaler,
+                //FDC INTRQ countdown, DMA sector count - has moved toward an event either), and no
+                //interrupt acked for a full frame (so IPL-masked, not just "next VBL not reached yet").
+                //Step() is a pure function of (Cpu, MMU) state + stepCount's periodic raises, and the
+                //frame gate rules the last of those out - so the next step's inputs are byte-identical
+                //to an earlier step's and execution cannot progress. (Residual: an armed self-reloading
+                //event-count timer keeps PeripheralPhase churning, which suppresses this check rather
+                //than firing it falsely - a missed detection, never a false positive.)
+                eprintfn "LOOP DETECTED at PC=$%08x (not a missing instruction) - this exact CPU state has recurred with the MMU mutation counter AND all latent device phase (timers, FDC INTRQ countdown, DMA) unchanged, and no interrupt taken for a full frame, so the next step's inputs are identical to an earlier step's: execution is provably stuck. Further stepping is pointless until the MMU/peripheral behavior it depends on changes." cpu.PC
+                eprintfn "%A" cpu
+                failwithf "Loop detected at PC=$%08x" cpu.PC
+            else
+                loopLambda <- loopLambda + 1
+                if loopLambda >= loopPower then
+                    loopAnchor <- state
+                    loopPower <- min (loopPower * 2) 0x40000000
+                    loopLambda <- 0
         //Every instruction's own printfn (in 68k.fs) prints its disassembly text and a trailing
         //newline; prefixing the PC here with printf (no newline) - one call site, instead of
         //touching every printfn in 68k.fs - makes a captured trace directly greppable/correlatable

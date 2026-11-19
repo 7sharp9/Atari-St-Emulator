@@ -226,6 +226,14 @@ steps/s) before the work below. Where the cost went, in the order it was removed
 | Five `stepCount % period` tests compiled to 64-bit `div` | periods are `[<Literal>]`s in `Program.fs`'s `StepPeriods` | -> 7.9 s |
 | MOVE fault bookkeeping on every MOVE (`mergeFixup` closure + `Set`, `Some` for `FaultCcr`, `Move` pattern in `TryFastForwardTbdrPoll`) | empty-list short-circuit, `FaultCcr` as a `voption`, bit-mask pre-test | -> 7.1 s |
 | Every active pattern allocated `Some(tuple)` | `[<return: Struct>]`, `ValueSome(struct (...))`; call sites unchanged | -> 6.9 s |
+| `<Tailcalls>true</Tailcalls>` in the `Debug` configuration: F# put a `.tail` prefix on every call in tail position, and the JIT does not inline a tail-prefixed call | `Tailcalls` off | see below |
+| The loop detector in `AtartSt.Step` copied the registers, hashed `MMU.PeripheralPhase` (eleven chained multiplies) and compared on every step | it samples one step in 16 | see below |
+
+The last two rows were measured together on a loaded machine (load average 4 to 5), so their times are not on the
+table's scale: six interleaved rounds of the 30M boot gave a median of 7.34 s before and 6.22 s after (the ratio in
+each round 0.80 to 0.88), and 20M steps of Black Tiger's `play_start.snap` 3.72 s and 3.12 s (0.82 to 0.86), with the
+boot snapshot byte-identical. Alone, `Tailcalls` off was faster in all twelve pairs (median 5% on the boot, 8% on the
+game) and the sampled detector in all twelve (8% and 9%); removing the detector's work altogether gave 10 to 11%.
 
 Rules that keep it there:
 
@@ -237,7 +245,14 @@ Rules that keep it there:
   MMU change is gated by the 30M snapshot compare and a game snapshot compare, not by `selftest`.
 - With no memory hooks set, an unhooked RAM read or write is one `null` test plus `ramDirect` and no
   call; anything hook-related goes behind that test (section "Memory hooks").
+- `Tailcalls` stays off in `M68000.fsproj`. The core has no recursion that needs it (the regression net and every
+  gate pass without it).
+- Work `AtartSt.Step` does for the loop detector goes inside its one-in-16 sample. A stuck machine repeats its whole
+  state with some period, so every 16th state repeats as well and the search still ends; a stuck loop is reported up
+  to a few samples later than a per-step check would report it.
 
+A `sample` of the boot taken before the last two rows put 21% of the main thread in the allocator
+(`JIT_NewS_MP_FastPortable`, `_tlv_get_addr`, `bzero`), which bounds what removing allocation can give.
 What remains is allocation in the CPU core: the immutable `Cpu` record is copied (104 B) two or
 three times per instruction, about 250 B and several objects per step, and macOS's slow
 thread-local allocation helper makes each one dear. The one remaining fix is a mutable `Cpu`
@@ -337,6 +352,10 @@ trace shows `illegal encoding $xxxx (...) -> vector 4`:
 ```
 ILLEGAL: pc=$020000 opcode=$1008 not decoded (MOVE.B with An operand is illegal (instruction 0x1008)) -> vector 4
 ```
+
+A privileged instruction executed in user mode (`move`/`ori`/`andi`/`eori` to SR, `rte`, `move usp`, `reset`,
+`stop`) takes the privilege-violation exception, vector 8, in the same way; `tools/priv_check.sh` probes both.
+The ST's supervisor-only memory (`$0-$7ff` and the I/O page) is not protected: a user-mode access there succeeds.
 
 A run used to abort at that point with `Step failed at PC=...`; it now continues into the
 program's (or TOS's) vector-4 handler, and a `callcap` reports the handler's run (usually a
@@ -1250,6 +1269,7 @@ least once by a session that did not know it existed.
 | `tools/stdrive.py` | game driver library over `stclient.py` (`Drive(root, journal=, fields={name: (addr, width)}, period=)`): `hold(input, polls=k)` and `tap()` from a VBL boundary (step a multiple of 12,000), refusing a hold shorter than the game's poll period; `wait_until(addr, value, mask, width, budget)` on a stop watch, exact to the writing instruction; `ab(fn, budget)`, the same-snapshot, same-budget input/control pair on a fork with a diff of named ranges; `Joy`/`Key`/`Raw` inputs; a read cache cleared by every input or step; an always-on JSONL journal of every load, input, step, fork, restore and save that `replay()` (or `uv run python tools/stdrive.py <journal> <dir>`) re-runs and `cmp`s. `Drive(..., record=<dir>)` records each linear stretch (from a `load` or `restore` to the next, or to `close`) as an on-disk stserver recording segment listed in `<dir>/segments.json`, so `provenance.py --recording <segment>` and `last_writer` slice the drive after it ends. `tools/stdrive_check.py <snap> <st> <dir>` is its check (5 of 5 on Impossamole's boss room), `tools/stdrive_record_check.py <dir>` the recordings' (5 of 5: `boss_stdrive.py --delay 700000 --record` still ends byte-identical to `kill_d700000_end.snap`, and the slice of the boss hit points `$1a645` from the reloaded segment gives 12 links that are the REPL `watch 1a645 1`'s last 12 writes by step, PC and value); `reversing/impossamole/py/boss/boss_stdrive.py` the worked port of a REPL driver (byte-identical to the REPL script's kill). Not built: a closed-loop replay (the journal is open-loop: replayed inputs do not react) |
 | `tools/fsi_drive.fsx`, `tools/fsi_prep.sh` | F# Interactive driver: load a snapshot, run N steps, optionally `--watch` a range (the REPL's WATCH lines) or `--poke` a byte, save an end snapshot; a template for typed per-step scripts (section "F# Interactive" above; needs `DOTNET_gcServer=0`) |
 | `tools/tests/repl_ergonomics/run_all.sh [dll] [base.dll]` | checks of the trace default (`ATARI_TRACE` opt-in, `ATARI_NOTRACE` wins), `watch` hex `len`, REPL errors that do not end the run, `wb`/`ww`, and `ATARI_TRACE_GEMDOS` with a junk A7; with a base build, also the `ATARI_NOTRACE` byte-identity of a 2M boot and a REPL script. Each `t*.sh` prints its raw output and PASS/FAIL lines; output under `scratchpad/repl_ergonomics/` |
+| `tools/priv_check.sh [<M68000.dll>] [<outdir>]` | user-mode probes the SingleStepTests vectors cannot give (none starts in user mode): each privileged instruction must reach the vector-8 handler and two unassigned encodings the vector-4 handler, under `callcap` from a 30M diskless snapshot (11/11; a build without the checks gives 1/11, STOP alone) |
 | `tools/regress_net.sh <base.dll> <new.dll> <outdir>` | the skill's section 6 regression net as an A/B of two builds (verify, 30M snapshot cmp, selftest; with `CADAVER_SNAP`/`CADAVER_ST`, a game snapshot, REPL `watch` and DMA-`watch` compare); for the Mac and for when another session holds `bin/` (header) |
 | `tools/mame_st/` | MAME `st_uk` as a second oracle for the F# core: diskless boot dump and state compare, executed-PC trace and loop-reduced comparison (section "MAME as a second oracle" above) |
 | `reversing/finalfight/py/gdbstub/` | MAME's gdbstub for gdb, a Python RSP client and Ghidra's Debugger (headless), with a 600-stop gate against the Lua harness (its README) |

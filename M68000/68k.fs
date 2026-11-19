@@ -1177,7 +1177,7 @@ type Cpu =
              | OperandSize.Word -> x.MMU.WriteWord a (int16 value)
              | _ -> x.MMU.WriteLong a value)
             cpu
-        | EaImm _ -> failwith "WriteEa: immediate operand is not a valid destination"
+        | EaImm _ -> IllegalEncodings.raisef "WriteEa: immediate operand is not a valid destination"
 
     ///Shared "#imm <op> <ea>" decoder for the bucket-0 immediates (ORI/ANDI/EORI/ADDI/SUBI/CMPI).
     ///The immediate is at PC+2 (one word for byte/word, one long for long); the destination EA's
@@ -1572,6 +1572,10 @@ type Cpu =
 
     member x.DecodeBucket0 (instruction: int) : Cpu =
         match instruction with
+        //Privileged: in user mode the 68000 takes vector 8 with the instruction's own address stacked.
+        | OriToSR | AndiToSR | EoriToSR when not x.S ->
+            if Trace.enabled then printfn "privilege violation"
+            x.EnterVector 8 x.PC
         | OriToSR ->
             //Mask the immediate to the bits the 68000 SR actually implements (T=15, S=13, I=10..8,
             //CCR=4..0) so an OR can never leave the unused bits set - the 680x0 vectors check this.
@@ -1684,8 +1688,9 @@ type Cpu =
                     let cur = x.DataRegister register
                     let merged = if isLong then acc else (cur &&& ~~~0xffff) ||| (acc &&& 0xffff)
                     x.WithDataRegister register merged
-            if regToMem then printfn "movep.%s D%u,%i(a%u)" (if isLong then "l" else "w") register displacement addressReg
-            else printfn "movep.%s %i(a%u),D%u" (if isLong then "l" else "w") displacement addressReg register
+            if Trace.enabled then
+                if regToMem then printfn "movep.%s D%u,%i(a%u)" (if isLong then "l" else "w") register displacement addressReg
+                else printfn "movep.%s %i(a%u),D%u" (if isLong then "l" else "w") displacement addressReg register
             { newCpu with PC = x.PC + 4 }
 
         | BitOpDynamic(register, opmode, eamode, eareg) ->
@@ -1826,6 +1831,10 @@ type Cpu =
                 printfn "move %s,ccr" desc
             { regUpdate x with PC = x.PC + 2 + extBytes; CCR = newCcr }
 
+        //Privileged: in user mode the 68000 takes vector 8 with the instruction's own address stacked.
+        | Move2SR(_, _) when not x.S ->
+            if Trace.enabled then printfn "privilege violation"
+            x.EnterVector 8 x.PC
         | Move2SR(mode, register) ->
             //Goes through WithSR (not a plain `CCR = newCcr`) because this instruction can change
             //the S bit directly, without going through TRAP/RTE - real TOS's own boot code does
@@ -1871,10 +1880,13 @@ type Cpu =
                     printfn "move sr,%s" desc
                 newCpu
 
+        //Privileged: in user mode the 68000 takes vector 8 with the instruction's own address stacked.
+        | Reset when not x.S ->
+            if Trace.enabled then printfn "privilege violation"
+            x.EnterVector 8 x.PC
         | Reset ->
-            if x.S then printfn "reset"
-                //Asserted for 124 cycles
-            else printfn "TRAP: Not supervisor"
+            //The reset line is asserted for 124 cycles; the peripherals are not reset here.
+            if Trace.enabled then printfn "reset"
             {x with PC = x.PC + 2}
         | NOP ->
             if Trace.enabled then
@@ -1930,7 +1942,7 @@ type Cpu =
             let opBits = match size with 0b00uy -> 8 | 0b01uy -> 16 | _ -> 32
             let signBit = 1 <<< (opBits - 1)
             let mask = if opBits = 32 then -1 else (1 <<< opBits) - 1
-            let sz = match size with 0b00uy -> OperandSize.Byte | 0b01uy -> OperandSize.Word | 0b10uy -> OperandSize.Long | _ -> failwithf "negx: bad size %x" size
+            let sz = match size with 0b00uy -> OperandSize.Byte | 0b01uy -> OperandSize.Word | 0b10uy -> OperandSize.Long | _ -> IllegalEncodings.raisef "negx: bad size %x" size
             let loc, extBytes, desc, regUpdate = x.ResolveEa sz eamode eareg (x.PC + 2)
             let src = x.ReadEa sz loc
             let result = (0 - src - xin) &&& mask
@@ -1949,7 +1961,7 @@ type Cpu =
             //Two's complement negation (0 - operand). Reuses the existing Subtract_* helpers for
             //N/Z/V/C (dest=0); those already fold C into X, and NEG wants X=C, so no extra work.
             //Migrated to the shared EA decoder - one path covers Dn and every alterable memory mode.
-            let sz = match size with 0b00uy -> OperandSize.Byte | 0b01uy -> OperandSize.Word | 0b10uy -> OperandSize.Long | _ -> failwithf "neg: bad size %x" size
+            let sz = match size with 0b00uy -> OperandSize.Byte | 0b01uy -> OperandSize.Word | 0b10uy -> OperandSize.Long | _ -> IllegalEncodings.raisef "neg: bad size %x" size
             let loc, extBytes, desc, regUpdate = x.ResolveEa sz eamode eareg (x.PC + 2)
             let raw = x.ReadEa sz loc
             let result, ccr =
@@ -1966,7 +1978,7 @@ type Cpu =
         | NOT(size, eamode, eareg) ->
             //One's complement. CCR: N/Z from result, V/C cleared, X unaffected. Migrated to the
             //shared EA decoder (one path for Dn and every alterable memory mode).
-            let sz = match size with 0b00uy -> OperandSize.Byte | 0b01uy -> OperandSize.Word | 0b10uy -> OperandSize.Long | _ -> failwithf "not: bad size %x" size
+            let sz = match size with 0b00uy -> OperandSize.Byte | 0b01uy -> OperandSize.Word | 0b10uy -> OperandSize.Long | _ -> IllegalEncodings.raisef "not: bad size %x" size
             let loc, extBytes, desc, regUpdate = x.ResolveEa sz eamode eareg (x.PC + 2)
             let raw = x.ReadEa sz loc
             let result, ccr =
@@ -1985,7 +1997,7 @@ type Cpu =
             //the destination before the write; on an odd EA that read is what faults, so the
             //group-0 frame's R/W bit must read READ, not WRITE. The read's result is discarded -
             //CLR always stores 0 regardless of what was there.
-            let sz = match size with 0b00uy -> OperandSize.Byte | 0b01uy -> OperandSize.Word | 0b10uy -> OperandSize.Long | _ -> failwithf "clr: bad size %x" size
+            let sz = match size with 0b00uy -> OperandSize.Byte | 0b01uy -> OperandSize.Word | 0b10uy -> OperandSize.Long | _ -> IllegalEncodings.raisef "clr: bad size %x" size
             let loc, extBytes, desc, regUpdate = x.ResolveEa sz eamode eareg (x.PC + 2)
             let _ = x.ReadEa sz loc
             let ccr =
@@ -2029,7 +2041,7 @@ type Cpu =
             //TST: sets N/Z from the operand, clears V/C, X unaffected. CCR-only, no write-back.
             //Migrated to the shared EA decoder (x.ResolveEa / x.ReadEa) - one path covers every
             //classic 68000 mode plus (xxx).W, which the old hand-rolled ladder was missing.
-            let sz = match size with 0b00uy -> OperandSize.Byte | 0b01uy -> OperandSize.Word | 0b10uy -> OperandSize.Long | _ -> failwithf "tst: bad size %x" size
+            let sz = match size with 0b00uy -> OperandSize.Byte | 0b01uy -> OperandSize.Word | 0b10uy -> OperandSize.Long | _ -> IllegalEncodings.raisef "tst: bad size %x" size
             let loc, extBytes, desc, regUpdate = x.ResolveEa sz eamode eareg (x.PC + 2)
             let raw = x.ReadEa sz loc
             let ccr =
@@ -2203,6 +2215,10 @@ type Cpu =
                 printfn "rts"
             x.FetchTargetOrFault newCpu instruction
 
+        //Privileged: in user mode the 68000 takes vector 8 with the instruction's own address stacked.
+        | RTE when not x.S ->
+            if Trace.enabled then printfn "privilege violation"
+            x.EnterVector 8 x.PC
         | RTE ->
             //Inverse of TRAP's push order: SR at [A7], PC(long) at [A7+2], SP += 6. RTE only ever
             //executes in supervisor mode, so x.A7 here is always the supervisor stack; the popped
@@ -2269,6 +2285,10 @@ type Cpu =
                 printfn "trap #%u" vector
             newCpu
 
+        //Privileged: in user mode the 68000 takes vector 8 with the instruction's own address stacked.
+        | MoveUsp(_, _) when not x.S ->
+            if Trace.enabled then printfn "privilege violation"
+            x.EnterVector 8 x.PC
         | MoveUsp(direction, register) ->
             if direction = 0uy then //MOVE An,USP
                 let newCpu = {x with USP = x.AddressRegister register; PC = x.PC+2}
