@@ -254,7 +254,4 @@ before spawning agents. The ones most often missed:
 - A queued IKBD packet reaches the ACIA one byte per 768 steps (1.28 ms) after each read, and the MFP
   in-service registers hold a channel off until its handler clears the bit; a snapshot older than format v13
   resumes with both registers 0 (`DEVELOPING.md`, "IKBD command interpreter").
-- Privileged instructions trap in user mode (vector 8), so scratch code poked into a user-mode game cannot fake an
-  interrupt by pushing `[PC][SR]` and jumping to a handler that ends in `rte`: enter it with a `trap #n` whose vector
-  is poked to the handler (`reversing/supersprint/py/engine/psg_capture.py`; probes: `tools/priv_check.sh`).
 - `u <addr>` from a snapshot already stopped at `<addr>` (a `$f898`-frame snapshot) returns at once with "reached after 0 steps": `u` aligns to an address and stays put when already there (`reversing/powermonger/py/track.sh` relies on it). For the next arrival use `bp <addr>`, which steps first, or step past it and then `u`, as `reversing/powermonger/py/capture.sh` does.
