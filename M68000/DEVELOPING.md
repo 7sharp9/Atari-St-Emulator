@@ -82,6 +82,14 @@ only two such breakpoints set, Hatari once reported a stack word changing inside
 a third breakpoint made it vanish: cross-check any surprising mid-call change. Worked example with mouse menus:
 `reversing/populous/py/systems/hatari_edges.py`.
 
+A `--memstate` load restores the CPU settings saved with it (`--cpu-exact`, `--compatible`, `--timer-d`, blitter), so those
+flags on the command line do nothing; it also reloads `<state>.debug`, replacing `--parse` breakpoints and re-arming any
+saved one. To run with other CPU settings, boot with them and transplant the RAM and registers through the debugger as
+`reversing/learning/py/hatari_game.py` does. `--run-vbls N` exits after N VBLs and prints `SPEED: v VBL/s`; one
+conditional breakpoint costs about 15%. Measured on Virus (`reversing/virus/README.md`, "Running long"): default Hatari
+runs a game 1.7 to 1.9 times as fast as this emulator, `--cpu-exact off --compatible off --timer-d on` about 4 times with
+the same game state, but `--cpu-exact off` broke the key-driven cold boot of that disk.
+
 ## Python tooling (`tools/`, `reversing/<game>/py/`)
 
 `M68000/pyproject.toml` lists the two third-party deps the scripts use (`numpy`, `pillow`,
