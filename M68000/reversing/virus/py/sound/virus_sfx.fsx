@@ -76,11 +76,14 @@ let tick (e: Engine) =
     e.W.Clear(); e.NMax <- 0
     for c in e.Ch do step e c
 
-// ---- YM2149: 2 MHz clock, tone toggles every TP steps of clock/8 (f = 2e6/(16 TP)), noise LFSR shifts every 2 NP steps
-let ymVol = Array.init 16 (fun n -> if n = 0 then 0.0 else Math.Pow(10.0, -3.0 * float (15 - n) / 20.0))
-let stepsPerTick = 5000                   // 250 kHz / 50 Hz
+// ---- YM2149: 2.005312 MHz clock, tone toggles every TP steps of clock/8 (f = 2005312/(16 TP)), noise LFSR shifts every 2 NP steps
+// one voice's output as the real ST's 3-voice mixer gives it with the other two voices silent: column [0][0][a] of Paulo Simoes's
+// measured 16x16x16 table (Hatari src/includes/ym2149_fixed_vol.h, its default "table" mixing), relative to level 15; the ideal 3 dB/step
+// curve is 0.5 dB too loud at level 14, 1.4 to 3.2 dB from level 13 down (reversing/virus/frontend.md, Sound)
+let ymVol = [| 0; 120; 251; 385; 598; 840; 1258; 1725; 2536; 3483; 5151; 7054; 10367; 14634; 22931; 34469 |] |> Array.map (fun v -> float v / 34469.0)
+let stepsPerTick = 5008                   // a PAL ST frame is 160,256 CPU cycles; the YM clock is CPU/4 = 2,005,312 Hz, its counters run at clock/8: 5,008 steps per tick (50.05 Hz)
 let sampleRate = 44100
-let samplesPerTick = sampleRate / 50      // 882
+let samplesPerTick = 881                   // 44100 / 50.0525 = 881.07 samples per tick
 
 type Ym() =
     member val R : int[] = Array.zeroCreate 16

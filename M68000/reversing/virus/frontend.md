@@ -97,10 +97,18 @@ ticks; 40 random 150-tick streams of plain and attenuated triggers (the priority
 6,000/6,000; natural play with the model loaded from the live channels at each `$179f6`, `f1.snap` 400/400 ticks and
 `g_game2.snap` 300/300 (`g_game1.snap` 400/400 in the agent's run). Controls: noise period `>> 2` 5,477/6,305 and 1,601/6,000
 (natural 38/100); every channel writing the noise period 5,104/6,000; priority `>=` 2,647/2,728.
-`py/sound/virus_sfx.fsx` (`dotnet fsi`) runs the same model at 50 Hz through a YM2149 synthesis (2 MHz clock, tone
-2e6/(16 TP), a 17-bit noise LFSR, 3 dB volume steps) and writes one WAV per id, capping repeating chains at 3 s; its register
-log equals the model on 3,472/3,472 ticks. The register sequence is proven; the synthesis (noise rate and taps, the volume
-curve, the coarse registers at 0) is not compared with a real ST's output. Thrust (id 5) is noise only at period 30, volume 6
+`py/sound/virus_sfx.fsx` (`dotnet fsi`) runs the same model at 50.05 Hz through a YM2149 synthesis and writes one WAV per
+id, capping repeating chains at 3 s; its register log equals the model on 3,472/3,472 ticks. The synthesis is checked against
+Hatari (record, `scratchpad/overseer/virus_hsound/`: the effect's channel state transplanted into `fl/f1.snap`'s RAM with
+`$62a68` poked to 1 so nothing else triggers, the game's own `Sound_Tick` run on Hatari's CPU, its WAV recorded). Hatari's
+game-code YM writes equal ours (explosion id 4 358/358, extra life id 32 120/120), and its noise obeys
+`o[n] = o[n-14] xor o[n-17]` on 396/396 bits, the same 17-bit LFSR. The clock is the ST's CPU/4, 2,005,312 Hz (tone
+2005312/(16 TP); measured pitch over the 2 MHz formula 1.00256, noise bit period 10.556 samples at 44.1 kHz), and one voice's
+volume follows the measured single-voice column of Hatari's 3-voice mixer table (`ym2149_fixed_vol.h`, its default `table`
+mixing), not 3 dB steps: the ideal curve is 0.5 dB too loud at level 14 and 7 dB at level 1. The renderer uses both; after
+one gain constant its curve is within 0.2 dB of Hatari's at every level. Not compared: other noise periods, the non-linear
+mixing of several voices (the renderer sums voices linearly), and Hatari's output low-pass (about 20% less energy above
+5 kHz); that the table mixing matches a real STF is Hatari's measurement, not checked on hardware. Thrust (id 5) is noise only at period 30, volume 6
 for 7 ticks then 5 down to 1; player fire (id 10) is tone period 248 (504 Hz) with noise period 31, volume 12 down to 1.
 
 Every trigger is one of 44 call sites (`py/frontend/sound_sites.py`, a whole-image scan of the regenerated listing). Over 300M steps
@@ -174,6 +182,6 @@ over returns at `$26178` without drawing); the purpose, a player-quoted verifica
 
 ## Open
 
-1. Effect names are from trigger sites only (id 39 has none), and the rendered WAVs from an assumed YM2149 synthesis: compare one with a real ST or a Hatari recording.
+1. Effect names are from trigger sites only (id 39 has none); the synthesis is checked against Hatari for one tone and one noise effect only ("Sound").
 2. The fuel bar and the radar frame draw routines; effect 0's condition (`$23ed0..$23eea`); the `$62a6c` setter.
 3. The key-define page, the credits page and the palette fade tables (`$16d32..$16f52`) are read, not driven.
