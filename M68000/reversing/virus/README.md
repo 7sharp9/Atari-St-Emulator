@@ -105,6 +105,18 @@ headless, `Step()` renders nothing unless `ATARI_FRAME_DIR` is set, and the GC a
 RNG seed at game 1, not tested). Skipping the 50M-step wait after a game over would save at most 8.9% and was not tried (it may change the carried
 RNG advance). The remaining emulator-side lever is the mutable `Cpu` listed in `DEVELOPING.md` (hypothesis, about 15%).
 
+Hatari 2.6.1 (headless, `--fast-forward on`) runs the same flight 1.7 to 1.9 times as fast in game ticks per wall second:
+from the game start (Hatari's own cold boot saved with `statesave`, ours `demo/S1b.snap`) both reach tick 1,190 score `$0621`
+at 5,000 VBLs and tick 4,790 score `$155a` at 20,000, and over four interleaved rounds (load 5 to 9) ours ran 240M steps in a
+median 44.0 s (110 ticks/s, 5.5M steps/s, build `c337526`) and Hatari 20,000 VBLs in 25.4 s (205 to 209 ticks/s); every Hatari
+run was faster. Both spend about 4.15 to 4.18 VBLs a tick, so the gap is VBLs per second, not the frame length. With the state
+transplanted after a desktop boot (a `--memstate` load restores the CPU settings it was saved with), `--cpu-exact off` gives
+1.37 times default Hatari, adding `--compatible off` 1.45 and `--timer-d on` 2.28 (about 4.1 times ours), each with the
+2,602-byte game state of `reversing/learning/py/hatari_game.py` identical at ticks 4,790 and 11,000; `--cpu-exact off`
+broke the key-driven cold boot of this disk 5 of 5 times. Hatari has no step-exact stop, fork or `callcap`, and one
+conditional breakpoint costs it 14 to 16%. Scripts and logs: `scratchpad/overseer/hatari_speed/` (`bench.sh`, `variants.py`;
+record, not a gate).
+
 ## Memory map (RAM, 1 MB)
 
 | range | contents | how known |

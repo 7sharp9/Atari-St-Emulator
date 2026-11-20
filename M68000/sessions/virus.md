@@ -1,76 +1,53 @@
 # Virus: handoff
 
-Updated by an overseer session that promoted the pilot-tick model and the 24-game attract chain, and folded in the
-static scan of the actor pool (`behaviours.md`) made by a separate session (`git log -- reversing/virus`).
+Updated 2026-11-20 by the session that ended at commit `d6e9ab6`. Virus game work between `36da14e` and `d76cf76` was
+done under the blog workstream (`sessions/blog.md`; `git log -- reversing/virus` for the commits); this file now covers
+it and the blog file keeps only the posts.
 
 ## Resume point
 
-- Last commit of this workstream: `36da14e` (the actor-pool scan, `behaviours.md`).
-- Working data: `M68000/scratchpad/virus/` (`disk/aha.msa` from the Dropbox `A-HA #[no number].zip`, `aha.st`,
-  `drive/`, `fl/`, `cap/`, `gates/`, `demo/`). Rebuild: `tools/msa2st.py` on the MSA, `bash reversing/virus/drive.sh`
-  (about 21 s), `bash reversing/virus/py/capture.sh`, then for the demo `bash reversing/virus/py/demo/capture.sh` and
-  `capture_death.sh` (several minutes); anchors in `scratchpad/ANCHORS.md`.
-- Start from: `drive/g_game2.snap` (wave-1 launch pad, a live game), `fl/f1.snap` (flight with thrust held),
-  `demo/S1b.snap` (game start of the first attract flight, `$62a5f = $ff`).
-- Uncommitted work left behind: none of this session's. `uv run python tools/gates.py run virus`: 4/4 PASS at `36da14e` (`models`
-  re-reads saved captures, the fresh part is `py/capture.sh`; `pilot_tick`, `pilot_scan_census` and `chain2` run the
-  emulator, about 8 minutes together). The older demo gates are not in `gates.toml`:
-  `bash reversing/virus/py/demo/gate_demo.sh`, `gate_death.sh` (over ten minutes), `queue_check.sh`.
-- The scan scripts (`py/scan/*.sh`) read the chain's start snapshots from `scratchpad/virus/chain/long/starts/`,
-  which does not exist yet, and fall back to `scratchpad/overseer/virus_long/work/main/starts/` (24 snapshots).
-- Subagent working directories: `scratchpad/overseer/aha/`, `virus_demo/` (first looks), `virus_pilot/` and
-  `virus_long/` (pilot model, chain; `report.md` in each, `virus_long/work/main/` holds the 24 start snapshots).
+- Last commit of this workstream: `d6e9ab6` (sound, models, pursuer and patrol; gates `sound`, `models3d`, `pursuer`).
+- Working data: `M68000/scratchpad/virus/` (rebuild: README "Running it", `drive.sh`, `py/capture.sh`, the demo capture
+  scripts; `chain/long100/` from `py/chain/chain.py` (3.1 h); `pursuer/` from `py/behaviours/build_marks.py` and
+  `cap_nat.py`; rows in `scratchpad/ANCHORS.md`). Each gate writes its own `W/<area>/` output (`sound/wav/` holds the 54
+  WAVs, `models3d/svg/` the SVGs).
+- Start from: `chain/long100/starts/main_g050.snap` (reaches wave 5 and the mothership), `fl/f1.snap` (flight with
+  thrust held), `demo/S1b.snap` (the first attract flight's start), a seeded start (`mpc/duel/starts.py` on
+  `demo/fl/Q1.snap`) for pilot work.
+- Gates: `uv run python tools/gates.py run virus -j 8`: 17/17 PASS at `d6e9ab6` (about 5 min, load 2.3).
+- Uncommitted work left behind: none (`.obsidian/` is Dave's).
+- Agent working directories, each with `report.md`: `scratchpad/overseer/virus_post/` (the demo-variance post draft),
+  `virus_sound/`, `virus_models/` (its `svg/` is a stale render with wrong names; `out_svg/` was the agent's final set,
+  superseded by the gate's `W/models3d/svg/`), `virus_learner/`, `hatari_speed/`.
 
 ## Proven so far
 
-- The disk is Virus (D. Braben 1988, Union crack, TEX trainer), not Archipelagos; `drive.sh` reaches the wave-1 pad
-  with the trainer's three cheats declined (README "Running it").
-- Landscape: one byte per cell of a 256x256 map from a sum of eight table sines, three variants made by patching
-  instruction words in `$245b8`: 65455/65455 on each landscape, controls 29124 and 10965
-  (`bash reversing/virus/py/gate_all.sh`). Landscapes 1 and 2 come from poked stubs.
-- RNG `$2706e/$27072` (`a += b; b = swap(old a)`) and the object scatter `$236f8`: 571/571 and 1774 of 1775 cells,
-  controls 1767 and 1586 (same script; the counts are exact for the pad snapshot's own RNG state).
-- Renderer: the 11x10 projected vertex grid and tile type words 330/330 on four flight frames (control 117/330);
-  132/132 tile calls take those vertices and colours (control 33/132); the edge slope table 8064/8064 for dy 1..63
-  (control 1431). The tile colour is a height band; no slope term was found in that path.
-- Flight tick `$255c2`: 119/119 ticks on a mouse-driven run, control 99/119; under the poked autopilot pos, vel and
-  attitude 119/119.
-- Particles: stage-1 behaviour `$21792` 447/447, control 334/447.
-- `$20e74(n)` selects landscape 1 at n = 4 and 2 at n = 9 (poked-stub callcaps; n is the wave counter `$32a50`, read).
-- Attract mode (`demo.md`): the only write to `$62a5f` in a no-key run is `$ff` from `$24d14` after the 769-frame
-  title loop; SPACE gives 0 from `$24cfc` (`py/demo/gate_demo.sh`).
-- The demo runs to its natural end unaided (six life losses, game over, next demo). After a natural game over the
-  next flight matches flight 1 on 205/500 samples, after an ESC on 500/500, and after a natural game over with four
-  bytes of `$27134..$27147` cleared on 500/500 (`py/demo/gate_death.sh`).
-- A chain of 24 complete attract games in one lineage from `S1b.snap`, no pokes, each ending by itself: game-over
-  waves (`$32a50`) 3,3,3,2,3,3,2,3,3,2,3,2,3,4,3,3,2,3,2,3,3,3,3,3; Spearman rho with game number +0.09, permutation
-  p 0.67 (recomputed from `chain.jsonl`); no trend in score, tick or flight length either. n = 24 detects only
-  |rho| >= about 0.4. The first six games reproduce the older six-game chain exactly. `py/chain/gate_chain.sh long 24`
-  (about 50 minutes); the 2-game form is gate `chain2` (demo.md "Twenty-four games").
-- Speed: one lineage runs at about 4.3M steps/s (about 127 s per game); `bp` costs about 7%, `stserver` about 10%;
-  headless runs draw nothing, so there is nothing to skip. Independent emulators scale to about 23M steps/s aggregate
-  at 8 (load 5 to 10, indicative). The game-over and title wait is 8.2% of steps (README "Running long").
-- Pilot tick `$2538c` as a model: equals `callcap` on 3496/3496 natural ticks of demo flight 1 (registers, aim,
-  controller, matrix `$270d4`), five broken controls 11 to 3494 of 3496 (`py/pilot/gate_pilot.sh`, gate `pilot_tick`).
-  The D0 = `$1000` output and the `$228de` scan skip were not reached. The nearest-record scan picks 14 behaviour
-  kinds; homing records (`$21d08`) were present in 1069 of 1563 scans and chosen in 263 (gate `pilot_scan_census`).
-- What carries over a game over: the high-score table (the demo's score under a stock name), `$32a52` (the previous
-  game's wave, copied by `$25bdc`), the random state, and the four-entry target queue at `$27134`, which a homing
-  pool-record behaviour steers at (`$21d62` through `$22c1e`). The queue is refilled each game: 0 of 92 entries at
-  games 2 to 24's starts equal an entry of the previous start. The pilot's scan reads only the pool records, so it
-  reaches the queue only through records that home on it.
+Detail and controls are in the cited sections; each gate is in `reversing/virus/gates.toml`.
 
-- The actor pool (`behaviours.md`): seven spawned enemy kinds and their behaviours from the `+16` pointer census.
-  A wave ends when every record left is an unhatched chaser (`$20f82` into `$20fb4`): 4/4 `bp` stops at the ticks the
-  rule predicts, the timer rule (tick 3001) refuted (`py/scan/waveend.sh`). Per-wave spawn table from `$20e34`
-  (read). So the `$62a60` reload at pilot call 1191 is the wave-0 restart, not a life loss (inferred from the tick).
-- The demo flag `$62a5f` has eight references, all in code (raw long scan): it changes who flies and the post-game
-  steps, nothing in enemies, waves or scoring (read). `$32a52`'s one reader is the human score-code line `$260f4`.
-- The six blocks that stepped up over the chain are residue in the ten depth-bucket draw lists `$276fc..$2f6f4`,
-  never read past the end pointer: `watch 29703 $6e` 53/53 writes from the object appends; game 2 with the area
-  zeroed or filled with `$ff` against unpoked, 500/500 identical each (`py/scan/watch_deep.sh`, `residue.sh`).
-  With that, nothing in the carried state is a parameter the pilot or the enemies adapt (`behaviours.md`
-  "What this means for better between plays").
+- Landscape, RNG and scatter, grid, tiles, slope table, flight tick, particles: gate `models` (README sections).
+- Renderer: no slope shading; spans 1440/1440, slope table 16320/16320, depth buckets 39523/39523 (gates `shading`,
+  `painter`).
+- Model data and drawers: 43 models at `$aa72..$ce9a`; vertices, shadows and the `$26780` call stream exact on natural
+  frames (f1 1853/1853, 251/251) and for all models in 40 poses (14680/14680); control 1456/1853 (gate `models3d`, README
+  "Model data and the model drawers"; `models3d.png`).
+- Flight: the ship tick off the capture 6631/6631 (gate `mpc_flight`); the player's shot, wave-0 actors, ship box (gate
+  `mpc_shot`); mouse 180/180 (gate `flightctl`).
+- Actors: seeder, chaser `$21afe` 1069/1069, mothership chaser 4064/4064 (gate `behaviours`); pursuer `$21f00`
+  24653/24653, `$2202c` 22805/22807, patrol home 53992/53992, attack 6317/6317, cruise 5877/5877, wait 2213/2213,
+  conversion 34/34 over 25 natural captures of waves 1 to 4 (gate `pursuer`, `behaviours.md` "The pursuers and the patrol").
+  A kill swap-removes the last record into the slot, walked there that tick with that slot's phase.
+- Sound: records and `Sound_ChannelStep` modelled; the game's own routines match on 6305/6305 and 6000/6000 ticks and
+  400/400 natural ticks; WAVs from an assumed YM2149 synthesis (gate `sound`, `frontend.md` "Sound").
+- Pilot tick `$2538c` 3496/3496 (gate `pilot_tick`); the radar and the 3D view window (`behaviours.md`).
+- Attract mode: 100 unpoked games, final wave 1/2/3/4/5 in 2/21/69/7/1, no trend (rank +0.19, p 0.052); lives held at the
+  first wave-3 death set a long game apart (4 of 13 with 4 or 5 lives reach wave 4, 4 of 64 with 1 to 3) (`demo.md` "A
+  hundred games"; the post draft recomputed every figure). Nothing in the carried state adapts (`behaviours.md`).
+- Divergence (record, `scratchpad/virus/mpc/README.md` "chaos/"): one-unit nudges separate the ship only closed loop.
+- Speed: Hatari runs the demo flight 1.7 to 1.9x as fast as ours (205 to 209 against 110 ticks/s), about 4x with
+  `--cpu-exact off --compatible off --timer-d on` from a transplanted state, same state at ticks 4,790 and 11,000 (record,
+  README "Running long").
+- `fly_v8.py` (re-stop bound 2,000) equals `fly_v7.py` (d2) on seeds 1 to 8 on every key but `args`: no re-stop occurred
+  in 12,896 ticks (record, `mpc/README.md` "duel/pv/").
 
 ## Running
 
@@ -78,46 +55,39 @@ Nothing running.
 
 ## Open, in priority order
 
-1. The enemies as models (`behaviours.md` "Open"): gate the chaser `$21afe` (closed-form pull, drag, clamp) against
-   a `bp 2157c` capture over its hatched ticks; drive the mothership and rocket with a labelled `wb 32a50 05` and
-   `hits` on `$226ac`/`$22722`/`$2279a`; the attractor drain (`watch 32a2e 2` near one); the two-hit pursuer
-   (`bp 22164`, score +200 then +700); the provoke conversion (`bp 20206`). The census so far is one game, 600M steps.
-2. The attract mode's remaining gaps (`demo.md` "Not tested"): a 100-game chain (`py/chain/gate_chain.sh long 100`,
-   about 3.5 h) would detect rho about 0.2, only worth running if Dave wants the negative tighter; the pilot model from
-   a later-wave snapshot for its two unreached branches; a mouse-flown game before an attract flight.
-3. Slope shading: check `$18322`, `$23a2c` and the `$1f2bc` span routines; change one vertex height and diff the
-   screen. The game is known for slope-shaded tiles and the gated colour path has none.
-4. A played route to wave 5 or 10 with a `watch` on `$32a4e`, so landscapes 1 and 2 stand on play, not stubs.
-5. The depth buckets (`$1fa72`, `$2157c`, painter `$243ec..$24474`): dump a bucket's records at the start of the
-   painter and gate the order. The grid's edge blocks. Slope-table entries for dy 64..127.
-6. The autopilot's matrix mismatch in `virus_flight.py` (4/119 against 119/119 for pos, vel, attitude): the pilot model
-   matches all 3496 `$270d4` writes, so capture timing in that gate is the likelier cause (not tested).
-7. The mouse routine `$254aa`, ground contact in the tick, the other particle behaviours, object types 1..9 and
-   markers 10..12, the launch-pad colour table `$246ba`.
+1. **Fast simulator** (what makes a learner affordable; ours runs about 110 ticks/s, Hatari 200 to 450 with no fork or exact stop): tick, shot, seeder,
+   chasers, pursuers and patrol are now exact models. Still needed: the pursuers' and patrols' shots `$22e38` with the
+   object pool and RNG draws, the bomber `$22316`, the attractor `$224a6`, the damaged pursuer `$221ac` (`behaviours.md`
+   Open 5). Then port to F# and gate against a recorded game tick by tick.
+2. **The player-view pilot's patrol gap** (`sessions/blog.md` Open 2): a pursuit model for the `b` class, judged on seeds
+   1 to 8 with `fly_v8.py` and once on a fresh held-out set.
+3. `shot_capture.py` (`py/mpc/`) and `gate_actor.py`, `gate_chaser.py` still use a 64-step re-arrival test and the old pool
+   index after a kill; neither has shown a miss on their gates, but a change is a gate rerun, not a doc edit.
+4. Sound against real audio: record one effect from Hatari (`--sound on` with its WAV recording) and compare with
+   `virus_sfx.fsx`'s render (noise rate and taps, volume curve).
+5. Landscape 2 naturally (README Open 2), the enemy exit writer `$257fa` (Open 3), the rocket `$25306` and whether the pilot
+   can kill the mothership (`behaviours.md` Open 1), the drawers' unread parts `$265e4`, `$26972` (README Open 1).
 
 ## Known traps
 
-- `drive.sh` timing depends on load time (the title needs about 10M steps): if the last snapshot shows the title, run
-  it again. The trainer drops early key presses, so the drive sends five N keys.
-- `g_game*.snap` is a live game. The press page says "demo mode", but the demo starts only after about 8.7M idle
-  steps on that page.
-- After an ESC or a lost last life the restart runs two scatters, A inside `$25bc0` and B at `$230a6`; `bp 236f8`
-  stops at A or B depending on the key hold. Check the return word at `$6fffe` (`5bee` is A, `30ac` is B), and poke a
-  seed at B, not A.
-- A test of what carries between attract flights must let the flight end by itself: an ESC skips the game-over path
-  and leaves the `$27134` queue zero.
-- A `bp` stop followed by `r` prints the registers twice; the log parsers take every second block.
-- The demo's score goes negative early: each shot costs a point (`$25752`).
+- `stserver` stops twice at a breakpoint when an interrupt is taken there; Virus's handlers return 181 to 243 steps later
+  (CLAUDE.md). Agents' first harnesses used 64 steps; three of this session's four agents hit or checked it.
+- `drive.sh` timing depends on load time; if its last snapshot shows the title, run it again.
+- After an ESC or a lost last life the restart runs two scatters (A in `$25bc0`, B at `$230a6`); poke a seed at B.
+- A test of what carries between attract flights must let the flight end by itself (ESC skips the game-over path).
+- The demo's score goes negative early: each shot costs a point.
+- `virus_sfx.fsx`'s summary file was empty while it used a top-level `use` (fsi does not dispose it); fixed in `d6e9ab6`.
 
 ## Waiting on Dave
 
-- Whether 24 natural games with no wave trend (waves 2 to 4), plus a code read that finds no adapting state, settle
-  "the demo gets better between plays", or whether to run the 100-game chain (Open 2). Dave recalls it reaching higher
-  levels with repeats; that fits the game-to-game spread, or the Archimedes original, which is not this code.
-- Whether Virus continues as a workstream, and with the renderer's shading or the attract mode first.
+- The demo-variance post (`scratchpad/overseer/virus_post/index.md`, draft): title ("Infected" or plain), hook A/B/C,
+  image path `/images/posts/virus/`, links, and whether to run a 200-game chain for the p 0.052 no-trend claim. Not yet
+  run through `write-like-dave`; nothing is in the blog repo.
+- Whether the stale `scratchpad/overseer/virus_models/svg/` may be deleted.
+- Push master (8 ahead of origin after this file's commit).
 
 ## Next session
 
-`/resume virus`. Run `uv run python tools/gates.py run virus` (4/4) and `bash reversing/virus/py/demo/gate_demo.sh`
-as the controls. Then Open 1 (gate the chaser model first: it is closed-form), or Open 3 (slope shading) for the
-renderer.
+`/resume virus`. Run `uv run python tools/gates.py run virus -j 8` (17 gates) as the control. Then Open 1: gate the
+pursuers' shots `$22e38` with the object pool, then the bomber, then start the F# simulator port; or the post if Dave
+has settled its questions.
