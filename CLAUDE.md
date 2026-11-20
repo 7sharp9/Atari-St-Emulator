@@ -210,48 +210,19 @@ before spawning agents. The ones most often missed:
 
 ## Emulator behaviours that look like input bugs
 
-- `watch <addr> [len]`: the address is hex and `len` decimal or prefixed hex (`watch 40000 41984`,
-  `watch 40000 $a400`; a bare `a400` is a "bad operand"). A bad REPL line is reported and skipped, the
-  later lines still run against a state that lacks its effect, and the run exits 1. One region at a time: a second `watch`
-  replaces the first. It reports every CPU write whose bytes overlap the range and every FDC DMA
-  sector landing in it (a `DMA read sector` line), and cannot name the PC of a REPL `w` poke. Its
-  `step=` is the snapshot's cumulative step counter, not steps into the run: line it up with a
-  `hits` first-hit inside the watch. For several ranges, read watches, writer-PC or value filters,
-  or a stop on a hit, use `stserver` (`M68000/DEVELOPING.md`, "Memory hooks and the `stserver`
-  process"), which also avoids every pitfall in "Running".
-- REPL `w <addr> <8 hex digits>` writes a 4-byte longword: poking a one-byte field with it clobbers
-  the next three. Use `wb <addr> <hexbyte>` or `ww <addr> <hexword>` for a byte or word field.
-- In a REPL drive the click is consumed during the settle after `mouse down`: start `hits` or `bp`
-  before the down, or the census misses the handler. `hits <n> <addrs>` after a `bp` that stopped
-  the run counts only what happens after the stop, so a routine that ran earlier reads 0 and looks
-  uncalled: run `hits` from the end of the click, before any `bp`.
-- `hits` on a routine every side runs (PowerMonger's executor `$6b38`) counts all sides' calls, so
-  a count after a poke is not the poked side's: attribute each call by its own data (`bp`, then the
-  packet's side byte at A0).
-- `hits`, `bp` and `bpc` count instruction starts: an interrupt taken at a counted address and its RTE
-  back there count once, also when the interrupt was entered by an `s` before the command
-  (`AtartSt.CensusStep`); corpora captured before that rule hold duplicates
-  (PowerMonger `py/season/gate_1abaa.py` dedupes them, `REENTRY`). They and
-  `until` compare 24-bit addresses, so a PC with junk upper bits (TOS 1.00's handlers run at `$04fc0a1a`)
-  matches. `stserver`'s `run` `until_pc` and `bp_set` compare all 32 bits (`server/Server.fs`, `run`): code entered
-  through a flagged action-table `jsr` keeps the top bit in every `bsr` target (Midwinter's `$ec8c` runs at
-  `$8000ec8c`), so pass both `a` and `a | 0x80000000` (`reversing/midwinter/py/army/gate_period.py`).
-  `stserver`'s `run` stops twice at a breakpoint when an interrupt is taken there (the RTE returns to it): count a return
-  well inside the routine's period as the same stop (Virus: 181 to 243 steps against a 19,900-step tick, `reversing/virus/py/mpc/replay.py`).
-- A `kbd`/`mouse` status byte is a raw level in RAM, not an edge-latched event. A pulse shorter than
-  the game's poll cycle never registers. The VBL is raised every 12,000 steps exactly
-  (`instructionsPerFrame`, a literal in `Program.fs`), so a game that polls every second VBL needs
-  a 30,000-step hold. Busy flags that skip the input read: skill, section 2.
-- The keyboard ACIA data register `$fffc02` holds the last byte the CPU took, as on a real 6850, so a
-  game polling it directly (`cmpi.b #$39,$fc02.w` / `bne` back) sees the key TOS's ISR already took.
-  The byte stays there until the next IKBD byte arrives: a `kbd` make with no break, or a mouse packet
-  after it, decides what the next poll reads. Snapshots older than format v12 resume with it 0
-  (`DEVELOPING.md`, "IKBD command interpreter").
-- `mouse down`/`mouse up` report in the mode the game set and send nothing in absolute or disabled
-  (`$12`) mode or when the button is already in that state; an absolute-mode game reads clicks only
-  through `$0D` interrogation. `ATARI_TRACE_IKBD=1` shows the mode; the packet per mode is in
-  `DEVELOPING.md`, "IKBD command interpreter".
-- A queued IKBD packet reaches the ACIA one byte per 768 steps (1.28 ms) after each read, and the MFP
-  in-service registers hold a channel off until its handler clears the bit; a snapshot older than format v13
-  resumes with both registers 0 (`DEVELOPING.md`, "IKBD command interpreter").
-- `u <addr>` from a snapshot already stopped at `<addr>` (a `$f898`-frame snapshot) returns at once with "reached after 0 steps": `u` aligns to an address and stays put when already there (`reversing/powermonger/py/track.sh` relies on it). For the next arrival use `bp <addr>`, which steps first, or step past it and then `u`, as `reversing/powermonger/py/capture.sh` does.
+Each has its detail where cited. Check these before reading a drive's result as game behaviour.
+
+- An input that "did nothing": a `kbd`/`mouse` status byte is a raw level, so a hold shorter than the
+  game's poll cycle never registers (VBL every 12,000 steps; 30,000 for a second-VBL poller; busy
+  flags that skip the read: skill, section 2). `mouse down`/`up` send nothing in absolute or disabled mode or with the button already in
+  that state, and the ACIA data register `$fffc02` latches the last byte taken, so a direct poller sees
+  the key TOS's ISR took; a queued packet arrives one byte per 768 steps (`DEVELOPING.md`, "IKBD
+  command interpreter"; `ATARI_TRACE_IKBD=1` shows the mode).
+- A count or watch that reads wrong: `watch` is one region, its `step=` is cumulative, and a bare hex
+  `len` is a bad operand that skips the line and exits 1; `w` pokes a longword (`wb`/`ww` for a byte
+  or word); a click is consumed in the settle after `mouse down`; `hits` after a stopping `bp` counts
+  only after it; every-side routines count all sides; `u` at its own address returns after 0 steps
+  (`DEVELOPING.md`, the REPL notes after "Other tools").
+- A breakpoint that never or doubly fires: REPL `hits`/`bp`/`until` compare 24 bits, `stserver`'s
+  `until_pc`/`bp_set` all 32 (pass `a | 0x80000000` too), and `stserver` stops twice when an interrupt
+  is taken at the breakpoint (`DEVELOPING.md`, "Memory hooks and the `stserver` process").

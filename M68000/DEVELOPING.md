@@ -925,6 +925,13 @@ results give them as `"$hex"`.
 | `kbd` / `mouse` / `disk` | `bytes` / `action` `move`+`dx`/`dy` or `down`/`up`+`button` / `path` or `null` | as the REPL |
 | `shutdown` | | ends the process |
 
+`run`'s `until_pc` and `bp_set` compare all 32 bits of the PC, unlike the REPL's 24-bit `hits`/`bp`/`until`
+(`server/Server.fs`, `run`): code entered through a flagged action-table `jsr` keeps the top bit in every
+`bsr` target (Midwinter's `$ec8c` runs at `$8000ec8c`), so pass both `a` and `a | 0x80000000`
+(`reversing/midwinter/py/army/gate_period.py`). `run` stops twice at a breakpoint when an interrupt is taken
+there (the RTE returns to it): count a return well inside the routine's period as the same stop (Virus: 181
+to 243 steps against a 19,900-step tick, `reversing/virus/py/mpc/replay.py`).
+
 A watch with `stop: true` ends `run` after the instruction that made the matching access. Watches
 and breakpoints persist across `load`, `restore` and `step`. An unknown method, a bad parameter or an
 exception in the core comes back as a JSON-RPC error and the process stays up. This makes the REPL
@@ -1339,10 +1346,25 @@ side effects (the ACIA data register is not popped, an FDC status read does not 
 `until`/`u <addr>` tests the PC before it steps, so from a state already stopped at `<addr>` (a
 `$f898`-frame snapshot and `u f898`) it returns at once with "reached after 0 step(s)": it aligns to
 `<addr>` and stays put if already there (`reversing/powermonger/py/track.sh` relies on that). `bp <addr>`
-steps at least once first, so it is the command for the next arrival. `w <addr> <hex>`
+steps at least once first, so it is the command for the next arrival (or step past and then `u`, as
+`reversing/powermonger/py/capture.sh` does). `w <addr> <hex>`
 writes a longword; `wb <addr> <hexbyte>` and `ww <addr> <hexword>` write one byte or one even-addressed
 word, rejecting a value that does not fit. `watch <addr> [len]` takes `len` in decimal (`41984`) or as hex
 with a prefix (`$a400`, `0xa400`); a bare `a400` is a bad operand, reported and skipped like any other.
+It watches one region at a time (a second `watch` replaces the first), cannot name the PC of a REPL `w`
+poke, and its `step=` is the snapshot's cumulative step counter, not steps into the run: line it up with a
+`hits` first-hit inside the watch. For several ranges, read watches, writer-PC or value filters, or a stop on
+a hit, use `stserver` ("Memory hooks and the `stserver` process").
+
+Census pitfalls in a drive script:
+- A click is consumed during the settle after `mouse down`, so start `hits` or `bp` before the down or the
+  census misses the handler. `hits` after a `bp` that stopped the run counts only what happens after the
+  stop, so a routine that ran earlier reads 0 and looks uncalled: run `hits` from the end of the click.
+- `hits` on a routine every side runs (PowerMonger's executor `$6b38`) counts all sides' calls, so a count
+  after a poke is not the poked side's: attribute each call by its own data (`bp`, then the packet's side
+  byte at A0).
+- Corpora captured before the interrupt-reentry rule above (`AtartSt.CensusStep`) hold duplicate hits;
+  PowerMonger `py/season/gate_1abaa.py` dedupes them (`REENTRY`).
 
 Snapshots (`*.snap`) are session-local working data, keyed to a ROM + opcode-coverage
 point - not committed, retake per session.
