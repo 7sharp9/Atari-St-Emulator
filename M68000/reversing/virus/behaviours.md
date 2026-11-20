@@ -204,6 +204,46 @@ their game over at wave index 4, game 50 to wave 5, from `chain/long100/starts/m
 except the rocket runs in some game, and the mothership only in game 50, the one game that reaches wave 5; the by-wave split puts `$21f00`
 from wave 1, `$2202c` from wave 2, the attractor from wave 3 and the mothership in wave 5 only.
 
+## The pursuers and the patrol (gated)
+
+`Pursuer` `$21f00` (award `$1f4`, 500) and `Pursuer2` `$2202c` share one body. Per tick, as `pursuer_step` in
+`py/behaviours/gate_pursuer.py`: life bit 15 set takes the kill path `$216d6` and no move; otherwise position += velocity,
+vy += gravity `$32a3a`, drag v -= v >> 5; the steer `$22c1e` at the ship `$270b0` every tick; the thrust `$22d5e` once when
+the steer left bit 11 clear and a second time when the ground is within `$280` below the record (`$380` for `$2202c`); then
+the pull v += (ship - pos) >> 9 when the saturating |dx| + |dy| + |dz| is at most `$1900`, else >> 13. Firing (every other
+tick within `$900`, every tick for `$2202c`) spawns objects and draws random numbers but does not change the record. The
+patrol states (`$21c42`, `$21c64`, `$21d08`, `$21df6`) are `shot.actor_step`'s, already gated on wave 0 by `mpc_shot`
+("The player's shot, the targets and the ship box"); the attack state steers only when `$32a48 & 3` is 0 and thrusts once
+near the ground. The conversion `$201b4` runs after the record's own pass in the same tick: it clears life bit 14 and
+stores `$21f00`, and every other field is the pass's result.
+
+One walker rule the gate found: when a record is killed, the last pool record is swap-removed into its slot and walked
+there in the same pass, with the tick phase of that slot (counter `tick44 + slot + 2`). Gating it with its old index gives
+one `patrol/home` miss in 53,992; `py/mpc/gate_actor.py` and `py/behaviours/gate_chaser.py` still use the old index and
+may show the same rare miss.
+
+Gate `pursuer` (`py/behaviours/gate_pursuer.sh`, about a minute): one fresh natural capture (chain game 45 at 300M steps,
+2,500 ticks, wave 2) gives the pursuer 1,793/1,793 and the patrol home state 2,279/2,279; the 25 saved natural captures
+of waves 1 to 4 (games 14, 45, 93 at 100M-step marks, game 50 from `p135..p495`) give, the record at k+1 equal to the model
+on all nine fields:
+
+| state | match |
+|---|---|
+| `$21f00` pursuer | 24,653/24,653 |
+| `$2202c` pursuer2 (normal pass) | 22,805/22,807 |
+| patrol home `$21d08` | 53,992/53,992 |
+| patrol attack `$21df6` | 6,317/6,317 |
+| patrol cruise `$21c64` | 5,877/5,877 |
+| patrol wait `$21c42` | 2,213/2,213 |
+| conversion `$201b4` | 34/34 |
+
+The two `$2202c` misses are first hits (`p2_hit1`, the record becomes `$221ac`), which the model leaves out; 72 passes with
+a shot hit that tick and 25 death or crash ticks are skipped. Branches exercised: 42,616 far pulls, 4,855 near, 22,787
+thrusts, 55 near-ground double thrusts (thin). Controls, pursuer out of 24,653: no pull 643, far pull >> 12 3,982, steer
+every fourth tick 7,184, the ship before its move 21,292, one thrust near the ground 24,598 (exactly the 55); conversion
+keeping bit 14 0/34; the patrol phase off by one, attack 3,883/6,317 and home 33,856/53,992. Not modelled: the shots
+`$22e38`, the damaged state `$221ac`, the 900-point ground kill, the bomber `$22316` and the attractor `$224a6`.
+
 ## The player's shot, the targets and the ship box (gated)
 
 `py/mpc/shot.py` holds these as functions; gate `mpc_shot` (`bash reversing/virus/py/mpc/gate_shot.sh`) checks them against
@@ -442,9 +482,9 @@ enough to aim at, and one outside it is known only as a radar pixel, `$400` unit
 2. The attractor's tractor and fuel drain (`$225d6`: 0 hits in game 1): drive the ship to within `$700` of an attractor
    and `watch 32a2e 2` for the 25-a-tick drain.
 3. The two-hit pursuer's ground-hit kill (900 through bit 13) was not seen, and the gate's own natural capture holds no complete chain.
-4. Provoking: which of the paths `$1ffbc`, `$2004a`, `$20092` called each of the 6 gated scans, and the converted pursuer's later behaviour.
-5. Gate the other models the way `$21afe`, `$2279a` and the seeder are: the pursuers `$21f00` and `$2202c`, the bomber `$22316` and
-   the attractor `$224a6` (`shot.py` models the patrol only).
+4. Provoking: which of the paths `$1ffbc`, `$2004a`, `$20092` called each of the 6 gated scans.
+5. Gate the bomber `$22316`, the attractor `$224a6` and the damaged pursuer `$221ac` the way the pursuers are ("The pursuers
+   and the patrol"), and the pursuers' shots `$22e38` with the object pool and the RNG, which a fast simulator needs.
 6. The infection rate per kind measured from the object map (bit 5 cells per tick) with the bomber removed by a poke, to test
    the reading that its bursts plant most. (The four-game census is in "The mothership and the gated chasers".)
 7. Counters 9 and above (landscape 2, the mothership-heavy blocks) are reached only by a labelled poke; the bonus formula and

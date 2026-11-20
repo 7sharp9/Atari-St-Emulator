@@ -69,10 +69,39 @@ playing the same family, else a free one, else the lower priority. `Sound_Tick` 
 (installed by the Supexec routine `$1f86c`, read), steps the three channels with `Sound_ChannelStep` `$17a1c` and writes the YM
 registers (`$ff8800`/`$ff8802`). **Proved** (`py/frontend/flip_spin.py`, `hits` on `f1.snap`, 1.2M steps): 100 calls of `$179f6` and 300 of `$17a1c`.
 
-`SoundEffectTable` has 54 long pointers (ids 0 to 53) into 18-byte records at `$17406` (read). Record words: duration in ticks, family,
-pitch, chain (bit 15 set: the next id in the low byte, so 11 and 12, 16 and 17, 20 and 21 alternate and 37 repeats), level, slide,
-mode (tone and noise bits) and two envelope words; the field meanings beyond the duration, family and chain are not decoded. Ids 15,
-18, 24, 29, 38, 50 and 53 are silence records (duration 1, no chain) that stop family `$0b`, `$10`, `$16`, `$19`, `$25`, `$31` and `$33`.
+`SoundEffectTable` has 54 long pointers (ids 0 to 53) into 18-byte records at `$17406..$177c0`, nine signed words that the
+trigger copies into a 26-byte channel record (words 9 to 12 of a channel are its constants: tone fine register 0, 2 or 4,
+volume register 8, 9 or 10, and its tone- and noise-disable mixer bits). The words: 0 duration in ticks; 1 family (only the
+low byte is compared, so ids 20 and 21, family `$8014`, never match a playing channel); 2 priority; 3 chain (0 ends; the next
+id is the low six bits of the word shifted left two; bit 15 makes a retrigger of a playing family update only the level, bit 14
+also ignores it, so 11 and 12, 16 and 17, 20 and 21 alternate and 37 repeats); 4 volume, 8.8 fixed point (the trigger adds
+the attenuation); 5 volume slide per tick; 6 mode (bit 0 tone, bit 1 noise; 2 is noise only, 3 tone and noise); 7 period,
+8.8; 8 period slide per tick. Ids 15, 18, 24, 29, 38, 50 and 53 are silence records (duration 1, no chain) that stop family
+`$0b`, `$10`, `$16`, `$19`, `$25`, `$31` and `$33`.
+
+`Sound_ChannelStep` per live channel and tick: count down, and at 0 load the chained record's words 0 to 3 and 5 to 8 (the
+running volume is kept, the new word 4 ignored) and step again, or kill the channel when the chain is 0; add the volume slide,
+kill the channel when the volume goes negative, clamp it at `$fff` and write `vol >> 8` (0 to 15) to the volume register (the
+hardware envelope is never used); for the tone modes clear the tone-disable bit in the mixer shadow `$17b92`, write register 7,
+add the period slide and write `period >> 8` to the fine tone register only (the coarse registers are never written); for
+noise, write `(period >> 8) >> 3` to register 6 only when this channel's volume is at least the loudest noise volume of the tick
+`$17b8e`, so the loudest noise channel owns the shared noise period (in mode 2 the period slide applies only then). A trigger
+takes the channel playing the same family (then the chain bits above apply), else the first free of A, B, C, else the lowest
+priority (ties to the later channel tested) when that is not above the new record's. `Sound_TriggerAttenuated` adds
+`($2000 - D1) / 4` to the level. The mixer shadow is 0 after `Sound_Init`, which writes it as a word.
+
+Gate `sound` (`py/sound/gate_sound.sh`, about 40 s) runs the game's own `Sound_Trigger`, `Sound_TriggerAttenuated` and
+`Sound_Tick` as subroutines through `stserver` from `fl/f1.snap`, watching `$ff8800..$ff8803`, against the model
+`py/sound/ymmodel.py`: every id alone on a cleared engine, post-trigger state 54/54 and the register writes of 6,305/6,305
+ticks; 40 random 150-tick streams of plain and attenuated triggers (the priority, family and chain paths), 2,728/2,728 and
+6,000/6,000; natural play with the model loaded from the live channels at each `$179f6`, `f1.snap` 400/400 ticks and
+`g_game2.snap` 300/300 (`g_game1.snap` 400/400 in the agent's run). Controls: noise period `>> 2` 5,477/6,305 and 1,601/6,000
+(natural 38/100); every channel writing the noise period 5,104/6,000; priority `>=` 2,647/2,728.
+`py/sound/virus_sfx.fsx` (`dotnet fsi`) runs the same model at 50 Hz through a YM2149 synthesis (2 MHz clock, tone
+2e6/(16 TP), a 17-bit noise LFSR, 3 dB volume steps) and writes one WAV per id, capping repeating chains at 3 s; its register
+log equals the model on 3,472/3,472 ticks. The register sequence is proven; the synthesis (noise rate and taps, the volume
+curve, the coarse registers at 0) is not compared with a real ST's output. Thrust (id 5) is noise only at period 30, volume 6
+for 7 ticks then 5 down to 1; player fire (id 10) is tone period 248 (504 Hz) with noise period 31, volume 12 down to 1.
 
 Every trigger is one of 44 call sites (`py/frontend/sound_sites.py`, a whole-image scan of the regenerated listing). Over 300M steps
 of the first demo `py/frontend/sound_sum.py` counts 5531 stops at `$17932` and the 44 site counts sum to 5531; `sound_verify.py`
@@ -145,6 +174,6 @@ over returns at `$26178` without drawing); the purpose, a player-quoted verifica
 
 ## Open
 
-1. Decode the sound record words and the YM writes of `Sound_ChannelStep` (watch `$ff8800` on a single trigger); effect names are from trigger sites only.
+1. Effect names are from trigger sites only (id 39 has none), and the rendered WAVs from an assumed YM2149 synthesis: compare one with a real ST or a Hatari recording.
 2. The fuel bar and the radar frame draw routines; effect 0's condition (`$23ed0..$23eea`); the `$62a6c` setter.
 3. The key-define page, the credits page and the palette fade tables (`$16d32..$16f52`) are read, not driven.

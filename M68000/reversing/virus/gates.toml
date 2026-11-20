@@ -136,3 +136,30 @@ expect = ["re:(?m)^game-code call targets 194; named \\d+; unnamed \\d+; all tar
 cite = "README.md, \"Which code runs\""
 inputs = ["scratchpad/virus/chain/long100/starts/main_g050.snap", "scratchpad/virus/demo/death/long7.snap"]
 minutes = 1
+
+[[gate]]
+name = "sound"
+cmd = "bash py/sound/gate_sound.sh"
+cwd = "."
+expect = ["re:A single effects: post-trigger state 54/54, per-tick writes 6305/6305, per-tick state 6305/6305", "re:B random streams: post-trigger state 2728/2728, per-tick writes 6000/6000, per-tick state 6000/6000", "re:per-tick writes 1601/6000", "re:post-trigger state 2240/2728, per-tick writes 5104/6000", "re:post-trigger state 2647/2728, per-tick writes 5839/6000", "re:C natural f1.snap: 400/400 ticks predicted exactly", "re:C natural g_game2.snap: 300/300 ticks predicted exactly", "re:C natural f1.snap: 38/100 ticks predicted exactly", "re:F# log vs model: 3472/3472 ticks identical"]
+cite = "frontend.md, \"Sound\""
+inputs = ["scratchpad/virus/fl/f1.snap", "scratchpad/virus/drive/g_game2.snap", "scratchpad/virus/aha.st"]
+minutes = 1
+
+[[gate]]
+name = "models3d"
+cmd = "bash py/models3d/gate_models3d.sh"
+cwd = "."
+expect = ["re:model vertex projections \\(sx,sy\\) 1853/1853 ; shadow projections 1656/1656 ; whole polygon-call streams .* 251/251", "re:model vertex projections \\(sx,sy\\) 3757/3757 ; shadow projections 2102/2102 ; whole polygon-call streams .* 386/386", "re:control vertex projections \\(sx,sy\\) 1456/1853", "re:vertex projections 14680/14680, shadow projections 10800/10800, call streams 1720/1720", "re:vertex projections 8671/14680, shadow projections 5606/10800, call streams 1044/1720", "re:wrote 43 model SVGs"]
+cite = "README.md, \"Model data and the model drawers\""
+inputs = ["scratchpad/virus/fl/f1.snap", "scratchpad/virus/chain/long100/starts/main_g050.snap", "scratchpad/virus/aha.st"]
+minutes = 1
+
+[[gate]]
+name = "pursuer"
+cmd = "bash py/behaviours/gate_pursuer.sh"
+cwd = "."
+expect = ["re:2500 ticks \\d+ s, waves \\[2\\]", "re:pursuer/live +record at k\\+1 == model \\(all nine fields\\): 1793/1793", "re:patrol/home +record at k\\+1 == model \\(all nine fields\\): 2279/2279", "re:pursuer/live +record at k\\+1 == model \\(all nine fields\\): 24653/24653", "re:patrol/home +record at k\\+1 == model \\(all nine fields\\): 53992/53992", "re:patrol/attack +record at k\\+1 == model \\(all nine fields\\): 6317/6317", "re:patrol/cruise +record at k\\+1 == model \\(all nine fields\\): 5877/5877", "re:patrol/wait +record at k\\+1 == model \\(all nine fields\\): 2213/2213", "re:conversion \\$201b4 record at k\\+1 == model \\(all nine fields\\): 34/34", "re:pursuer2/live +record at k\\+1 == model \\(all nine fields\\): 22805/22807", "re:\\): 643/24653", "re:\\): 3982/24653", "re:\\): 7184/24653", "re:\\): 21292/24653", "re:\\): 24598/24653", "re:\\): 0/34", "re:\\): 3883/6317"]
+cite = "behaviours.md, \"The pursuers and the patrol\""
+inputs = ["scratchpad/virus/pursuer/snaps/g045_300.snap", "scratchpad/virus/pursuer/caps"]
+minutes = 1

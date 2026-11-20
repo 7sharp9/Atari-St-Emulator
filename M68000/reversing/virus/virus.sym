@@ -277,3 +277,11 @@ $00027110	SpinMatrixC
 $00032a44	FrameCounter
 $00062a5a	ScreenFlipToggle
 $00062a68	SoundOffFlag
+$0000aa72	ModelData
+$00026296	Model_Draw
+$0002629c	Model_DrawRotated
+$000264c4	Model_PaintList
+$000264e2	Model_DrawUnrotated
+$000265e4	Model_DrawRotatedNoShadow
+$00026972	Tri_FillFlat2
+$00032754	Model_FaceList

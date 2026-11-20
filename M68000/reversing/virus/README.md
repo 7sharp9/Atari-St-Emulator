@@ -109,7 +109,8 @@ RNG advance). The remaining emulator-side lever is the mutable `Cpu` listed in `
 
 | range | contents | how known |
 |---|---|---|
-| `$c000..$27000` | game code, about 40,000 listed lines (`tools/disassemble.py --snap <snap> --all c000 28000`); the end of the text is not checked | listing |
+| `$c000..$27000` | game code and tables, about 40,000 listed lines (`tools/disassemble.py --snap <snap> --all c000 28000`); `$c000..$ce9a` is model data, not code (next row), and the end of the text is not checked | listing |
+| `$aa72..$ce9a` | the 43 object models; per-type pointers at `$23f98` | `models3d` gate ("Model data and the model drawers") |
 | `$d0fa` | sine table, 1024 words, `int(32767*sin(2*pi*k/1024))` with entry 256 = 32766 | 1024/1024 (below) |
 | `$d8fa`, `$d9fa` | arctangent and square-root (tilt) tables read by the mouse routine `$254aa` | `flightctl` gate |
 | `$e9fa` | the 8x9 proportional font, 10 bytes a glyph, index char - `$20` | HUD digits 12/12 (`frontend.md` "Text and the font") |
@@ -381,6 +382,43 @@ separately gated). `$173b4` is the pop-up text: it stores sx, sy at `$20756` and
 (read). Run `bash reversing/virus/py/painter/gate_painter.sh` (about 1 minute).
 The actor loop queues only the records inside a window around the camera (gated: `behaviours.md`, "What the 3D view shows").
 
+### Model data and the model drawers (gated)
+
+The 43 object models lie back to back at `$aa72..$ce9a` (9,256 bytes; walked by their own header words with no gap, ending
+at the 1-pixel mask table `$ce9a`; none below `$aa72` in `$8000..$27000`). A record, all words big-endian: byte +0 flags
+(bit 0 rotated by the matrix `$270d4`, bit 1 casts a ground shadow), +2 vertex count - 1, +4 face count - 1, +6 the face
+list's offset (always 8 + 6 * vertices), then 6-byte vertices (signed x, y down, z away) and 22-byte faces: a normal
+(three 1.15 words), three longs `$27154 + 8 * i` that address vertex i's projected slot (every face is a triangle) and a
+colour long (0..15 a palette entry, 16..23 the span routines' checkers; the models use 0..20 and 22). The per-type table
+is the 64 longs at `$23f98`, indexed by the object-map byte `& $3f`: plain, damaged (grey wrecks `$afc8`, `$b01a`, `$b06c`
+and others) and infected forms (`$b23e`, `$b1ca`, `$b2f6`, `$b348`, `$b400` for types 1 to 5; types 6 to 12 repeat the
+plain model). 17 models are rotated (the ship `$ab62`, the actors, the bomb, the rocket); the rest are scenery and plumes.
+Names of the non-scenery models come from the routine that points at them (`py/models3d/refs.py`), not from the shape.
+
+`Model_Draw` `$26296` clears `$62a69` and falls into `Model_DrawRotated` `$2629c`, which goes to `Model_DrawUnrotated`
+`$264e2` when flag bit 0 is clear. The rotated vertex loop (`$262bc..$263b0`) multiplies each vertex by the matrix rows in
+1.15 (`muls`, `swap`, doubled, 16-bit wrap), adds the position (dx, dy, depth) and projects sx = (x << 8) / z + `$a0`,
+sy = (y << 8) / z + `$46` (the grid's projection) into `$27154 + 8 * i`; with flag bit 1 the shadow vertex is projected at
+the ground height (`$245b8` for rotated models, `$24754` for unrotated) into the slot's second half. The face loop rotates
+each normal, fills a shadow triangle at once in colour 0 when the rotated normal's y is >= 0, and keeps a face whose
+normal dotted with the position is <= 0 in the list at `$32754` (14 bytes a face). `Model_PaintList` `$264c4` paints that
+list in order, so faces paint in data order with no depth sort; the deferred record `$261d2` sets `$62a69` and leaves the
+list for the later record `$2620e`. The unrotated drawer adds the position only and draws every face, shadow first, with no
+cull. `Tri_FillFlat` `$26780` rejects or clips against 320 x 184, sorts by y, steps the edges with the slope table
+`$5ab58` and calls the `$1f2bc` span routines (above). Read, not gated: `$265e4` and the second triangle filler `$26972`
+(the attract loop `$24c76` only), the clip branch `$26756`, and the below-ground flag `$62a61` the ship's model sets.
+
+Gate `models3d` (`py/models3d/gate_models3d.sh`, about 40 s) predicts, for every model drawn, the vertex array at `$27154`
+and the whole stream of `$26780` calls (six screen words and the colour index, in order) and compares them with `stserver`
+stops: on natural frames `fl/f1` 1,853/1,853 vertices, 1,656/1,656 shadows, 251/251 streams and `main_g050` 3,757/3,757,
+2,102/2,102, 386/386 (seven more snapshots matched as well in the agent's runs: `fl/f2`, `f3`, `g_game2`, `S1b`, `death/E1`,
+the two pilot ends); all 43 models called directly in 40 random poses 14,680/14,680, 10,800/10,800, 1,720/1,720. Control
+(the matrix transposed): `f1` 1,456/1,853, 1,259/1,656, 202/251; the poses 8,671/14,680 and 1,044/1,720. No pixels are
+compared; the fill is the gated tile filler's span set. `py/models3d/virus_models.fsx` renders each model and two contact
+sheets to SVG from a dump of the chain and the live palette (`dump_data.py`): a fixed 3/4 view with the stored normals
+culled and faces sorted by centroid depth, which differs from the game's data-order paint for the unculled scenery
+(`models3d.png`).
+
 ## The flight model (gated, mouse run; autopilot poked)
 
 The ship tick is `$255c2`. The ship state is `$270b0`: x, y, z, vx, vy, vz (words). The input routine returns a target
@@ -599,7 +637,7 @@ span-cap routines of the tile filler.
 
 ## Open questions
 
-1. The model drawers behind `$26296`, `$2629c`, `$264e2` and `$26780` (rotation, projection, polygon fill) and the layout of the model data are unread; the landscape-cell records (`$26278`, `$261d2`, `$2620e`) are not gated against the object map.
+1. The landscape-cell records (`$26278`, `$261d2`, `$2620e`) are not gated against the object map, and the model drawers' read-only parts (`$265e4`, `$26972`, the clip branch `$26756`, the below-ground flag `$62a61`) are not driven ("Model data and the model drawers").
 2. Landscape 2 is reached only by a poke of `$32a50` (no chain game gets past counter 5): a natural game to counter 9
    (landscape 2, wave HUD 10) would close it.
 3. The tick's exits are named and counted (section above), but the enemy exit `$257fa` (6 of 16 deaths in three games) was not
@@ -607,7 +645,7 @@ span-cap routines of the tile filler.
    `$25846` had no event in three demo games; the keyboard input `$2554a` is read only.
 4. The type names come from the shapes drawn; the radar role of type 11, the natural type-12 cell on screen and the
    vertical foot offset of types 2, 7 and 8 are open. The actor behaviours are named from their bodies in `behaviours.md`;
-   the seeder, the chaser and the mothership's chaser are gated, the pursuers and the patrol states are not.
+   the seeder, the chasers, the pursuers and the patrol states are gated; the bomber, the attractor and the damaged pursuer are not.
 5. The pad table is modelled and read-gated (below); which tile each entry recolours is open: the changed pixels of a poked
    entry lie nearer than the main grid block's first row, so the front and side vertex blocks of `$24098` (`$24168..`) draw
    the pad cells too and were not read.
@@ -631,5 +669,6 @@ span-cap routines of the tile filler.
 | `py/render_heightmaps.py`, `py/vcommon.py` | the heightmap renderer; shared paths |
 | `py/shading/`, `py/painter/`, `py/flightctl/`, `py/landscape/`, `py/objects/`, `py/behaviours/`, `py/census/` | one gate each (`gate_<dir>.sh`, gates of the same names): tile colour and spans, depth buckets and paint order, mouse and ground contact, wave table and bonus, object types and the object pool, mothership and chasers, which code runs |
 | `objects.png` | object types 1 to 9 and 11 as the game draws them, and their damaged and infected forms (`py/objects/objects_montage.py`) |
+| `models3d.png` | the 43 models of `$aa72..$ce9a` rendered outside the game from their own vertex and face data (`py/models3d/virus_models.fsx`, `sheet_filled.svg` through `qlmanage -t -s 1400`) |
 | `heightmaps.png` | landscapes 0, 1 and 2 from the model (256 x 256 cells each, 2x; white is water) |
 | `title.png`, `pad.png`, `flight.png` | the title picture, the wave-1 launch pad, a flight frame with exhaust |
