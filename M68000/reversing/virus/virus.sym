@@ -285,3 +285,15 @@ $000264e2	Model_DrawUnrotated
 $000265e4	Model_DrawRotatedNoShadow
 $00026972	Tri_FillFlat2
 $00032754	Model_FaceList
+$00022460	Attractor_Hit
+$00022448	Attractor_GroundKill
+$000225d6	Attractor_FuelDrain
+$00020360	EnemyShot_SetShipHit
+$0002083c	Bomb_SetShipHit
+$00021654	Contact_SetShipHit
+$000225e6	Attractor_EmptySetShipHit
+$00025874	Ship_GroundHardTest
+$0002638c	ShipModel_SetBelowGroundFlag
+$000264b6	ShipModel_StoreVertexFlag
+$00062a61	ShipModelBelowGroundFlag
+$00062a62	ShipVertexCrashFlag

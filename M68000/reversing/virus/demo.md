@@ -225,8 +225,8 @@ steps; `life_loss=yes` rows; values read before the decrement): tick 4186 (wave 
 10656 (wave 3, 12830), 10812 (wave 3, 15078), 11205 (wave 3, lives 2, 16038); the sixth stop at lives 1 (tick 12088,
 score 17526; `chain.py`) is the last life, after which the game over ran unaided and the next demo started. Lives rise back to 3 as the
 score crosses the `$1388` steps (so lives were 3, 3, 3, 3, 2, 1 at the six stops). Fuel at tick 4026 was 47 and the first
-loss is at 4186, which is consistent with the ship running out of fuel and falling (inferred: the crash code itself zeroes the
-fuel, so a fuel of 0 at a stop shows nothing; the cause of the later losses was not examined).
+loss is at 4186: the ship falling after the tank ran dry (fuel 0 from tick 4085, impact at 4135; "Why the demo loses its lives"
+gives the cause of every loss, read before the crash code zeroes the fuel).
 
 The high-score table changed: after the game over its second entry holds 17526 (the last life's score) with the stock name
 `David Braben / Atari ST` (`$25e14`; `py/frontend/hof_match.py` matches the rendered page to the table, 10/10), where the first demo's start state had 10000 and `Me...`; the lower entries moved down one place, so the tenth now
@@ -352,6 +352,76 @@ cause and an effect. Why the same pilot dies less in one game's waves 1 and 2 is
 the pilot's threshold decisions turn a small difference into a different flight within about 200 ticks (inferred from that
 measurement on wave 0, not measured in waves 1 to 3).
 
+## Why the demo loses its lives
+
+Gated, `bash reversing/virus/py/deaths/gate_deaths.sh` (`py/deaths/`): each of 126 life losses in 23 unpoked chain games (games
+1, 3, 4, 7, 10, 12, 14, 17, 19, 29, 30, 33, 36, 45, 49, 50, 57, 69, 73, 74, 76, 79, 93, each to its game over) was caught at its
+crash entry (`$25ad2`/`$25ad8`), with the fuel, ship, pool and the writer that led there read before the crash code zeroes the fuel
+at `$25af6`. The census files are `scratchpad/virus/deaths/saved/gNNN.json`. A fresh run of games 1 and 3 reproduces their saved
+census (6/6 and 6/6 losses identical in tick, wave, cause, fuel at death and entry; the control, game 1 against game 3's file,
+0/6), and the tick of each game-1 loss equals the chain's `$25ba0` tick less the 51 frames of the explosion loop (6/6). Each
+death's last 5 to 10M steps were replayed from a checkpoint, and all 126 replays reached the same death at the same step. The
+exits agree with `py/flightctl/death_census.py` (game 1: one enemy exit and five hard ground hits; the first four lives of game 3:
+two enemy exits, one vertex exit, one failed landing test).
+
+**Headline.** 73 of the 126 losses happen at fuel 0: 38 are a fall after the tank ran dry, and 35 are a shot (25), bomb (5),
+attractor (2), contact (2) or object-cell (1) death that found the tank already below `$333` or emptied it. Of the other 53, 32
+are a ground impact with fuel left and 21 are contact (19) or an object cell (2) with fuel left. The demo seldom dies in a fight
+it could have survived on fuel; it dies of the fuel its thrust burns. Wave is the wave index `$32a50` (the HUD shows one more):
+
+| cause | w0 | w1 | w2 | w3 | w4 | w5 | total |
+|---|---|---|---|---|---|---|---|
+| ground impact, fuel 0 | 1 | 11 | 14 | 6 | 4 | 2 | 38 |
+| enemy shot, fuel borrowed (`$20360`) | 0 | 10 | 7 | 4 | 4 | 0 | 25 |
+| bomb proximity, fuel borrowed (`$2083c`) | 0 | 5 | 0 | 0 | 0 | 0 | 5 |
+| attractor drain to empty (`$225e6`) | 0 | 0 | 0 | 0 | 2 | 0 | 2 |
+| contact `$21654`, fuel 0 | 0 | 1 | 0 | 1 | 0 | 0 | 2 |
+| object cell, bit 5 (`$2004a`), fuel 0 | 0 | 0 | 1 | 0 | 0 | 0 | 1 |
+| ground impact, fuel > 0 | 0 | 0 | 11 | 14 | 6 | 1 | 32 |
+| contact `$21654`, fuel > 0 | 1 | 2 | 7 | 7 | 2 | 0 | 19 |
+| object cell, bit 5, fuel > 0 | 0 | 0 | 1 | 1 | 0 | 0 | 2 |
+| total | 2 | 29 | 41 | 33 | 18 | 3 | 126 |
+
+**The writers.** A raw scan of the code image for absolute-long operands (`py/deaths/scan_writers.py`) finds four stores of `$ff`
+to `$62a5d`: `$20360` in `EnemyShot` (a shot within the box `$c0` costs `$333` fuel; the flag is set only when that subtraction
+borrows), `$2083c` in `Bomb_Fall` (Manhattan distance at most `$400`, the same cost and condition), `$21654` in `Pool_CommonTail`
+(the ship inside the actor's box; unconditional, whatever the fuel) and `$225e6` in the attractor's drain (fuel minus 25 a tick,
+the flag when it goes negative). It is cleared at `$23120` (game start) and `$25ada` (the crash) and tested at `$257f4`. `$62a5e`
+(ship crashing) is set only at `$25aee` and cleared only at `$23126`. The scan sees absolute operands only; the 126 deaths are the
+check, and each of the 53 flag deaths had one of the four writers stop first. The ship's tick has four further ways into the
+crash: the vertex flag `$62a62` (ORed at `$264b6` from `$62a61`, which the ship model's draw sets at `$2638c` when a vertex is
+below the ground; 13 deaths, `$25804`), a hard ground hit (vy above `$28`, `$25874`; 54), a failed landing test (`$25c3e`,
+`$25c46`, `$25c4e`; 3), and the object cell, whose bit 5 calls `$2004a` and enters `$25ad8` with `$62a5d` clear (3).
+
+**Fuel.** The fuel word is set to `$e00` at a life start or wave restart (`$23118`), and in the 126 lives nothing else refilled
+it: no pad refuel (`$25aae`) and no other fuel store occurred. Per life the drain is thrust 2309, shot hits 696, bomb 178, fire 163
+and attractor 126 (means over the 126 lives); thrust is the pilot's output on 0.42 of the ticks and 66% of the drain, fire 5%. The
+73 lives that end at fuel 0 last 2496 ticks on average and drain 2918 in thrust and 1011 in shot hits (1.4 hits a life); the 53
+that end with fuel left last 1164 ticks. 38 of the 73 fuel-0 lives took two or more shot or bomb hits, and a hit with the fuel
+below `$333` is lethal because the borrow sets `$62a5d`. In the 33 fuel-0 ground deaths whose replay window shows the tank
+emptying, the ship fell for 8 to 113 ticks (mostly 25 to 110) while the pilot asked for thrust on every tick, with a median peak
+fall speed of 188. Game 1's first loss is one of these: fuel 0 from tick 4085, impact at 4135.
+
+**Nearest actor at the death** (Manhattan distance): shot, `Pursuer` 14, `Pursuer2` 7, `Pursuer2_Damaged` 3, homing patrol 1,
+median 1779; contact, `Pursuer2_Damaged` 6, `Pursuer` 4, `Chaser` 3, attacking patrol 2, median 367; bomb, `Bomber` 5, median 1208;
+attractor 2, median 952. The ground deaths have no actor near (median 12860).
+
+**The ground deaths with fuel left (32).** 30 of the 32 reached a peak fall speed of at least 192 within the 25 ticks before
+impact (at most 296), with 5 to 14 of those 25 ticks having the thrust bit clear. Where the ground-avoid reflex (`$25430..$254a6`:
+thrust forced and D0 `$400` when the height term minus 4 x vy is at most `$400`) braked, thrust lowered vy by about 12.5 a tick
+(13 of the 32). Inferred from the pilot's rule and these trajectories, not tested: the trigger distance grows linearly with vy
+while the braking distance grows with its square (vy^2 / 25, about 1,936 at vy 220, against a trigger distance of about 1,900),
+so the reflex is too late from a fall speed of about 200 to 220, and the coast ticks (thrust cleared at D4 of `$3200` or more)
+are what let gravity build that speed.
+
+**One pilot change tried (a labelled poke, not played).** `py/deaths/cut_rising.py` clears the thrust bit at `$255d4` whenever vy
+is below -100 (rising faster than 100), which cut 62 to 157 thrust ticks a life. On the first life of 8 chain games (4, 7, 17, 19,
+29, 33, 36, 69; `scratchpad/virus/deaths/cut100.txt`) the first loss moved from ticks 3215, 2593, 4758, 3353, 3472, 2009, 2891,
+3577 to 2000, 3357, 3901, 3207, 3176, 2987, 2561, 3319, and 6 of the 8 still ended at fuel 0 (the no-cut control on game 4
+reproduces the census, tick 3215). A saving of a few hundred fuel does not move the tank, and one game diverges chaotically under
+a small change, so this shows only that this rule is no remedy. The leverage the census points at, untested: the sustained thrust
+duty, a reflex trigger quadratic in vy for the ground-with-fuel class, and landing on the pad to refuel, which the pilot never does.
+
 ## The carried-over table
 
 `$27134..$2714b` is four entries of three words (x, y, z) at `$27134`, `$2713a`, `$27140`, `$27146`. The only code that writes it is
@@ -412,7 +482,6 @@ measured).
   (one flight, 1563 scans).
 - Whether the stale queue is held through a game in the unpoked chain (measured only in `N1`, where the map equals game 1's; the
   24-game chain shows only that the queue at the next start is a new set of four entries).
-- The cause of the life losses after the first (the fuel exhaustion reading is inferred for the first only).
 - A write-watch across the whole death, game over and attract loop (the regions were diffed at the two start states).
 - The pilot's output branch D0 = `$1000` (height term >= `$c400`, D4 >= `$c00`) and the `$228de` scan skip: not reached in the
   3496-tick corpus, so those two lines of the model are read. The corpus is one landscape (wave 0 to tick 3496).

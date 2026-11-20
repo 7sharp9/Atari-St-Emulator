@@ -30,6 +30,9 @@ EV = {
     0x25ad8: 'dead',
 }
 MAP_LO, MAP_HI = 0x32a58, 0x42a57
+# stserver re-stops at a breakpoint address when an interrupt is taken there: the handler returns 181 to 243 steps later, a real
+# tick is at least 19,900 (replay.py), so a re-stop inside this many steps of the last stop is the same arrival.
+REARRIVE = 2000
 
 
 def hx(v): return int(str(v).lstrip('$'), 16)
@@ -91,18 +94,22 @@ def capture(policy, N, snap=None, hook=None, cap=8000000):
                 st['u'] = [int(v) & 0xffff for v in u]
             else:
                 st['u'] = None
-            ev = []; tot = 0; done = False; last_pc = None; since = 0
+            ev = []; tot = 0; done = False; last_pc = None; last_regs = None; since = 0
             while not done:
                 r = s('run', max_steps=cap)
                 tot += r['steps']; since = r['steps']
                 if r['reason'] != 'breakpoint':
                     st['stopped'] = r['reason']; done = True; break
                 pc = hx(r['pc'])
-                if pc == last_pc and since < 64:        # an interrupt taken at the breakpoint address: re-arrival
+                rg0 = {k: v for k, v in s('regs').items() if k[0] in 'da' and k[1:].isdigit()}   # not step, sr or the stack pointer that is swapped
+                if pc == last_pc and since < REARRIVE and rg0 == last_regs:
+                    # an interrupt taken at the breakpoint address: the handler's RTE restores every register, so a re-stop has the last
+                    # stop's registers. The step bound alone is not enough: two records through the same breakpoint in one tick
+                    # ($21654 for two actors in the ship's box) come well inside 2,000 steps with different A6.
                     continue
-                last_pc = pc
+                last_pc = pc; last_regs = rg0
                 if pc == TICK:
-                    if tot < 64 and not ev:
+                    if tot < REARRIVE and not ev:
                         last_pc = None
                         continue
                     break

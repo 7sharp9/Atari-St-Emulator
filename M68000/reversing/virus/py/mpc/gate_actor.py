@@ -25,22 +25,33 @@ if control in ('drag', 'spring'):
     exec(src, S.__dict__)
 
 step_t = {}; pred = {}
+EXER = {}
 names = {b: '/'.join(v[:2]) for b, v in S.KINDS.items()}
 for path in args:
-    rows = json.load(open(path))['rows']
+    cap = json.load(open(path)); rows = cap['rows']
+    hm = {int(k): bytes.fromhex(v) for k, v in cap['hmaps'].items()} if 'hmaps' in cap else None   # cap_nat.py captures: one height map per wave
     pools = [S.unpack_pool(r['pool']) for r in rows]
     for k in range(len(rows) - 1):
         r, nx = rows[k], rows[k + 1]
         if any(e['e'] in ('dead', 'crash') for e in r['ev']):
             continue
+        if hm is not None:
+            if r['tick_steps'] < 5000 or nx['tick44'] == r['tick44'] or r['hw'] != nx['hw']:
+                continue                       # a re-arrival, or a wave change (gate_pursuer.py skips the same)
+            S._HMAP = hm[r['hw']]
         kills = [e['idx'] for e in r['ev'] if e['e'] == 'kill']
-        hit_idx = {e['idx'] for e in r['ev'] if e['e'] == 'hit'}
+        hit_idx = {e['idx'] for e in r['ev'] if e['e'] == 'hit'}   # slots as at the event
         P, Q = pools[k], pools[k + 1]
         for i, a in enumerate(P):
             q0 = list(struct.unpack('>3h', bytes.fromhex(r['queue'])[:6]))
             t48 = r['tick44'] + i + 1 + sum(1 for x in kills if x < i) if 'nophase' != control else r['tick44'] + i
+            swapped = len(kills) == 1 and kills[0] < i == len(P) - 1     # the last record is swap-removed into the killed slot
+            if swapped and control != 'noswap':
+                t48 = r['tick44'] + kills[0] + 2                         # and walked there this tick, with that slot's phase
             got, info = S.actor_step(a, ship=nx['pos'] if control != 'oldship' else r['pos'], g=r['g'], tick48=t48, queue0=q0)
             nm = names.get(a[8], hex(a[8]))
+            if swapped and info != 'unmodelled':
+                EXER['swap-walked ' + nm] = EXER.get('swap-walked ' + nm, 0) + 1
             if info == 'unmodelled':
                 continue
             t = step_t.setdefault(nm + (':' + info if info else ''), [0, 0])
@@ -50,9 +61,11 @@ for path in args:
                 continue
             if kills:                         # the pool was reordered this pass: find the record by content
                 cand = [q for q in Q if q[8] == got[8] and q[:6] == got[:6]]
+                if swapped and control != 'noswap':   # the record must sit in the killed slot, not merely exist somewhere
+                    cand = [q for q in cand if q is Q[kills[0]]]
                 t[0] += len(cand) == 1; continue
             q = list(Q[i])
-            if i in hit_idx: q[6] = S.s16(q[6] & 0x7fff) if not (got[6] & 0x8000) else q[6]
+            if (kills[0] if swapped else i) in hit_idx: q[6] = S.s16(q[6] & 0x7fff) if not (got[6] & 0x8000) else q[6]
             if info == 'rng':
                 t[0] += (q[:3] + q[4:5] + q[6:]) == (got[:3] + got[4:5] + got[6:]); continue
             ok = q == got
@@ -85,6 +98,7 @@ for path in args:
                 d.append(err)
 
 print('control:', control, 'predict mode:', mode)
+print('swap-walked records (last record into a killed slot):', EXER)
 print('actor_step, record at k+1 == model (all nine fields):')
 for nm, (a, b) in sorted(step_t.items()):
     print(f'  {nm:22s} {a}/{b}')

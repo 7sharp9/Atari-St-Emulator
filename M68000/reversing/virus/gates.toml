@@ -114,7 +114,7 @@ minutes = 2
 name = "behaviours"
 cmd = "bash py/behaviours/gate_behaviours.sh"
 cwd = "."
-expect = ["re:27/27\\ \\(control\\ none\\)", "re:0/27\\ \\(control\\ vy\\)", "re:0/27\\ \\(control\\ life\\)", "re:chaser\\ 2279a\\ record\\ at\\ k\\+1\\ ==\\ model\\ \\(all\\ nine\\ fields\\):\\ 4064/4064", "re:chaser\\ 2279a\\ record\\ at\\ k\\+1\\ ==\\ model\\ \\(all\\ nine\\ fields\\):\\ 639/4064", "re:chaser\\ 2279a\\ record\\ at\\ k\\+1\\ ==\\ model\\ \\(all\\ nine\\ fields\\):\\ 31/4064", "re:chaser\\ 21afe\\ record\\ at\\ k\\+1\\ ==\\ model\\ \\(all\\ nine\\ fields\\):\\ 1069/1069", "re:chaser\\ 21afe\\ record\\ at\\ k\\+1\\ ==\\ model\\ \\(all\\ nine\\ fields\\):\\ 782/782", "re:chaser\\ 21afe\\ record\\ at\\ k\\+1\\ ==\\ model\\ \\(all\\ nine\\ fields\\):\\ 779/782", "re:'mship_hit':\\ 30,\\ 'launch':\\ 1,\\ 'mship_kill':\\ 1", "re:\\{'scans':\\ 6,\\ 'scans_ok':\\ 6,\\ 'conv':\\ 7,\\ 'conv_ok':\\ 7,\\ 'outside_not_converted':\\ 9\\}"]
+expect = ["re:27/27\\ \\(control\\ none\\)", "re:0/27\\ \\(control\\ vy\\)", "re:0/27\\ \\(control\\ life\\)", "re:chaser\\ 2279a\\ record\\ at\\ k\\+1\\ ==\\ model\\ \\(all\\ nine\\ fields\\):\\ 2818/2818", "re:chaser\\ 2279a\\ record\\ at\\ k\\+1\\ ==\\ model\\ \\(all\\ nine\\ fields\\):\\ 346/2818", "re:chaser\\ 2279a\\ record\\ at\\ k\\+1\\ ==\\ model\\ \\(all\\ nine\\ fields\\):\\ 28/2818", "re:chaser\\ 21afe\\ record\\ at\\ k\\+1\\ ==\\ model\\ \\(all\\ nine\\ fields\\):\\ 1069/1069", "re:chaser\\ 21afe\\ record\\ at\\ k\\+1\\ ==\\ model\\ \\(all\\ nine\\ fields\\):\\ 782/782", "re:chaser\\ 21afe\\ record\\ at\\ k\\+1\\ ==\\ model\\ \\(all\\ nine\\ fields\\):\\ 779/782", "re:'mship_hit':\\ 30,\\ 'launch':\\ 1,\\ 'mship_kill':\\ 1", "re:\\{'scans':\\ 6,\\ 'scans_ok':\\ 6,\\ 'conv':\\ 7,\\ 'conv_ok':\\ 7,\\ 'outside_not_converted':\\ 9\\}"]
 cite = "behaviours.md, \"The mothership and the gated chasers\""
 inputs = ["scratchpad/virus/chain/long100/starts/main_g050.snap"]
 minutes = 7
@@ -163,3 +163,58 @@ expect = ["re:2500 ticks \\d+ s, waves \\[2\\]", "re:pursuer/live +record at k\\
 cite = "behaviours.md, \"The pursuers and the patrol\""
 inputs = ["scratchpad/virus/pursuer/snaps/g045_300.snap", "scratchpad/virus/pursuer/caps"]
 minutes = 1
+
+# The two-hit pursuer's hit paths (behaviours.md "The two-hit pursuer's hit paths"): two fresh game-050 captures and labelled
+# ground pokes on pursuer/snaps/g014_500.snap into scratchpad/virus/pursuer2/, plus the 25 saved pursuer captures.
+[[gate]]
+name = "pursuer2"
+cmd = "bash py/pursuer2/gate_pursuer2.sh"
+cwd = "."
+expect = ["re:2559 ticks \\d+ s, waves \\[5\\]", "re:3935 ticks \\d+ s, waves \\[5\\]", "re:first\\.ALL9 +16/16", "re:first\\.score = \\+200 - fires +16/16", "re:dmg-stunned\\.ALL9 +64/64", "re:dmg-kill\\.removed with award 700 \\(kill event slot\\+award\\) +12/12", "re:kill\\.pool count -1 +13/13", "re:kill\\.score = \\+award - fires +13/13", "re:kill\\.pool behaviours = kill_step \\(multiset\\) +12/12", "re:kill\\.slot i holds the last record \\(its behaviour\\) +9/9", "re:kill\\.slot i = the last record walked there \\(9 fields\\) +3/3", "re:dmg-pursue-far\\.ALL9 +10128/10128", "re:dmg-pursue-near\\.ALL9 +4861/4861", "re:first\\.removed with award 900 \\(kill event slot\\+award\\) +1/1", "re:dmg-stunned\\.ALL9 +3/3", "re:dmg-pursue-far\\.ALL9 +5/5", "re:first\\.ALL9 +0/13", "re:first\\.score = \\+200 - fires +0/13", "re:dmg-stunned\\.ALL9 +12/48", "re:dmg-kill\\.removed with award 700 \\(kill event slot\\+award\\) +11/45", "re:dmg-pursue-near\\.ALL9 +4/721", "re:dmg-pursue-far\\.ALL9 +130/4722", "re:first\\.ALL9 +2/13", "re:dmg-pursue-far\\.ALL9 +4718/4722", "re:dmg-pursue-near\\.ALL9 +694/721", "re:dmg-stunned\\.ALL9 +47/48", "re:first\\.score = \\+200 - fires +13/14"]
+cite = "behaviours.md, \"The two-hit pursuer's hit paths\""
+inputs = ["scratchpad/virus/pursuer/caps", "scratchpad/virus/pursuer/snaps/g014_500.snap", "scratchpad/virus/behaviours/gate/snaps/c1065.snap", "scratchpad/virus/behaviours/gate/snaps/w5.snap"]
+minutes = 2
+
+# The attractor $22486/$224a6 (behaviours.md, "The attractor (gated)"): three fresh natural captures of 4,500 ticks through a
+# wave change into scratchpad/virus/attractor/, the 25 saved pursuer captures, then five labelled-poke runs from g014_500.
+[[gate]]
+name = "attractor"
+cmd = "bash py/attractor/gate_attractor.sh"
+cwd = "."
+expect = ["re:(?m)^  wait \\$22486 +550/550$", "re:(?m)^  wait->fly \\(hatch\\) +5/5$", "re:(?m)^  fly \\$224a6 +20670/20670$", "re:(?m)^  fly, shot hit \\(count - 1\\) +19/19$", "re:(?m)^  kill killed:count +5/5$", "re:(?m)^  drain 1: fuel +204/204$", "re:(?m)^  drain 1: ship vel \\(3 words\\) +204/204$", "re:(?m)^  fuel empty: \\$62a5d set +1/1$", "re:(?m)^  no pull \\+ enemy shot: fuel +9/9$", "re:(?m)^  no pull: fuel +15947/15947$", "re:(?m)^  no pull: ship vel \\(3 words\\) +15947/15947$", "re:(?m)^  pull only: fuel +59/59$", "re:(?m)^  pull only: ship vel \\(3 words\\) +59/59$", "re:(?m)^  watch 32a2e: writes by \\$225d6 == predicted drains +5091/5091$", "re:(?m)^  kill grounded +1/1$"]
+cite = "behaviours.md, \"The attractor (gated)\""
+minutes = 6
+inputs = ["scratchpad/virus/pursuer/snaps/g014_400.snap", "scratchpad/virus/pursuer/snaps/g093_300.snap", "scratchpad/virus/pursuer/snaps/g045_400.snap", "scratchpad/virus/pursuer/snaps/g014_500.snap", "scratchpad/virus/pursuer/caps", "scratchpad/virus/fl/f1.snap"]
+
+# The enemy shot: fire $22e38, spawn $203f0, handler $20310 (behaviours.md, "The enemy shot (gated)"). 16 natural captures of
+# waves 1 to 4 (2,500 ticks each, from the pursuer snapshots), made afresh into scratchpad/virus/eshot/caps/ before the gate reads them.
+[[gate]]
+name = "eshot"
+cmd = "bash py/eshot/gate_eshot.sh"
+cwd = "."
+expect = ["re:(?m)^== model none checks 334647 / 334647 failing groups 0$", "re:spawn/rng after \\$203f0 \\(3 draws\\) +1097/1097", "re:spawn/rng at return of \\$22e38 \\(no more draws\\) +1097/1097", "re:spawn/record is walked by the object walker in the same tick .* 1096/1096", "re:fire/pursuer actor record unchanged at the next arrival \\(x y z v\\) +551/551", "re:fire/patrol actor record unchanged at the next arrival \\(x y z only\\) +537/537", "re:handler/outcome class +15497/15497", "re:handler/class=hit predicted +14/14", "re:hit/fuel after \\(\\$32a2e\\) +14/14", "re:life: life >= 1 record gets exactly one handler entry +13843/13843", "re:life: life 0 record gets none +547/547", "re:callers of \\$22e38: \\{'0x21da2': 452, '0x21ec8': 53, '0x21fc2': 292, '0x220de': 265, '0x2227c': 35\\}"]
+cite = "behaviours.md, \"The enemy shot (gated)\""
+minutes = 10
+inputs = ["scratchpad/virus/pursuer/snaps/g014_100.snap", "scratchpad/virus/pursuer/snaps/g014_200.snap", "scratchpad/virus/pursuer/snaps/g014_300.snap", "scratchpad/virus/pursuer/snaps/g014_500.snap", "scratchpad/virus/pursuer/snaps/g045_100.snap", "scratchpad/virus/pursuer/snaps/g045_400.snap", "scratchpad/virus/pursuer/snaps/g045_500.snap", "scratchpad/virus/pursuer/snaps/g045_700.snap", "scratchpad/virus/pursuer/snaps/g093_200.snap", "scratchpad/virus/pursuer/snaps/g093_300.snap", "scratchpad/virus/pursuer/snaps/g093_400.snap", "scratchpad/virus/pursuer/snaps/g093_600.snap", "scratchpad/virus/behaviours/gate/snaps/p135.snap", "scratchpad/virus/behaviours/gate/snaps/p255.snap", "scratchpad/virus/behaviours/gate/snaps/p415.snap", "scratchpad/virus/behaviours/gate/snaps/p495.snap"]
+
+# The bomber $222dc/$22316, its bomb $2086a/$207d6 and burst $2012c (behaviours.md, "The bomber and its bombs (gated)"): 15 natural
+# captures stamped at the bomber's code, made afresh into scratchpad/virus/bomber/caps/, plus the 25 saved pursuer captures.
+[[gate]]
+name = "bomber"
+cmd = "bash py/bomber/gate_bomber.sh"
+cwd = "."
+expect = ["re:bomber record, nine fields \\(fly\\) +35960/35960", "re:bomber record, nine fields \\(hatch \\+ fly\\) +10/10", "re:hatch: RNG at body entry = one draw from the wait +10/10", "re:RNG at body end \\(draws of bomb / 21 plants\\) +35970/35970", "re:bomb call present iff predicted +35970/35970", "re:plants call present iff predicted +35970/35970", "re:plants: every predicted plant is a write to its map byte +14851/14851", "re:bomb spawn: appended record +183/183", "re:bomb outcome \\(fly / land / prox\\) from the stamps +6447/6447", "re:flying bomb: record at k\\+1 equals the model +6261/6261", "re:burst: RNG at exit \\(31 or 51 drops by the pool fill\\) +186/186", "re:burst: pool growth = near drops appended +186/186", "re:burst: far-drop plants are writes to their map bytes +186/186", "re:proximity burst: fuel after = fuel - \\$333 \\(floor 0\\) +3/3", "re:bomber killed \\(no body end\\) predicted +6/6", "re:bomber fly +46203/46203", "re:fresh bombs at k\\+1 == predicted spawns \\(count per tick\\) +47694/47694", "re:bomber wait \\(life countdown\\) +155/155", "re:bomber predicted kill \\(bit 15 / ground\\), killed this pass +13/13"]
+cite = "behaviours.md, \"The bomber and its bombs (gated)\""
+minutes = 12
+inputs = ["scratchpad/virus/pursuer/snaps/g014_100.snap", "scratchpad/virus/pursuer/snaps/g014_200.snap", "scratchpad/virus/pursuer/snaps/g014_500.snap", "scratchpad/virus/pursuer/snaps/g014_700.snap", "scratchpad/virus/pursuer/snaps/g045_300.snap", "scratchpad/virus/pursuer/snaps/g045_500.snap", "scratchpad/virus/pursuer/snaps/g093_400.snap", "scratchpad/virus/pursuer/snaps/g093_600.snap", "scratchpad/virus/behaviours/gate/snaps/p255.snap", "scratchpad/virus/behaviours/gate/snaps/p415.snap", "scratchpad/virus/landscape/gate/natural/built_0.snap", "scratchpad/virus/landscape/gate/natural/built_1.snap", "scratchpad/virus/landscape/gate/natural/built_2.snap", "scratchpad/virus/landscape/gate/natural/built_3.snap", "scratchpad/virus/landscape/gate/natural/built_4.snap", "scratchpad/virus/pursuer/caps", "scratchpad/virus/fl/f1.snap"]
+
+# Why the demo pilot loses each life (demo.md, "Why the demo loses its lives"): a fresh census of chain games 1 and 3 to game over
+# (py/deaths/death_census.py), compared with the saved census with one broken control, then the cause table over the 23 saved games.
+[[gate]]
+name = "deaths"
+cmd = "bash py/deaths/gate_deaths.sh"
+cwd = "."
+expect = ["re:g1 loss 4: tick 10761 wave 3 flag:Contact_CommonTail fuel 3349", "re:g1 done: 6 losses, over=.*'tick': 12088", "re:census game 1 fresh vs saved game 1: 6/6 life losses identical", "re:g3 loss 2: tick 6068 wave 2 ground:model_below_ground fuel 2057", "re:g3 loss 3: tick 7058 wave 2 ground:pad_fast fuel 2437", "re:g3 done: 6 losses, over=.*'tick': 15018", "re:census game 3 fresh vs saved game 3: 6/6 life losses identical", "re:census game 1 fresh vs saved game 3: 0/6 life losses identical", "re:126 life losses over 23 games", "re:ground, fuel 0 +1 +11 +14 +6 +4 +2 +38", "re:ground, fuel > 0 +0 +0 +11 +14 +6 +1 +32", "re:EnemyShot_borrow, fuel 0 +0 +10 +7 +4 +4 +0 +25", "re:Contact_CommonTail, fuel > 0 +1 +2 +7 +7 +2 +0 +19", "re:fuel at death: fuel==0 73 of 126", "re:died with fuel 0 +n= 73 life ticks mean +2496"]
+cite = "demo.md, \"Why the demo loses its lives\""
+minutes = 8
+inputs = ["scratchpad/virus/chain/long100/starts/main_g001.snap", "scratchpad/virus/chain/long100/starts/main_g003.snap", "scratchpad/virus/aha.st", "scratchpad/virus/deaths/saved/g001.json", "scratchpad/virus/deaths/saved/g003.json", "scratchpad/virus/deaths/saved/g004.json", "scratchpad/virus/deaths/saved/g007.json", "scratchpad/virus/deaths/saved/g010.json", "scratchpad/virus/deaths/saved/g012.json", "scratchpad/virus/deaths/saved/g014.json", "scratchpad/virus/deaths/saved/g017.json", "scratchpad/virus/deaths/saved/g019.json", "scratchpad/virus/deaths/saved/g029.json", "scratchpad/virus/deaths/saved/g030.json", "scratchpad/virus/deaths/saved/g033.json", "scratchpad/virus/deaths/saved/g036.json", "scratchpad/virus/deaths/saved/g045.json", "scratchpad/virus/deaths/saved/g049.json", "scratchpad/virus/deaths/saved/g050.json", "scratchpad/virus/deaths/saved/g057.json", "scratchpad/virus/deaths/saved/g069.json", "scratchpad/virus/deaths/saved/g073.json", "scratchpad/virus/deaths/saved/g074.json", "scratchpad/virus/deaths/saved/g076.json", "scratchpad/virus/deaths/saved/g079.json", "scratchpad/virus/deaths/saved/g093.json"]

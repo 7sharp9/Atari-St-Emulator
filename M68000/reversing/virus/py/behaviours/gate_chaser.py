@@ -110,17 +110,26 @@ def main():
                 t[0] += i in kills
                 if i not in kills and len(bad) < 8: bad.append((k, i, 'predicted dead, not killed', a, info, [e['e'] for e in r['ev']]))
                 continue
+            # a kill swap-removes the last record into the killed slot and walks it there this pass: its events carry that slot
+            swapped = len(kills) == 1 and kills[0] < i == len(P) - 1 and control != 'noswap'
+            slot = kills[0] if swapped else i
+            if slot in hit_idx:                    # the shot's hit bit is set before the pass: the record dies instead (not counted)
+                t[1] -= 1
+                continue
+            if slot in {e['idx'] for e in r['ev'] if e['e'] == 'ship_hit'}:
+                got[6] = s16(got[6] | 0xa000)
+            if swapped:                            # exact: the record at k+1 in the killed slot is the model's, all nine fields
+                EXER['swap-walked'] += 1
+                ok = list(Q[slot]) == got
+                t[0] += ok
+                if not ok and len(bad) < 8: bad.append((k, i, 'swap-walked', a, got, list(Q[slot])))
+                continue
             if kills:
                 cand = [q for q in Q if q[8] == got[8] and q[:6] == got[:6]]
                 t[0] += len(cand) == 1
                 if len(cand) != 1 and len(bad) < 8: bad.append((k, i, 'reordered pool, candidates', len(cand), a, got))
                 continue
             q = list(Q[i])
-            if i in hit_idx:                       # the shot's hit bit is set before the pass: the record dies instead (not counted)
-                t[1] -= 1
-                continue
-            if i in {e['idx'] for e in r['ev'] if e['e'] == 'ship_hit'}:
-                got[6] = s16(got[6] | 0xa000)
             ok = q == got
             t[0] += ok
             if not ok and len(bad) < 5:

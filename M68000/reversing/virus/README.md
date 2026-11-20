@@ -42,7 +42,7 @@ emulator afresh from the snapshots their `inputs` name, the chain starts among t
 | this file | provenance, the drive, memory map, landscape generator, object scatter, the object types and RNG, renderer (tile colour, spans, depth buckets and paint order), flight model with the mouse and ground contact, the seeder behaviour, landscape selection by wave, which code runs | terrain 65455/65455 on three landscapes, objects 571/571 and 1774/1774, object shapes by render diff, grid 330/330 on four frames, tiles 132/132, slope table 16320/16320, spans 1440/1440, buckets 39523/39523, flight 119/119, mouse 180/180, seeder 447/447, wave pools 141/141 |
 | [`frontend.md`](frontend.md) | the three frame routines, HUD, font, sound driver and effects, title, game over, hall of fame, score code | HUD digits 12/12, sound sites 5531/5531, hall of fame 10/10 |
 | [`demo.md`](demo.md) | the attract mode and its autopilot | see that doc |
-| [`behaviours.md`](behaviours.md) | the actor pool's behaviours (every enemy kind), wave completion and the per-wave spawn table, readers of the demo flag, the draw-list residue | wave ends 4/4 against the rule, bonus 7/7 natural wave ends, chaser 4064/4064, mothership launches 27/27, falling infection 8319/8319, residue poke 500/500, census of four games |
+| [`behaviours.md`](behaviours.md) | the actor pool's behaviours (every enemy kind), wave completion and the per-wave spawn table, readers of the demo flag, the draw-list residue | wave ends 4/4 against the rule, bonus 7/7 natural wave ends, chaser 2818/2818, mothership launches 27/27, falling infection 8319/8319, residue poke 500/500, census of four games |
 
 ## Provenance
 
@@ -527,10 +527,10 @@ game, taken branch = count at the branch minus count at its fall-through; gate `
 | exit | address | what leaves the tick there |
 |---|---|---|
 | ceiling cut | `$255de` | `bclr #1,D2` while y < `$c900`; D2 `$2` becomes `$0` on `fl/f4.snap` at y `$9bb0` (proved, `py/flightctl/pad_ceiling.py`) |
-| pad | `$25a6e` `Ship_PadHold` | latch clear and no thrust: `Mouse_Recentre` `$1fa38` when the target is not within `$19` of 0 (the mouse heading `$2000` always is), sound `$1d`, fuel + `$19` stored at `$25aae` while the sum is at most `$1000`, y := `$3ca`, vy := -g, back into the tick at `$25654` |
-| enemy | `$257fa` | `$62a5d` nonzero (set by enemy contact) goes to `$25ad8` |
-| vertex | `$257fe` | `$62a62` nonzero goes to `$25ad2` |
-| object cell | `$25846` | the object-map byte kills (read; `$25850` calls `$23c08` for type 11, `$2004a` when bit 5 is set) |
+| pad | `$25a6e` `Ship_PadHold` | latch clear and no thrust: `Mouse_Recentre` `$1fa38` when the target is not within `$19` of 0 (the mouse heading `$2000` always is), sound `$1d`, fuel + `$19` stored at `$25aae` while the sum is at most `$1000`, y := `$3ca`, vy := -g, back into the tick at `$25654`. No pad refuel occurred in the 126 census lives (`demo.md`, "Why the demo loses its lives"): the pilot does not land to refuel |
+| enemy | `$257fa` | `$62a5d` nonzero goes to `$25ad8`. Four stores set it: `$20360` (enemy shot inside box `$c0`, fuel minus `$333`, set only on borrow), `$2083c` (bomb within `$400`, the same), `$21654` (`Pool_CommonTail` contact, unconditional) and `$225e6` (attractor drain to empty); in 126 census losses shot 25, contact 21, bomb 5, attractor 2 (`demo.md`, "Why the demo loses its lives") |
+| vertex | `$257fe` | `$62a62` nonzero goes to `$25ad2`; `$264b6` ORs it from `$62a61`, which the ship model's draw sets at `$2638c` when a vertex is below the ground (13 of 126 census losses) |
+| object cell | `$25846` | the object-map byte kills (`$25850` calls `$23c08` for type 11): with bit 5 clear it branches to `$25ad2` at `$25862`; with bit 5 set `$25866` calls `$2004a` and goes to `$25ad8` with `$62a5d` clear (3 of 126 census losses, all by the `$2004a` route) |
 | ground contact | `$25870` `Ship_GroundContact` | c < 0: vy > `$28` dies at `$25ad2`, else `$25c28` `Ship_LandingTest` lands (`$25c52`) or dies |
 | death | `$25ad2` `Ship_DieLowered`, `$25ad8` `Ship_Die` | y -= `$56`; clears `$62a5d`, `$62a62`; sets latch `$62a63` and `$62a5e`; explosion `$202a4`; 50 frames of the frame routines (`$25b12`, SPACE skips them); `$25ba0` takes a life |
 
