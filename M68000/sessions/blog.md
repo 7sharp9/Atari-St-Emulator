@@ -1,126 +1,113 @@
 # Blog: handoff
 
-Updated 2026-11-18 by the session that ended at commit `f5bfca0` (master; the blog repo at `3443c14`).
+Updated 2026-11-20 by the session that ended at commit `e180f79` (master; the blog repo at `3443c14`, untouched).
 
 The blog workstream curates and extends posts for 7sharp9.dev from the game research. Each game is reversed in its
 own workstream; this one reads their docs, checks the claims a post would rest on, and feeds corrections back to the
-game docs (committed as that game's commit; the game's own handoff is not edited here). Dave's standing direction:
-posts explain algorithms the games use and their relevance today, not emulator fixes (2026-11-11); one infographic per
-interesting algorithm (2026-11-12); topic docs stay compressed, clarity goes on figures, posts and README openings by
-`reversing/WRITING.md` (2026-11-15); an ML / AI-engineering slant, new games and a long pipeline welcome, Archipelagos
-not the next post (2026-11-16). The shape that fits the blog: a game's algorithm ported to idiomatic F#, proven against
-the game, ending in a visual the game could not make.
-
-**Dave (2026-11-18): build "Virus flown by optimisation"**, as a real learner (better during a level or between
-games), and "player-view first": the pilot may read only what a player has, the 3D view and the radar. He asked for a
-video comparison of the most promising runs (made, below). New game lines stay open, racing games excluded.
+game docs. Dave's standing direction: posts explain algorithms the games use and their relevance today, not emulator
+fixes (2026-11-11); one infographic per interesting algorithm (2026-11-12); topic docs stay compressed, clarity goes on
+figures, posts and README openings by `reversing/WRITING.md` (2026-11-15); an ML / AI-engineering slant, new games and a
+long pipeline welcome (2026-11-16). The shape that fits the blog: a game's algorithm ported to idiomatic F#, proven
+against the game, ending in a visual the game could not make. Dave (2026-11-18): build "Virus flown by optimisation", a
+real learner, player-view first. This session (2026-11-20) Dave also asked for the 100-game demo chain and an
+eight-agent coverage fan-out of Virus, both done and committed (Virus game work done from here, see Waiting on Dave).
 
 ## Resume point
 
-- Last commit of this workstream: `f5bfca0` (virus: `models` gate inputs declared). Blog repo `3443c14`, unchanged.
-  Master is 1 ahead of origin before this file's commit (the earlier commits were pushed); the blog repo is 5 ahead.
-- Working data: `scratchpad/virus/mpc/` (its README holds every record below). The player-view work is
-  `duel/fly_v7.py` (the working pilot, equal to the second version) and `duel/pv/`: frozen pilots `fly_d1.py` to
-  `fly_d3.py`, games `<tag>_s<seed>.json`, `run_seeds.sh`, `tier.py`, `diag.py`, `look.py`, `auto_view.py`,
-  `video.py`, and `vid/` (frames, `stitch.sh`, `virus_tiers_s2.mp4`, `virus_tiers_s105.mp4`). Inputs:
-  `scratchpad/virus/demo/S1b.snap` and `demo/fl/Q1.snap` (both from `bash reversing/virus/py/demo/capture.sh`; Q1 has
-  no `ANCHORS.md` row).
-- Start from: a seeded start (`duel/starts.py` pokes the RNG at `Q1.snap`). One game:
-  `uv run --no-project --python 3.12 --with torch==2.2.2 --with 'numpy<2' --with pillow python fly_v7.py <out.json>
-  --start <seed> --ticks 2000` from `duel/`; eight in parallel: `bash pv/run_seeds.sh <tag> "<seeds>"` (it runs
-  `pv/fly_<tag>.py`, a frozen copy with `here` pointed one directory up), about 13 minutes.
-- Gates: none run (no model or emulator change). Virus dry run: 0 MISSING, 0/6 gates declare no inputs (was 1/6).
-- Uncommitted work left behind: none. The pilots, records and videos are scratchpad-only on purpose.
+- Last commit of this workstream: `e180f79` (virus mpc re-stop bound). Before it: `fa8d8a7` (eight promoted areas and
+  gates), `35169db` (docs, `objects.png`, 143 names), `89a25fb` (`merge_sym.py`), then `a75d51b` (CLAUDE.md and skill).
+  Master is 5 ahead of origin before this file's commit; the blog repo is 5 ahead of its remote. Neither pushed.
+- Working data: `scratchpad/virus/` (`chain/long100/` 100 start snapshots and `chain.jsonl`, `ANCHORS.md` row; one
+  `<area>/gate/` per promoted gate), `scratchpad/virus/mpc/` (pilot records; README "chaos/" holds the divergence
+  record, scripts `mpc/chaos/fan.py`, `div.py`, `summ.py`, outputs `r2/`, `r1/` void), `scratchpad/overseer/virus8/`
+  (the fan-out: `BRIEF.md`, `agents/<area>/report.md`, `merge/` with each area's promotion notes and both gate runs).
+- Start from: `scratchpad/virus/chain/long100/starts/main_g050.snap` (reaches wave 5 and the mothership) or a seeded
+  start (`duel/starts.py` on `demo/fl/Q1.snap`) for pilot work.
+- Gates: `uv run python tools/gates.py run virus -j 8`: 14/14 PASS at `35169db` (about 6 min); `mpc_flight` and
+  `mpc_shot` PASS again at `e180f79`. Dry run 0 MISSING, 0/14 declare no inputs (was 0/6).
+- Uncommitted work left behind: none (`.obsidian/` is Dave's).
 
 ## Proven so far
 
-- Virus ship tick, shot, wave-0 actors, ship box: gates `mpc_flight` and `mpc_shot` (`reversing/virus/README.md`
-  "Off the capture", `behaviours.md` "The player's shot, the targets and the ship box").
-- The radar and the 3D view window: `behaviours.md` "What the radar shows" (1,100/1,100 frames,
-  `py/scan/radar_check.py`) and "What the 3D view shows" (2,346/2,346 arrivals, `py/scan/view_check.py`).
-- Records, not gates (`scratchpad/virus/mpc/README.md`, "duel/pv/" for the first four):
-  - Player-view pilot, wave ended / deaths / shots / kills: first version 0 of 8, 0, 4, 4 (seeds 1 to 8); second 3 of
-    8, 2, 29, 27 (seeds 1 to 8; ticks 1333, 1301, 1623 against the autopilot's 1253, 1320, 1843); third 1 of 8, 4, 30,
-    24; second version held out on seeds 101 to 108, no setting changed: **0 of 8**, 2, 23, 20. The autopilot and the
-    full-memory planner each end 7 of 8 on those seeds. `pv/tier.py`.
-  - The failures looked at (seeds 3, 5, 8, second version) are the patrol in its attack state or the pursuer
-    (`pv/look.py`); the held-out failures were not looked at.
-  - The autopilot fires with a hatched enemy inside the view window on 1,535 of 1,609 fire ticks over 16 games, and an
-    enemy is in the window on 6,044 of 24,501 ticks (`pv/auto_view.py`; any enemy, not its chosen target). It picks
-    and steers at the nearest pool record at any range (`demo.md` "The pilot", read).
-  - Seed 106, the eight noise-probe games: the same target order in all eight, wave end 278 to 1968; the second seeder
-    dies at ticks 136 to 167 in the three fast games and 508 to 1181 in the others (`duel/order_of.py`; labels by
-    position, not checked against a raw pool dump). Target order does not explain the spread on this seed.
-  - Earlier: full-memory wave-end pilot (5 of 9 before the autopilot on S1b; first in 4 of 8 seeded starts), the
-    during-a-level residual learner, the between-games weight search (no learning) and its noise floor (a 2% weight
-    change moves one game with sd 0.31 and 0.47).
-- Videos: each of the five ended replays stopped on its record's tick (1320, 1210, 1301; 1735, 961); one frame of the
-  seed 2 video was looked at.
-- Carried, unchanged: Lander has no autopilot; Archipelagos generator, Captive keys, Midwinter roughness and port
-  70000/70000, PowerMonger commander, Populous swamp edge.
+- **100 unpoked attract games** (`demo.md` "A hundred games", `py/chain/chain.py`): games 1 to 24 repeat the old table
+  24/24; final wave 1/2/3/4/5 in 2/21/69/7/1 games; wave rank trend +0.19, p 0.052 (not read as a trend). The life
+  budget carried into wave 3 decides a long game: 4 of 13 games holding 4 or 5 lives at the first wave-3 death reach
+  wave 4, against 4 of 64 holding 1 to 3.
+- **Divergence** (record, `scratchpad/virus/mpc/README.md` "chaos/", r2): one-unit nudges never separate the ship by 160
+  units open loop; closed loop x+16 reaches 1,024 units in 8/8 seeds (about 200 ticks); one-tick heading/tilt ±64 are
+  absorbed 0/8. The pilot's threshold decisions amplify, the physics does not.
+- **The fan-out** (`reversing/virus/README.md`, `behaviours.md`, `frontend.md`; one gate each, `py/<area>/`): no slope
+  shading, slope table 16320/16320, spans 1440/1440; depth buckets 39523/39523 and paint order 1262/1263; mouse
+  180/180, `$270d4` explained 119/119; wave table pools 141/141, bonus 7/7, landscape 1 natural; object types 1 to 12
+  by render diff, falling infection 8319/8319; mothership 27 launches and 30-hit kill, chaser 4064/4064; HUD 12/12,
+  sound sites 5531/5531, hall of fame 10/10; census: 217 routines run, 101 named (89% of calls), 27.2% of the code
+  executes, no new routine after wave 3.
+- Earlier pilot records and the radar/3D-view gates: unchanged (`scratchpad/virus/mpc/README.md` "duel/pv/").
 
 ## Running
 
-Nothing from this session. An `stserver.dll` started 13:31 (pid 34215) belongs to another Claude process.
+Nothing running. The `stserver.dll` (pid 92780) predates this session and is not this session's.
 
 ## Open, in priority order
 
-1. **The patrol, from what a player sees.** The player-view pilot hits seeders and does not finish a wave. First
-   confirm the diagnosis on the held-out games (`pv/diag.py` and `pv/look.py` on `pv/d2_s10*.json`: is the last target
-   alive a `b` track, and what is the pilot doing). Then give the tracker a pursuit model for the `b` class: a player
-   knows a patrol within `$2800` turns at the ship (`shot.actor_step`, attack state), not its hidden words, so fit
-   the turn from sightings or fly a head-on pass and fire inside 10 ticks. Settle by `pv/tier.py` on seeds 1 to 8,
-   then once on a fresh held-out set (109 to 116; 101 to 108 are now seen). One change per version: the third version
-   changed four settings and its drop cannot be attributed.
-2. **Pass conversion as the thing to learn.** On seed 106 the spread is whether the second pass converts, not the
-   order. Check it on a second seed (`order_of.py` on `sens1/s101_*.json`, free), then define the learner's target:
-   approach speed and turnaround after a miss.
-3. **Fast simulator.** The emulator gives about 150 ticks/s, 11 to 13 minutes a game. Tick, shot and seeder are exact
-   Python functions in `py/mpc/`; the patrol given the ship's path is `shot.predict`; the wave-end rule is
-   `behaviours.md` "When a wave ends". Port to F# (the post's code) and gate against a recorded game.
-4. **F# port and TorchSharp**: check TorchSharp's macOS x64 support first (torch stops at 2.2.2 on this Intel Mac;
-   gpubox is the fallback).
-5. Pilot loose ends: two player-view deaths out of fuel (`d3_s1`, `d3_s3`) and one in `d2_s108` with 46 recoveries;
-   the full-memory miss (`duel/s4_K6.json`); seeds 7 and 103 never end the wave for the full-memory pilot.
-6. Video overlay of what the player-view pilot can see (window against radar-only, from the logged `obs`), if Dave
-   wants it; IDEAS.md entry 10 does not yet carry the player-view result.
-7. **Finish Paint It Black** (two TODOs are Dave's), then Mountains of the Moon line 50.
-8. **"The placebo arm"**, **"How the agent was kept honest"**, **"Graded by the authors"**, **Cadaver's language**,
-   **the planner**; new games (Laser Squad, a chess engine, Kick Off 2; no racing); carried items as in IDEAS.md.
+1. **Fix the 64-step bound in the scratchpad pilots.** `replay.py` and `gate_danger.py` now take a re-stop under 2,000
+   steps as the same tick; `duel/baseline2.py`, `duel/fly_v7.py`, the frozen `pv/fly_*.py` and `sens*` still use 64,
+   so their tick counts can include an extra tick per interrupt re-stop (r1: 11 of 136 branches). Fix `fly_v7.py` as a
+   new tag and re-run seeds 1 to 8 before any new pilot result is compared with an old one.
+2. **The patrol, from what a player sees** (unchanged from the last handoff): check the held-out failures
+   (`pv/diag.py`, `pv/look.py` on `pv/d2_s10*.json`), then a pursuit model for the `b` class as one change, judged on
+   seeds 1 to 8 and once on a fresh held-out set (109 to 116). The new `behaviours.md` "The mothership and the gated
+   chasers" and the gated chaser model help here; the pursuer `$21f00` and patrol states are still ungated.
+3. **Fast simulator**: tick, shot, seeder, chaser, mothership chaser and the wave rules are now exact functions or
+   gated rules; gate `$21f00` and the patrol states (`behaviours.md` Open 3), then port to F# and gate against a
+   recorded game. This is what makes a learner affordable (150 ticks/s in the emulator).
+4. **Pass conversion as the learning target** (seed 106): check on a second seed (`order_of.py` on `sens1/s101_*.json`).
+5. Virus loose ends from the fan-out, each with its owner doc's Open list: the model drawers `$26296`/`$264e2`/`$26780`
+   (README Open 1, the way to render Virus's 3D models outside the emulator), landscape 2 naturally (Open 2), the enemy
+   exit writer (Open 3), the sound record fields (`frontend.md` Open 1, the way to render the effects as audio), the
+   rocket `$25306` and whether the pilot can ever kill the mothership (`behaviours.md` Open 1, 2).
+6. F# port and TorchSharp (check macOS x64 support first; gpubox is the fallback); Paint It Black's two TODOs and
+   Mountains of the Moon line 50; the carried post ideas in IDEAS.md.
+
+## What would be good next (not necessarily this workstream)
+
+- **Post: "Why the demo sometimes goes far."** The 100-game wave distribution, the lives-at-wave-3 table and the
+  divergence fan (`mpc/chaos/r2/fan.png`) make one self-contained post with two figures; the code is the chain
+  runner and the divergence harness, ported to F#. It needs no new emulator work and answers a question a player has.
+- **Post or sidebar: Virus's sound and 3D models rendered outside the game.** Decode the 18-byte effect records
+  (`frontend.md` "Sound") and the model drawers, then render effects to WAV and models to SVG in F#: a visual and an
+  audible payoff the blog shape asks for. Start with the sound: the driver is small and fully located.
+- **The player-view learner** (Open 1 to 4) stays the main line for "Virus flown by optimisation".
+- **Refresh `sessions/virus.md`** (another workstream): it predates `py/mpc/`, the radar and view gates and this
+  fan-out; a `/resume virus` should start from `git log -- reversing/virus`.
+- New game workstreams queued in memory: Populous II, Captain Blood (`future-game-candidates`).
 
 ## Known traps
 
-- Settings tuned on eight seeds did not hold on eight others (3 of 8 against 0 of 8), and one game cannot rank two
-  settings (`sens.py`): a version is judged on a held-out set it was not tuned on, once.
-- `run_seeds.sh` runs the frozen `pv/fly_<tag>.py`, not `fly_v7.py`: copy the working file to a new tag and change
-  its `here` line to the parent directory before a run (as `fly_d2.py` has it), so a later edit cannot change a
-  version that has results.
-- Kills in the pilot's JSON are score steps: the last one in an ended game includes the wave bonus.
-- A patrol in its cruise state is on the radar and never in the 3D view, so it never gives a height.
-- Poking the RNG at `S1b.snap` changes only later draws; a new layout needs the poke before the scatter (`Q1.snap`).
-- The league's score caps at 2000 ticks for a wave not ended; `auto` can exceed it (`baseline2.py` runs to 3000), and
-  seed 104's autopilot does not end in its cap.
-- `fly.py` and `fly_v7.py` are deterministic: variation is settings or start.
-- `view_check.py` labels an arrival with the record's behaviour after the tick ran.
+- `tools/gates.py` takes an `expect` entry only as an `a/b` count or `re:<regex>`; copy it from the printed output
+  (now in the skill, 3c).
+- An agent's "returns at once, skipping X" from reading a branch needs the branch target read: `$2337c` skips only the
+  height loop, not the object-map clear (README "Landscape selection by wave").
+- `merge_sym.py` before `89a25fb` crashed on `$`-prefixed `.sym` files (virus.sym); fixed.
+- Settings tuned on eight seeds did not hold on eight others; a version is judged on a held-out set once.
+- `run_seeds.sh` runs the frozen `pv/fly_<tag>.py`: copy to a new tag and point its `here` line one directory up.
+- Kills in the pilot's JSON are score steps (the last includes the wave bonus); a cruising patrol is on the radar only;
+  poking the RNG at `S1b.snap` changes only later draws (`Q1.snap` for a new layout); the league caps at 2000 ticks.
+- A control word under 64 does nothing (the sine table has 1024 entries for a `$10000` turn): nudge headings by 64.
 - `scratchpad/virus/mpc/replay/` and `shot/` are pre-promotion copies; use `reversing/virus/py/mpc/`.
-- zsh reads `${F}:textfile` wrongly without the braces; MobyGames 403; local Hugo too old; IDEAS.md entries are cited
-  by number, leave gaps.
 
 ## Waiting on Dave
 
-- `sessions/virus.md` is stale: it does not know `py/mpc/`, the radar and 3D-view sections or `py/scan/radar_check.py`
-  and `view_check.py` (this session may not edit it). A `/resume virus` should read `git log -- reversing/virus` first.
-- Is stserver stopping twice at a breakpoint after an interrupt a bug to fix in `server/Server.fs`, or the documented
-  behaviour?
-- Whether the Virus post is one post (planning, with the player-view tier as it stands: a negative result) and a
-  learning sequel, or waits for a player-view pilot that finishes a wave.
-- Carried: rewrite IDEAS.md around the ML ranking; Captain Blood prior art; Midwinter line 50; Captive keys figure;
-  Carrier Command series; "proven" vs "observed" in Crude Buster and Final Fight; Lemmings artifact republish; Hugo
-  upgrade; pushing master and the blog repo.
+- This session did Virus game work (fan-out, promotion, docs) under the blog workstream because Dave asked here.
+  Should `sessions/virus.md` be rewritten from this work (a `/resume virus` pass), or Virus stay under blog?
+- Push master (6 ahead after this file) and the blog repo (5 ahead).
+- Whether the Virus post is one post (planning, the player-view tier as a negative result) and a learning sequel, or
+  waits for a player-view pilot that finishes a wave; and whether "Why the demo sometimes goes far" goes first.
+- Carried: IDEAS.md rewrite around the ML ranking; Captain Blood prior art; Midwinter line 50; Captive keys figure;
+  Carrier Command series; "proven" vs "observed" in Crude Buster and Final Fight; Lemmings artifact republish; Hugo upgrade.
 
 ## Next session
 
-`/resume blog`. Read `scratchpad/virus/mpc/README.md` "duel/pv/" and `behaviours.md` "What the 3D view shows". First
-step: Open 1's check of the held-out failures (`pv/diag.py pv/d2_s10*.json`, then `pv/look.py` on the last 300 ticks of
-two of them), which costs no games. Then the pursuit model for the `b` class as a new tag, one change, seeds 1 to 8,
-and a fresh held-out set. Open 2's second-seed check can run beside it.
+`/resume blog`. Decide with Dave between the demo-variance post and the pilot line. For the post: read `demo.md` "A
+hundred games" and `scratchpad/virus/mpc/README.md` "chaos/", scaffold with `dave-post`, and draw the wave histogram and
+the fan figure. For the pilot: Open 1 first (a fixed `fly_v7.py` tag re-run on seeds 1 to 8), then Open 2.
