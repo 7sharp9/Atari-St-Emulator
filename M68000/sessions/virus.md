@@ -1,12 +1,13 @@
 # Virus: handoff
 
-Updated 2026-11-20 by the session that ended at commit `d6e9ab6`. Virus game work between `36da14e` and `d76cf76` was
+Updated 2026-11-20 by the session that ended at commit `1bed1c3` (pushed). Virus game work between `36da14e` and `d76cf76` was
 done under the blog workstream (`sessions/blog.md`; `git log -- reversing/virus` for the commits); this file now covers
 it and the blog file keeps only the posts.
 
 ## Resume point
 
-- Last commit of this workstream: `d6e9ab6` (sound, models, pursuer and patrol; gates `sound`, `models3d`, `pursuer`).
+- Last commit of this workstream: `d10fd5e` (the Hatari speed record); before it `d6e9ab6` (sound, models, pursuer and
+  patrol; gates `sound`, `models3d`, `pursuer`). Lessons: `b270dd3` (DEVELOPING Hatari), `1bed1c3` (skill 3c re-stop).
 - Working data: `M68000/scratchpad/virus/` (rebuild: README "Running it", `drive.sh`, `py/capture.sh`, the demo capture
   scripts; `chain/long100/` from `py/chain/chain.py` (3.1 h); `pursuer/` from `py/behaviours/build_marks.py` and
   `cap_nat.py`; rows in `scratchpad/ANCHORS.md`). Each gate writes its own `W/<area>/` output (`sound/wav/` holds the 54
@@ -84,7 +85,6 @@ Nothing running.
   image path `/images/posts/virus/`, links, and whether to run a 200-game chain for the p 0.052 no-trend claim. Not yet
   run through `write-like-dave`; nothing is in the blog repo.
 - Whether the stale `scratchpad/overseer/virus_models/svg/` may be deleted.
-- Push master (8 ahead of origin after this file's commit).
 
 ## Next session
 
