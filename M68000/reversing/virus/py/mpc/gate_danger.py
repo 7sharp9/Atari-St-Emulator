@@ -35,7 +35,7 @@ try:
             steps = 0; path = []
             while True:
                 ok, p, ext, _, st, why = g.run_to_tick(8000000); steps += st; path += p
-                if not (ok and steps < 64 and not path): break
+                if not (ok and steps < 2000 and not path): break  # re-stop after an interrupt RTE (replay.py)
             k += 1
         fid = s('fork')['id']
         pool = S.unpack_pool(rd(0x31d54, 20 * struct.unpack('>h', rd(0x32a3e, 2))[0]))

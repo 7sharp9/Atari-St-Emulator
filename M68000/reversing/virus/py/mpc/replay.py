@@ -177,8 +177,9 @@ def replay(controls, snap=DEFAULT_SNAP, cap=400000, keep_going=False, ground=Fal
             ok, path, ext, gnd, steps, why = g.run_to_tick(cap, stop_dead=not keep_going)
             # An interrupt taken at $255d4 returns to it, and stserver's breakpoint stops there a second time after
             # the handler's few steps with the tick not yet run (mpc10: 8 steps, state unchanged). The RTE restores
-            # D0..D2, so the controls are still in place: run on, and count it as the same tick.
-            while ok and steps < 64 and not path:
+            # D0..D2, so the controls are still in place: run on, and count it as the same tick. The handler can take
+            # 181 to 243 steps before the re-stop (scratchpad/virus/mpc/README.md "chaos/"), a real tick at least 19,900.
+            while ok and steps < 2000 and not path:
                 st['rearrive'] = st.get('rearrive', 0) + 1
                 ok, path, ext, gnd, more, why = g.run_to_tick(cap, stop_dead=not keep_going)
                 steps += more
