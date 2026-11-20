@@ -237,7 +237,7 @@ before spawning agents. The ones most often missed:
   through a flagged action-table `jsr` keeps the top bit in every `bsr` target (Midwinter's `$ec8c` runs at
   `$8000ec8c`), so pass both `a` and `a | 0x80000000` (`reversing/midwinter/py/army/gate_period.py`).
   `stserver`'s `run` stops twice at a breakpoint when an interrupt is taken there (the RTE returns to it): count a return
-  well inside the routine's period as the same stop (Virus's handlers take up to 207 steps: `reversing/learning/hatari_oracle.md`).
+  well inside the routine's period as the same stop (Virus: 181 to 243 steps against a 19,900-step tick, `reversing/virus/py/mpc/replay.py`).
 - A `kbd`/`mouse` status byte is a raw level in RAM, not an edge-latched event. A pulse shorter than
   the game's poll cycle never registers. The VBL is raised every 12,000 steps exactly
   (`instructionsPerFrame`, a literal in `Program.fs`), so a game that polls every second VBL needs
