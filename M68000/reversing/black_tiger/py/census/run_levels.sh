@@ -4,7 +4,8 @@
 # Writes scratchpad/black_tiger/census/<run>/ (chunk_NNN.npz, meta.jsonl) for runs L<k>_walk, L<k>_idle, B<k>_walk.
 # LABELLED POKE: each 1M-step chunk first writes lives $1f00c = 5, so no run reaches game over and the attract demo.
 HERE="$(cd "$(dirname "$0")" && pwd)"
-ROOT="$(cd "$HERE/../../../.." && pwd)"
+d="$HERE"; while [ ! -f "$d/tools/rdis.py" ]; do d="$(dirname "$d")"; [ "$d" = / ] && exit 9; done
+ROOT="${M68000_ROOT:-$d}"
 WORK="${BT_WORK:-$ROOT/scratchpad/black_tiger}"
 OUT="$WORK/census"; S="$WORK/agents/systems"
 J="${1:-6}"; NW="${2:-30}"; NI="${3:-10}"; NB="${4:-10}"

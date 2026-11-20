@@ -2,7 +2,8 @@
 # Compare the census runs of run_levels.sh (plus the D0_timeout control) per level against level index 0.
 # usage: report_levels.sh   (prints the table and spans; writes census/levels_vs_L0.json)
 HERE="$(cd "$(dirname "$0")" && pwd)"
-ROOT="$(cd "$HERE/../../../.." && pwd)"
+d="$HERE"; while [ ! -f "$d/tools/rdis.py" ]; do d="$(dirname "$d")"; [ "$d" = / ] && exit 9; done
+ROOT="${M68000_ROOT:-$d}"
 C="${BT_WORK:-$ROOT/scratchpad/black_tiger}/census"
 [ -d "$C/D0_timeout" ] || "$ROOT/.venv/bin/python" "$ROOT/tools/code_census.py" run "$ROOT/scratchpad/black_tiger/play_start.snap" \
   "$C/D0_timeout" --chunks 5 --per-chunk "$HERE/timeout.txt" --disk-a "$C/../bt_auto.st" --read 17846:2 --read 1f00c:2 \
