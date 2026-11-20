@@ -4,6 +4,7 @@
 [[gate]]
 name = "corners_start"
 cmd = "{python} reversing/populous2/py/corners.py scratchpad/populous2/anchors/p2_game_start.snap --callcap"
+inputs = ["scratchpad/populous2/anchors/p2_game_start.snap"]
 expect = ["4225/4225", "4071/4071", "915/915"]
 cite = "README.md \"The landscape\"; py/README.md"
 minutes = 2
@@ -11,6 +12,7 @@ minutes = 2
 [[gate]]
 name = "rand"
 cmd = "{python} reversing/populous2/py/rand_gate.py scratchpad/populous2/anchors/p2_game_start.snap"
+inputs = ["scratchpad/populous2/anchors/p2_game_start.snap"]
 expect = ["50/50"]
 cite = "README.md \"Random numbers\"; py/README.md"
 minutes = 1
@@ -18,6 +20,7 @@ minutes = 1
 [[gate]]
 name = "walkers_60m"
 cmd = "{python} reversing/populous2/py/walkers.py scratchpad/populous2/anchors/p2_game_60m.snap"
+inputs = ["scratchpad/populous2/anchors/p2_game_60m.snap"]
 expect = ["31/31"]
 cite = "README.md \"Objects and entities\"; py/README.md"
 minutes = 1
@@ -25,6 +28,7 @@ minutes = 1
 [[gate]]
 name = "raise_start"
 cmd = "{python} reversing/populous2/py/raise_gate.py scratchpad/populous2/anchors/p2_game_start.snap 40"
+inputs = ["scratchpad/populous2/anchors/p2_game_start.snap"]
 expect = ["re:model 76/76", "re:redirected\\): 76/76", "re:in 76/76 cases"]
 cite = "README.md \"Raise and lower\"; py/README.md"
 minutes = 1
@@ -32,6 +36,7 @@ minutes = 1
 [[gate]]
 name = "raise_60m"
 cmd = "{python} reversing/populous2/py/raise_gate.py scratchpad/populous2/anchors/p2_game_60m.snap 40"
+inputs = ["scratchpad/populous2/anchors/p2_game_60m.snap"]
 expect = ["re:model 76/76", "re:redirected\\): 76/76", "re:in 76/76 cases"]
 cite = "README.md \"Raise and lower\"; py/README.md"
 minutes = 1
@@ -39,6 +44,7 @@ minutes = 1
 [[gate]]
 name = "gen_land"
 cmd = "{python} reversing/populous2/py/gen_gate.py scratchpad/populous2/anchors/p2_gen_entry.snap 30"
+inputs = ["scratchpad/populous2/anchors/p2_gen_entry.snap"]
 expect = ["re:equal to the model 30/30", "re:\\$3962c 30/30"]
 cite = "README.md \"World generator\"; py/README.md"
 minutes = 1
@@ -46,6 +52,7 @@ minutes = 1
 [[gate]]
 name = "scatter_1f870"
 cmd = "bash reversing/populous2/py/build_passes.sh >/dev/null && {python} reversing/populous2/py/scatter_gate.py scratchpad/populous2/build/a_1f870.snap 30"
+inputs = ["scratchpad/populous2/anchors/p2_gen_entry.snap"]
 expect = ["re:natural: scenery array, cell map and seed equal to the model 30/30", "re:poked \\$80: equal to the model 30/30", "re:no bonus 0/30"]
 cite = "README.md \"World generator\"; py/README.md"
 minutes = 1
@@ -53,6 +60,7 @@ minutes = 1
 [[gate]]
 name = "scatter_1fa6c"
 cmd = "bash reversing/populous2/py/build_passes.sh scratchpad/populous2/build_fa6c >/dev/null && {python} reversing/populous2/py/scatter_gate.py scratchpad/populous2/build_fa6c/b_1fa6c.snap 30 --fa6c"
+inputs = ["scratchpad/populous2/anchors/p2_gen_entry.snap"]
 expect = ["re:equal to the model 30/30"]
 cite = "README.md \"World generator\"; py/README.md"
 minutes = 1
@@ -60,6 +68,7 @@ minutes = 1
 [[gate]]
 name = "god_census"
 cmd = "bash reversing/populous2/py/god_census.sh"
+inputs = ["scratchpad/populous2/anchors/p2_game_60m.snap"]
 expect = ["re:(?m)^unpoked: ticks 143 computer-branch 143 cascade 4 posts 2\\+2\\+1 commands 5$", "re:(?m)^side2_human: ticks 143 computer-branch 0 cascade 0 posts 0\\+0\\+0 commands 0$", "re:(?m)^side1_computer: ticks 134 computer-branch 268 cascade 122 posts 18\\+61\\+12 commands 91$"]
 cite = "README.md \"The computer god\"; py/README.md"
 minutes = 1
@@ -67,6 +76,7 @@ minutes = 1
 [[gate]]
 name = "god_model"
 cmd = "bash reversing/populous2/py/god/gate_short.sh"
+inputs = ["scratchpad/populous2/anchors/p2_game_60m.snap"]
 expect = ["re:(?m)^states 150: model equals callcap \\(changed bytes, both sides\\) 150/150; states with any change 150$", "re:0/150  \\[control reload\\]"]
 cite = "README.md \"The computer god\"; py/README.md"
 minutes = 1
@@ -74,6 +84,7 @@ minutes = 1
 [[gate]]
 name = "people_22986"
 cmd = "{python} reversing/populous2/py/people/people_gate.py 30"
+inputs = ["scratchpad/populous2/anchors/p2_gen_entry.snap"]
 expect = ["re:natural/random seed: model == emulator 30/30", "re:TOTAL 66/66 cases, whole RAM equal except the dead stack", "re:control 'side 2 scans forward': equal in 0/66", "re:control 'no shape bit 0 test': equal in 0/66"]
 cite = "README.md \"World generator\"; py/README.md"
 minutes = 2
@@ -81,6 +92,7 @@ minutes = 2
 [[gate]]
 name = "claim_25168"
 cmd = "bash reversing/populous2/py/claim/capture.sh > /dev/null && {python} reversing/populous2/py/claim/claim_gate.py all 16"
+inputs = ["scratchpad/populous2/anchors/p2_game_60m.snap", "scratchpad/populous2/anchors/p2_game_start.snap"]
 expect = ["re:natural: model == emulator 164/164", "re:TOTAL 367/367 cases, RAM and D0.w equal except the dead stack", "re:control 'enemy cells excluded': equal in 356/367", "re:control 'no demote': equal in 326/367", "re:control 'no shrink reset': equal in 347/367", "re:control 'no ring 3': equal in 332/367", "re:control 'claim every call': equal in 337/367"]
 cite = "README.md \"Settlement land claim\"; py/README.md"
 minutes = 8
@@ -88,6 +100,23 @@ minutes = 8
 [[gate]]
 name = "battle_god"
 cmd = "bash reversing/populous2/py/god/gate_battle.sh"
+inputs = ["scratchpad/populous2/anchors/p2_title.snap", "scratchpad/populous2/anchors/p2_briefing.snap", "scratchpad/populous2/wild29.st"]
 expect = ["re:predicted plan sizes equal on 4/4 start snapshots", "re:(?s)battle 485:\\nstates 100: model equals callcap \\(changed bytes, both sides\\) 100/100", "re:'power_kind4': 1", "re:(?s)battle 260:\\nstates 100: model equals callcap \\(changed bytes, both sides\\) 100/100", "re:'magnet_move_cmd8': 2", "re:99/100  \\[control radius\\]"]
 cite = "README.md \"Conquest battles\"; py/README.md"
+minutes = 1
+
+[[gate]]
+name = "people_battles"
+cmd = "bash reversing/populous2/py/people/gate_battles.sh"
+inputs = ["scratchpad/populous2/anchors/p2_title.snap", "scratchpad/populous2/wild29.st"]
+expect = ["re:people natural: 4/4 battles equal; no-second-pass control equal on 1/4", "re:side 2 199; cells 285, most on one cell 3, cells holding both sides 105"]
+cite = "README.md \"World generator\" (People placement); py/README.md"
+minutes = 1
+
+[[gate]]
+name = "fight_238dc"
+cmd = "bash reversing/populous2/py/gate_fight.sh"
+inputs = ["scratchpad/populous2/anchors/p2_title.snap", "scratchpad/populous2/wild29.st"]
+expect = ["re:(?s)battle 445:.*?model == emulator 16/16.*?control 'random' 6/16.*?1 distinct outcome.*?whole fight checks 5/5", "re:(?s)battle 775:.*?model == emulator 16/16.*?control 'random' 5/16.*?1 distinct outcome.*?whole fight checks 5/5"]
+cite = "README.md \"Objects and entities\" (Fights); py/README.md"
 minutes = 1

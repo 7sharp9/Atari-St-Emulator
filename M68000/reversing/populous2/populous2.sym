@@ -10,6 +10,7 @@
 00001de0	rte_stub
 00012524	main_loop
 00015476	briefing_draw
+00016430	line_editor
 0001ebe4	gen_land_save_seed
 0001ebee	gen_land
 0001ec38	hill_walk
@@ -26,6 +27,7 @@
 0001fcce	update_scenery
 000215dc	rand
 00021608	mul32
+00022036	read_key_ascii
 0002222c	match_world_name
 00022266	world_name
 0002246a	decrunch
@@ -40,9 +42,20 @@
 00022ec0	or_conquest_powers
 0002309a	update_entities
 0002311c	entity_state_table
+000237f4	state8_die_anim
+0002381e	statea_pause
+0002384c	statec_meet_on_cell
+000238dc	statee_fight_round
+000239c0	state10_fight_hold
+0002420a	entity_draw_sum_strength
+000242b8	entity_next_end_check
+000242f8	kill_entity
 0002436e	move_entity
 000243f6	link_object
 00024430	unlink_object
+00024752	merge_walkers
+000247e2	resolve_fight
+00024934	engage_fight
 00024de0	cmd_lower_checked
 00025168	claim_tick
 000251d8	claim_land

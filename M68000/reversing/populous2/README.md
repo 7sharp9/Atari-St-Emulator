@@ -21,6 +21,8 @@ what is still untouched.
 | What runs every tick, and how are the mouse and keyboard read? | "The program": "Interrupts and input", "Main loop `$12524`" |
 | How is the land stored, and how are cells flat, sloped or owned? | "The landscape" |
 | What is a walker or other object, and what does each state do? | "Objects and entities" |
+| How is a fight decided, and is it random? | "Objects and entities": "Fights" |
+| How do I reach a later battle the way a player does? | "Conquest battles" (world-name entry, `py/name_entry.py`) |
 | How far does a settlement claim land, and how does it grow? | "Settlement land claim `$25168`" |
 | How is a new world made from a seed? | "World generator `$1ebee`" |
 | What happens when the player clicks to raise or lower land, and what does it cost? | "Raise and lower" |
@@ -200,7 +202,7 @@ the true grid (`--control`) matches 4071.
 Bytes 2-3 are one word, the head of the cell's occupant list, and byte 0's bits 3-7 are a count
 of entities that have stepped onto the cell ("Objects and entities" below).
 
-### Objects and entities (layout verified; states counted, handlers read)
+### Objects and entities (layout verified; states counted, fights verified, other handlers read)
 
 Everything that stands on a cell is a record in one heap of four arrays that share a header:
 +0 type, +2 next and +4 prev (signed word offsets from `$3ff1a`, 0 for none), +6 and +8 the x and
@@ -239,7 +241,8 @@ side with +26 > 0 (read).
 `update_entities` `$2309a` first resets the per-tick fields of the side records 1 and 2
 (`$470fe`, `$47238`; the side records are `$46fc4 + side * $13a`, also indexed by the current
 player `$4739c` in `$136ba` and `$14158`), then for each live entity calls `$24a92` and dispatches
-on +22 through the word table at `$2311c` (20 entries, states 0..`$26`). State 4 (`$233b4`)
+on +22 through the word table at `$2311c` (36 entries, states 0..`$46`, ending where state 2's handler `$23164`
+begins; state 0 is empty, and the other 35 entries name 25 handlers). State 4 (`$233b4`)
 advances the animation index +10 through `$32902` and counts +20 down; at expiry (`$233d8`) it
 loads +23 into +22 and re-dispatches through `$23100`, otherwise (`$233e2`) it adds the velocity to
 the position and calls `$2436e` when the cell changes. State 2 (`$23164`) calls `$24f3a`, which
@@ -260,6 +263,57 @@ back into `$233b4` (`$2328a` or `$233ae`). State 6 is `$23580`; it calls `$25168
 
 So in this window a walker's step countdown expires 13 times, each time into state 2, whose test
 `$24f3a` (unread) fails every time and sends it straight back to walking.
+
+**The other states, on crowded battles.** Battle 0's play runs states 2, 4, 6 and a rare 8; the battles with
+hundreds of walkers run most of the rest. `py/state_census.sh` counts every handler over 30M steps from the battle
+starts (states sharing a handler are counted together):
+
+| start | ticks | 2 | 4 | 6 | 8/`$2c`/`$2e` | `$a` | `$c` | `$e` | `$10` | `$12` | `$16` | `$18`/`$20`/`$32`/`$38`/`$3e`/`$40` |
+|---|---|---|---|---|---|---|---|---|---|---|---|---|
+| battle 0 | 357 | 61 | 752 | 3274 | 6 | | | | | | | |
+| battle 290 | 350 | 110 | 962 | 4491 | 9 | | | | | | | |
+| battle 445 | 342 | 278 | 4983 | 13971 | | 158 | 20 | 43 | 43 | 163 | | 20 |
+| battle 775 | 309 | 614 | 8029 | 21777 | 4 | 209 | 34 | 52 | 52 | 399 | 99 | 52 |
+
+Battle 290's opposing walkers on shared cells (People placement) start no fight in this window. Read from the
+handlers: state 8 (`$237f4`) plays its animation through `$32902` to the end marker and then kills the record
+(`$242f8`: the side record's +68 loses 2, a leader also adds 1 to +70 and costs 10 more of +68 and runs `$25ec4`,
+a settlement gives up its land through `$253e0`, and the record is freed unless `$2646a` keeps it). State `$a`
+(`$2381e`) animates for the countdown +20 and returns to state 2. State `$c` (`$2384c`) looks along its own cell's
+occupant list for another walker or settlement (type up to 4): a same-side one is merged into (`$24752`: +13 flags
+ORed in, the leader pointer side +8 moved to it, byte 25 the larger of the two, strength +26 added, the merged
+record freed); otherwise an enemy one is engaged (`$24934`: each record's +30 set to the other, the engaged
+record to state `$10`, this one to `$e`, centred on the cell unless it is a settlement); otherwise it goes back to
+state 2 (or `$26` with +13 bit 1 set). State `$10` (`$239c0`) only holds while its +30 partner is an enemy in
+state `$e` pointing back at it. The per-entity tail `$2420a` draws the record and adds its strength +26 to its
+side's long +4, and after the last record `$242b8` calls `$14fb2` for a side whose +4 is 0 (outside mode 8): the
+end of a battle is a side with no strength left (read, not driven).
+
+**Fights (verified).** Each tick the attacker's state `$e` (`$238dc`) runs one round against its +30 partner.
+With K the word `$30af0` (100 on both battles) and byte 25 each record's multiplier (from side `+97` at
+placement):
+
+    base = attacker strength / K                     (divu quotient)
+    defender strength -= attacker byte 25 * base + 10
+    attacker strength -= defender byte 25 * base + 10
+
+The round also calls `rand` and builds two multipliers from the draw, `(r & 3) + 1` (times both strengths over K)
+and `((r >> 2) & 3) + 1`, but `moveq #0,D1` at `$23956` clears the first product and the second is never read:
+the draw advances the seed and nothing else, so a fight is decided by the two strengths and byte 25s alone. Both
+damages scale with the attacker's current strength, so a weakening attacker hits and is hit more softly as the
+fight goes on. When a round leaves one strength at 0 or below, `$247e2` (A2 the winner, A3 the loser) moves mana
+(the side long +0) from the loser's side to the winner's: 400 (word `$36da6`, 100 as displayed), plus 18000 for a
+leader, 12000 with +13 bit 1, and `$36d5a[size]` (600..1800) for a settlement; the winner's side counts +72. Both
+at 0 or below kill both through `$242f8`.
+
+`py/fight_gate.py` stops at the first natural round's `rand` call (`$2391e`), runs the round under poked seeds and
+strengths, and compares both strengths and the new seed with the model: **16/16** on battle 445 (a walker of
+strength 260, byte 25 6, against a side-1 settlement of 455, byte 25 1) and **16/16** on battle 775; the control
+that applies the second multiplier matches only where the draw gives 1 (6/16, 5/16), and 8 seeds on the natural
+strengths give one outcome on each. Iterated to the end, the model predicts both fights exactly: 24 rounds on 445
+(attacker -1, defender 89) and 14 on 775 (-3, 65), the defender winning both, with the 400 mana moved at
+`$247e2`, **5/5** checks on each (gate `fight_238dc`, `py/gate_fight.sh`). On 445 the attacker strikes six times
+harder per round and still loses to the larger settlement.
 
 **Settlement land, codes `$2f` and `$3f`.** The two cell shape codes above the slopes mark flat
 land held by side 1 (`$2f`) or side 2 (`$3f`). Every settled entity sits on its own side's code:
@@ -399,19 +453,24 @@ overwrites the byte.
 matters only through the land. For side 1, then side 2 (S = the side record `$46fc4 + side*$13a`):
 
 1. The flag cell is (32,32), or (byte `+110`, byte `+111`) of S when the word `+110` is not
-   negative (naturally side 1 `$ffff`, side 2 `$2020`: both flags land on (32,32)).
+   negative (battle 0: side 1 `$ffff`, side 2 `$2020`, so both flags land on (32,32); over the 170
+   readable battle records `+110` is only ever `$ffff`, `$2020` or, for side 2 of battles 690-694,
+   `$1010`, so every flag is placed at (32,32) or (16,16)).
    `place_magnet` `$25e5e` turns the side's 14-byte `$46f9a` record into type `$14`, side in
    byte 12, `$80` sub-cell bytes, frame `$0a88` (side 1) or `$0a90` (side 2), links it at the head of
    the cell's occupant list and stores its offset from `$3ff1a` in S `+10`. "Magnet" is inferred
    (`ai_magnet_and_mode` reads `+10` as the magnet).
 2. S `+100` is copied to `+22`, `+98` to `+2`, `+102` to the long `$47386` (side 1) or `$47388`
-   (side 2). The walker count n is word `+90` (naturally 10 and 3; read from the block `$22c40`
-   copies from `$30470`).
+   (side 2). The walker count n is word `+90` (10 and 3 on battle 0, up to 200 a side on later
+   battles; read from the block `$22c40` copies from `$30470`).
 3. The cells are scanned with no randomness, no occupancy test and no distance test: side 1
    forward from cell 1, side 2 backward from cell 4095. Pass 1 takes each cell whose shape word
-   `$3697a[b1]` has bit 0 (shape codes 15, 31, 145, 151 and 245, all with corner mask `$f`; "flat
-   land" is inferred). If n walkers are not placed, pass 2 rescans the same way taking every
-   non-sea cell, cells already used included (not reached naturally).
+   `$3697a[b1]` has bit 0 (shape codes 15, 31, 145, 151 and 245). All five have corner mask `$f` in
+   `$36b7a`, so every corner of such a cell is one above its altitude and the cell is level (the corner
+   rule of "The landscape", 4225/4225). Bit 0 is narrower than level: codes 47 and 63 (settlement land),
+   79, 95, 111, 127, 143, 144, 146..150 and others also have mask `$f` and lack it; what else sets these
+   apart is not read. If n walkers are not placed, pass 2 rescans the same way taking every
+   non-sea cell, cells already used included (reached on battles 290, 445 and 775, below).
 4. `place_walker_at_cell` `$22acc` calls `spawn_walker` `$22b0c`: the first free record of the
    399 entity records from `$3ff4e` (byte 12 = 0) becomes a type 2 walker, side in byte 12, the
    cell's x,y with `$80` sub-cell bytes, bytes 22, 23, 24 = 2, byte 18 = S `+95`, byte 25 =
@@ -431,6 +490,30 @@ seeds and 36 poked variants (flag position, counts 40, 3000, 0, 399 and 450, loc
 body bytes) and compares all of RAM except the dead stack: **66/66**; controls: side 2 scanned
 forward 0/66, no shape test 0/66, no scroll bytes 0/66, no flag record 0/66, wrong side-2 frame
 0/66, no leader 12/66 and no second pass 42/66 (equal wherever the branch is unused).
+
+The later battles run the branches battle 0 leaves unused, unpoked. `py/gen_entry.sh <out> <N>` builds
+battle N's gen_land-entry snapshot by the title poke of `$473a0` (battle 0 that way has the anchor's seed,
+cell map and side records; only pointer buffers and stack differ), and `people_gate.py --natural --entry`
+compares the model with `callcap` of `$22986` on it, whole RAM bar the dead stack:
+
+| battle | counts (side 1, 2) | `+110` | bit-0 cells | walkers placed | result |
+|---|---|---|---|---|---|
+| 0 | 10, 3 | `$ffff`, `$2020` | 58 | 13 | equal |
+| 290 | 20, 35 | `$ffff`, `$ffff` (two leaders) | 7 | 55: pass 2 for 41 | equal |
+| 445 | 170, 200 | `$2020`, `$2020` (no leader) | 26 | 370 | equal |
+| 690 | 3, 3 | `$ffff`, `$1010` (side 2 flag at 16,16) | 39 | 6 | equal |
+| 775 | 200, 200 | `$ffff`, `$2020` | 105 | 399: side 2 gets 199 | equal |
+
+**5/5**; the no-second-pass control fails on 290, 445 and 775, the only ones that need pass 2 (gate
+`people_battles`, `py/people/gate_battles.sh`, 4/4 without battle 0). Battle 775's 400 walkers do not fit
+the 399 entity records: side 1 fills first, side 2's last spawn finds no free record and is dropped, so the
+computer (side 2) starts one walker short. Records 156 and 160 (battles 780-784 and 800-804) also ask for 200
+a side, so the same follows for them (inferred from the record, not run).
+
+Because both sides take the same bit-0 cells in pass 1 and pass 2 restarts at the first cell, a battle with
+few bit-0 cells starts with opposing walkers on the same cell: every bit-0 cell holds walkers of both sides
+on 290 (7 cells), 445 (26) and 775 (105), with up to 3 walkers a cell, against none shared on battles 0 and 690
+(the emulator's placement after `callcap`, as `people_gate.py --natural` prints it; battle 0's from the same run on `g0_entry`). What those walkers do on the first tick is not driven.
 
 ### Raise and lower (verified, from a click to the cell map)
 
@@ -661,12 +744,30 @@ from `$47d3e` or `$47d78` (by the current player `$4739c`) into both sides' powe
 `p2_gen_entry` records. Side 2's first list is empty in 5 of the 170 records (battles 0-4 among them). Kind 0
 fills most lists; kinds 2, 4, 6 and `$a` are one entry each, in 56, 75, 46 and 99 records.
 
-The briefing also takes a typed world name (`$15632`): `$2222c` compares the buffer `$1572e` with each battle's
-name from 0 up and on a match sets `$473a0` and reruns `$22e8c` and the briefing. `$22266` makes the name: v =
-(battle x `$24a1`, with `$24df` added to the low word) & `$7fff`, one two-letter syllable of the table `$22298` per
-6 bits of v, low bits first. Battle 0 is DOEGAC (in briefing RAM at `$1571e` and `$1c351`), 10 UMHEAB, 485 OWOP.
-The name entry is the game's route to a later battle; it is not driven yet, and the runs below stand in for it with
-one poke of `$473a0` at `p2_title` before the click. Battle 0's drive that way is byte-identical to
+The briefing also takes a typed world name, the game's own route to a later battle. A left click on the name
+(text row 0, columns 12 to 22 of the briefing layout at `$1c33a`: the field between the markers `$76` and `$77`, so
+pixels x 104..183, y 0..7) makes the briefing's region lookup `$165b8` return 1; dispatch `$1561a` entry 1 clears the
+buffer `$1572e` and runs the line editor `$16430`. The editor polls `$22036`, which takes the make code the IKBD
+handler leaves in `$392ec`, clears it, and maps it through the scancode table `$2208a` (the UK layout, 128 bytes,
+the second half from `+$80` while `$3932a` or `$3931e` is set, the shift keys by its contents, inferred); backspace deletes, Return (`$0d`) ends the edit. Then
+`$15632` compares the buffer with each battle's name from 0 up (`$2222c`) and on a match sets `$473a0` and reruns
+`$22e8c` and the briefing; with no match among the 1000, `$14b2e` shows THIS WORLD DOES NOT EXIST and the battle
+stays as it was. `$2222c`'s loop sets D1 = 7 but counts `dbf` on D2, the character just read, whose word is never 0,
+so the intended 8-character limit never applies and the compare runs to the terminating 0 (read; harmless, since a
+name match needs both strings to end together).
+
+`$22266` makes the name: v = (battle x `$24a1`, with `$24df` added to the low word) & `$7fff`, one two-letter
+syllable of the 64-entry table `$22298` per 6 bits of v, low bits first. Since `$24a1` is odd, v is distinct for
+every battle, and although the table holds NE and UX twice, the 1000 names are all distinct (874 of six letters,
+123 of four, and three of two: 317 LL, 635 LY, 953 NE), so every battle is reachable by name. Battle 0 is DOEGAC
+(in briefing RAM at `$1571e` and `$1c351`), 10 UMHEAB, 485 OWOP.
+
+`py/name_entry.py NAME <out> [--to-start]` types a name from `p2_briefing` with the game's own scancodes: UMHEAB
+gives battle 10, OWOP 485, QQQQ the no-such-world box with the battle left at 0. UMHEAB driven on to the first play
+frame equals `battle_census.sh`'s `b10_start` (battle 10 by one poke of `$473a0` at `p2_title` before the CONQUEST
+GAME click) in every byte of the cell map, byte maps, object heap, side records and globals `$3979e..$47400` and in
+the battle record at `$30470`; only the screens, stack, tick counters and the name buffers differ. The poke route
+therefore stands in for the name entry in the runs below, and battle 0 driven that way is byte-identical to
 `p2_game_start` (control).
 
 `py/god/battle_census.sh` and `py/god/power_census.sh` count the god's stages from each start (side 1 human, so
@@ -720,11 +821,12 @@ files go to `$a000` (the second screen) instead.
 
 ## Not yet exercised
 
-Played: the conquest start against Epimetheus; later battles only through a poke of the battle number at the
-title. Driven: raise and lower by a click. Not driven: the briefing's world-name entry, the other powers and the
-panel, the custom game and deity creation, save/load, the two-player link, the end of a battle, the computer god's
-power kinds 6 and `$a` in play (blocked on every battle tried), the `$12` controller from the options screen. Unread: `$26644`, `$1334a` and `$1bfe` of the main loop, the entity states other
-than 2, 4 and 6 (and `$24f3a`, `$24a92`), the `$4505a` array, the reader of the byte map `$3d79e` the land claim writes, the reader of the cell footfall
+Played: the conquest start against Epimetheus; later battles through the briefing's world-name entry and, equal
+to it at the first play frame, a poke of the battle number at the title. Driven: raise and lower by a click; the
+world-name entry. Not driven: the other powers and the
+panel, the custom game and deity creation, save/load, the two-player link, the end of a battle (its test `$242b8` is read), the computer god's
+power kinds 6 and `$a` in play (blocked on every battle tried), the `$12` controller from the options screen. Unread: `$26644`, `$1334a` and `$1bfe` of the main loop, the entity states `$12`, `$16`, `$18` and the
+other handlers no census reached (and `$24f3a`, `$24a92`; states 8, `$a`, `$c`, `$10` are read, `$e` verified), the `$4505a` array, the reader of the byte map `$3d79e` the land claim writes, the reader of the cell footfall
 count, the settlement flag bit 2 of entity +13, the experience discount of `power_cost`, Timer A, the sprite and block formats, `LANDn.DAT`.
 
 ## Files

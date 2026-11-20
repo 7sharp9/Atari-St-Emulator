@@ -22,7 +22,9 @@ Model (read from $22986, $25e5e, $22acc, $22b0c, $243f6, $25dcc):
 Compared after each callcap: every byte of RAM except the dead stack below SP ($12000..$12600).
 Controls: broken models listed in CONTROLS.
 
-usage: uv run python reversing/populous2/py/people/people_gate.py [n]
+usage: uv run python reversing/populous2/py/people/people_gate.py [n] [--entry <snap>] [--natural]
+  --entry: a gen_land-entry snapshot other than anchors/p2_gen_entry (gen_entry.sh <out> <battle> builds battle N's)
+  --natural: only the unpoked case (the battle's own seed and side records), plus the controls
 """
 import json
 import os
@@ -172,12 +174,14 @@ CONTROLS = {
 }
 
 
-def cases(n):
+def cases(n, natural=False):
     random.seed(22986)
     seed0 = None
     out = []
     # natural pokes-free seeds
     seeds = [None, 0, 1, 0xFFFFFFFF] + [random.getrandbits(32) for _ in range(n - 4)]
+    if natural:
+        return [("natural (own seed and side records)", None, [])]
     for s in seeds:
         out.append(("seed", s, []))
     # poked variants on top of three seeds: each exercises a branch the natural build leaves unused
@@ -194,13 +198,13 @@ def cases(n):
     return out
 
 
-def run_case(i, seed, pokes):
-    snap = os.path.join(WORK, f"c{i}.snap")
-    js = os.path.join(WORK, f"c{i}.json")
+def run_case(i, seed, pokes, entry=ENTRY, tag=""):
+    snap = os.path.join(WORK, f"{tag}c{i}.snap")
+    js = os.path.join(WORK, f"{tag}c{i}.json")
     pre = "" if seed is None else f"w 47382 {seed:08x}\n"
     script = pre + "u 2295a 50000000\n" + "".join(f"{op} {a:x} {v:x}\n" for op, a, v in pokes)
     script += f"snap {snap}\ncallcap 22986 20000000 {js}\nq\n"
-    r = subprocess.run(["dotnet", "exec", DLL, "resume", ENTRY, "repl"], input=script, capture_output=True, text=True, cwd=ROOT)
+    r = subprocess.run(["dotnet", "exec", DLL, "resume", entry, "repl"], input=script, capture_output=True, text=True, cwd=ROOT)
     if "--- callcap $022986: returned" not in r.stdout:
         sys.exit(f"case {i}: callcap did not return\n{r.stdout[-1200:]}{r.stderr[-500:]}")
     ram, _ = load_ram(snap)
@@ -211,13 +215,16 @@ def run_case(i, seed, pokes):
 
 
 def main():
-    n = int(sys.argv[1]) if len(sys.argv) > 1 and sys.argv[1].isdigit() else 30
+    args = sys.argv[1:]
+    n = int(args[0]) if args and args[0].isdigit() else 30
+    entry = os.path.abspath(args[args.index("--entry") + 1]) if "--entry" in args else ENTRY
+    tag = os.path.splitext(os.path.basename(entry))[0] + "_"
     os.makedirs(WORK, exist_ok=True)
-    cs = cases(n)
+    cs = cases(n, "--natural" in args)
     stats = {}
     ctl = {k: {} for k in CONTROLS}
     for i, (label, seed, pokes) in enumerate(cs):
-        ram, cap = run_case(i, seed, pokes)
+        ram, cap = run_case(i, seed, pokes, entry, tag)
         emu = bytearray(ram)
         for a, _o, v in cap["mem"]:
             emu[a] = v
@@ -226,6 +233,19 @@ def main():
         ok = not bad
         placed = sum(1 for a in range(ENT0, ENTEND, 52) if emu[a + 12] and not ram[a + 12])
         key = label if label != "seed" else "natural/random seed"
+        if "--natural" in args:
+            S = lambda s: 0x46FC4 + s * 0x13A  # noqa: E731
+            print(f"battle {w16(ram, 0x473A0)} seed at $22986 {w16(ram, 0x47382):04x}{w16(ram, 0x47384):04x}: counts {w16(ram, S(1) + 90)},"
+                  f"{w16(ram, S(2) + 90)} +110 {w16(ram, S(1) + 110):04x},{w16(ram, S(2) + 110):04x}; bit-0 cells "
+                  f"{sum(1 for c in range(4096) if w16(ram, 0x3697A + 2 * ram[CELLS + 4 * c + 1]) & 1)}")
+            # the emulator's placement: walkers per side, cells used, most walkers on one cell, cells both sides share
+            side, cell = {1: 0, 2: 0}, {}
+            for a in range(ENT0, ENTEND, 52):
+                if emu[a + 12] and not ram[a + 12]:
+                    side[emu[a + 12]] += 1
+                    cell.setdefault((emu[a + 6], emu[a + 8]), []).append(emu[a + 12])
+            print(f"placed side 1 {side[1]}, side 2 {side[2]}; cells {len(cell)}, most on one cell "
+                  f"{max(map(len, cell.values()), default=0)}, cells holding both sides {sum(1 for v in cell.values() if len(set(v)) == 2)}")
         st = stats.setdefault(key, [0, 0, []])
         st[0] += ok
         st[1] += 1
