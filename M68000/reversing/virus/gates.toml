@@ -62,3 +62,77 @@ expect = ["re:(?m)^  spawn_rec +2354/2354$", "re:(?m)^  tick_spawn +2354/2354$",
 cite = "behaviours.md, \"The player's shot, the targets and the ship box\""
 inputs = ["scratchpad/virus/demo/S1b.snap"]
 minutes = 6
+
+# The eight fan-out areas (py/<area>/gate_<area>.sh); each captures afresh into scratchpad/virus/<area>/gate/ and prints its
+# headline counts with failing controls. The chain start snapshots come from py/chain/chain.py (README "Running long").
+[[gate]]
+name = "shading"
+cmd = "bash py/shading/gate_shading.sh"
+cwd = "."
+expect = ["re:control:\\ poke\\ restored,\\ no\\ change:\\ type\\ words\\ equal\\ 143/143;\\ screen\\ pixels\\ equal\\ 58880/58880", "re:POKE A \\(\\+32 steps, same type band\\): type words equal 143/143;.*changed pixels with a tile colour or 0: 513/513", "re:POKE B .*type words equal 142/143", "re:span\\ tables\\ whose\\ plane\\ ops\\ match\\ the\\ colour\\ index:\\ 24/24", "re:span\\ calls\\ matching\\ the\\ pixel\\ model:\\ 1440/1440", "re:span\\ calls\\ matching\\ the\\ pixel\\ model\\ \\(control:\\ one\\ pixel\\ too\\ wide\\):\\ 93/1440", "re:pixels\\ >=\\ 1\\.5\\ px\\ inside\\ the\\ quad\\ with\\ the\\ tile\\ colour:\\ 3491/3491", "re:pixels\\ >=\\ 1\\.5\\ px\\ outside\\ the\\ quad\\ left\\ 0:\\ 31026/31026", "re:slope-table edge lookups inside the modelled range .*: 348/348", "re:pixels\\ >=\\ 1\\.5\\ px\\ inside\\ the\\ quad\\ with\\ the\\ tile\\ colour:\\ 721/724", "re:tiles\\ with\\ any\\ miss:\\ 61", "re:slope\\ table\\ slots\\ ==\\ model:\\ 16320/16320", "re:slope\\ table\\ slots\\ ==\\ model:\\ 3111/16320", "re:page flips toggling .*: 2/2"]
+cite = "README.md, \"The renderer\""
+inputs = ["scratchpad/virus/drive/g_game2.snap", "scratchpad/virus/fl/f1.snap"]
+minutes = 2
+
+[[gate]]
+name = "painter"
+cmd = "bash py/painter/gate_painter.sh"
+cwd = "."
+expect = ["re:true  \\(z-camz\\+\\$500\\)>>8 objects_matched\\s+39523", "re:true  \\(z-camz\\+\\$500\\)>>8 frames_exact\\s+780", "re:parse_ok\\s+7800", "re:model_bucket_by_clamp\\s+1215", "re:ship_records\\s+780", "re:objmodel_found\\s+149", "re:ctl A shifted by \\$100 objects_matched\\s+3\\n", "re:ctl B reversed 9-b objects_matched\\s+0\\n", "re:ctl C .* objects_matched\\s+473", "re:model_bucket_ctl_noclamp_skipped\\s+1184", "re:T\\ B11\\ T\\ B10\\ T\\ B9\\ T\\ B8\\ T\\ B7\\ T\\ B6\\ T\\ B5\\ T\\ B4\\ T\\ B3\\ T\\ B2\\ T\\ B1\\ B0", "re:screen == last dot\\s+4881", "re:screen == first dot \\(control\\)\\s+15", "re:screen == nearer \\(later\\) dot\\s+1262", "re:screen == farther \\(earlier\\) dot \\(control\\)\\s+0"]
+cite = "README.md, \"The renderer\" (depth buckets and paint order)"
+inputs = ["scratchpad/virus/fl/f1.snap", "scratchpad/virus/demo/S1b.snap", "scratchpad/virus/chain/long100/starts/main_g050.snap"]
+minutes = 1
+
+[[gate]]
+name = "flightctl"
+cmd = "bash py/flightctl/gate_flightctl.sh"
+cwd = "."
+expect = ["re:180\\ stops,\\ 171\\ with\\ a\\ non\\-centred\\ target;\\ model\\ equal\\ 180/180;\\ control\\ axes\\ swapped\\ 10/180;\\ control\\ tilt\\ shift\\ 5\\ 9/180", "re:accumulator\\ =\\ previous\\ \\+\\ mouse\\ move:\\ 170\\ of\\ 170\\ adjacent\\ stop\\ pairs", "re:119\\ ticks:\\ matrix\\(D0,D1\\ at\\ \\$25654\\)\\ equals\\ \\$270d4\\ at\\ \\$25660\\ in\\ 119/119;\\ control\\ matrix\\(D1,D0\\)\\ 5/119", "re:118\\ stops;\\ matrix\\ at\\ the\\ stop\\ equals\\ matrix\\(attitude\\):\\ 5/118", "re:last\\ writer\\ steer_build:\\ 114\\ stops,\\ matrix\\ equal\\ in\\ 1", "re:pad,\\ unpoked\\ \\(control\\):\\ ticks\\ 2,\\ pad\\ 2,\\ refuel\\ stores\\ 0,\\ fuel\\ \\$0ff4\\ \\->\\ \\$0ff4", "re:pad,\\ fuel\\ poked\\ to\\ \\$0100:\\ ticks\\ 2,\\ pad\\ 2,\\ refuel\\ stores\\ 2,\\ fuel\\ \\$0100\\ \\->\\ \\$0132", "re:thrust\\ held:\\ ticks\\ 5,\\ pad\\ 0,\\ refuel\\ stores\\ 0,\\ thrust\\ path\\ \\$255f8\\ 5", "re:ceiling:\\ D2\\ before\\ the\\ bclr\\ \\$00000002\\ \\->\\ \\$00000000\\ after", "re:lives\\ lost\\ 6\\ =\\ enemy\\ 1\\ \\+\\ vertex\\ 0\\ \\+\\ ground\\ hard\\ 5\\ \\+\\ ground\\ soft\\-test\\ crash\\ 0\\ \\(sum\\ 6\\)", "re:lives\\ lost\\ 4\\ =\\ enemy\\ 2\\ \\+\\ vertex\\ 1\\ \\+\\ ground\\ hard\\ 0\\ \\+\\ ground\\ soft\\-test\\ crash\\ 1\\ \\(sum\\ 4\\)"]
+cite = "README.md, \"The flight model\" and \"Off the capture, and where free flight ends\""
+inputs = ["scratchpad/virus/fl/f1.snap", "scratchpad/virus/fl/f4.snap", "scratchpad/virus/drive/g_game2.snap", "scratchpad/virus/demo/S1b.snap", "scratchpad/virus/chain/long100/starts/main_g001.snap", "scratchpad/virus/chain/long100/starts/main_g003.snap"]
+minutes = 6
+
+[[gate]]
+name = "landscape"
+cmd = "bash py/landscape/gate_landscape.sh"
+cwd = "."
+expect = ["re:wave\\ table:\\ 16\\ blocks,\\ 9\\ distinct,\\ every\\ behaviour\\ pointer\\ known:\\ True", "re:pool n=5: 19/19 records match the table .* MATCH", "re:pool n=16: 5/5 records match the table .* MATCH", "re:pool n=3: 0/18 records match the table .* DIFF", "re:bonus\\ end_4\\.snap:\\ n=5\\ landscape\\ 1\\ infected\\ 10234\\ predicted\\ 1336\\ observed\\ 1336\\ MATCH", "re:bonus\\ end_3\\.snap:\\ n=4\\ landscape\\ 0\\ infected\\ 31201\\ predicted\\ 8\\ observed\\ 8\\ MATCH", "re:bonus\\ inf_end\\.snap:\\ n=10\\ landscape\\ 2\\ infected\\ 3000\\ predicted\\ 11528\\ observed\\ 11528\\ MATCH", "re:predicted 3896 observed 1336 DIFF \\(control inf_once\\)", "re:predicted 12280 observed 11528 DIFF \\(control inf_once\\)", "re:predicted 8920 observed 1120 DIFF \\(control no_shift\\)", "re:level\\ 1:\\ match\\ 65455/65455", "re:level\\ 2:\\ match\\ 65455/65455", "re:level\\ 0:\\ match\\ 10471/65455", "re:level\\ 1:\\ match\\ 46802/65455", "re:level\\ 1:\\ match\\ 10965/65455", "re:selector\\ 2\\ built\\ 2\\ counter\\ 16"]
+cite = "README.md, \"Landscape selection by wave\"; behaviours.md, \"When a wave ends\""
+inputs = ["scratchpad/virus/chain/long100/starts/main_g050.snap"]
+minutes = 5
+
+[[gate]]
+name = "objects"
+cmd = "bash py/objects/gate_objects.sh"
+cwd = "."
+expect = ["re:96/96;\\ distinct\\ indices\\ 73", "re:writes\\ to\\ \\$246ba\\.\\.\\$24704:\\ 0;", "re:grid\\ \\(row\\ \\-\\ j,\\ col\\ \\-\\ k\\):\\ Counter\\(\\{\\(0,\\ 1\\):\\ 12\\}\\)", "re:survive:\\ 8319/8319\\ \\ \\ vanish\\ \\(landing\\):\\ 292/292\\ \\ \\ plant\\ set:\\ 213/213\\ \\ \\ no\\-plant\\ unchanged:\\ 47/47", "re:bit\\ 5\\ newly\\ set:\\ 132/132", "re:survive:\\ 0/8319", "re:survive:\\ 8319/8431", "re:plant\\ set:\\ 77/213", "re:type\\ \\ 1\\ flags\\ \\$00:\\ base\\ inside\\ the\\ object\\ box\\ 3/3;\\ sx\\ inside\\ the\\ box\\ columns\\ 3/3", "re:type\\ 11\\ flags\\ \\$00:\\ base\\ inside\\ the\\ object\\ box\\ 3/3;\\ sx\\ inside\\ the\\ box\\ columns\\ 3/3", "re:type\\ 12\\ flags\\ \\$00:\\ base\\ inside\\ the\\ object\\ box\\ 1/2;\\ sx\\ inside\\ the\\ box\\ columns\\ 2/2"]
+cite = "README.md, \"The object types\"; behaviours.md, \"Two pools\""
+inputs = ["scratchpad/virus/demo/S1b.snap", "scratchpad/virus/drive/g_game2.snap"]
+minutes = 2
+
+[[gate]]
+name = "behaviours"
+cmd = "bash py/behaviours/gate_behaviours.sh"
+cwd = "."
+expect = ["re:27/27\\ \\(control\\ none\\)", "re:0/27\\ \\(control\\ vy\\)", "re:0/27\\ \\(control\\ life\\)", "re:chaser\\ 2279a\\ record\\ at\\ k\\+1\\ ==\\ model\\ \\(all\\ nine\\ fields\\):\\ 4064/4064", "re:chaser\\ 2279a\\ record\\ at\\ k\\+1\\ ==\\ model\\ \\(all\\ nine\\ fields\\):\\ 639/4064", "re:chaser\\ 2279a\\ record\\ at\\ k\\+1\\ ==\\ model\\ \\(all\\ nine\\ fields\\):\\ 31/4064", "re:chaser\\ 21afe\\ record\\ at\\ k\\+1\\ ==\\ model\\ \\(all\\ nine\\ fields\\):\\ 1069/1069", "re:chaser\\ 21afe\\ record\\ at\\ k\\+1\\ ==\\ model\\ \\(all\\ nine\\ fields\\):\\ 782/782", "re:chaser\\ 21afe\\ record\\ at\\ k\\+1\\ ==\\ model\\ \\(all\\ nine\\ fields\\):\\ 779/782", "re:'mship_hit':\\ 30,\\ 'launch':\\ 1,\\ 'mship_kill':\\ 1", "re:\\{'scans':\\ 6,\\ 'scans_ok':\\ 6,\\ 'conv':\\ 7,\\ 'conv_ok':\\ 7,\\ 'outside_not_converted':\\ 9\\}"]
+cite = "behaviours.md, \"The mothership and the gated chasers\""
+inputs = ["scratchpad/virus/chain/long100/starts/main_g050.snap"]
+minutes = 7
+
+[[gate]]
+name = "frontend"
+cmd = "bash py/frontend/gate_frontend.sh"
+cwd = "."
+expect = ["re:12/12\\ trials\\ all\\ three\\ fields\\ match;\\ control\\ \\(value\\+1\\ rendered\\)\\ matches\\ 1/36", "re:flip\\ ok:\\ 37\\ frames,\\ 37\\ Setscreen\\ traps", "re:spin ok: 9 store pcs x 111 .* control 0", "re:sum\\ ok:\\ site\\ counts\\ sum\\ 5531\\ vs\\ body\\ count\\ 5531", "re:matched\\ 120/120\\ stops", "re:control\\ \\(static\\ table\\ ids\\ \\+\\ 1\\):\\ matched\\ 0/120", "re:10/10\\ rows\\ match"]
+cite = "frontend.md"
+inputs = ["scratchpad/virus/drive/g_game2.snap", "scratchpad/virus/fl/f1.snap", "scratchpad/virus/demo/S1b.snap", "scratchpad/virus/demo/death/long7.snap"]
+minutes = 3
+
+[[gate]]
+name = "census"
+cmd = "bash py/census/gate_census.sh"
+cwd = "."
+expect = ["re:(?m)^game-code call targets 194; named \\d+; unnamed \\d+; all targets 204; interrupt targets 3$", "re:(?m)^ALL +bytes +25170 of 114686 \\(21\\.9%\\) first \\$16fb4 last \\$27025$", "re:game\\-code\\ call\\ targets\\ 194;\\ named\\ 0;\\ unnamed\\ 194"]
+cite = "README.md, \"Which code runs\""
+inputs = ["scratchpad/virus/chain/long100/starts/main_g050.snap", "scratchpad/virus/demo/death/long7.snap"]
+minutes = 1
