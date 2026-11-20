@@ -2,13 +2,14 @@
 
   python tools/merge_sym.py <target.sym> <sym.txt>... [addr=name ...] [--write]
 
-Lines are `addr<TAB>name` (hex address, any width; '#' lines are comments and are kept at the
-top). Without --write it only reports:
+Lines are `addr<TAB>name` (hex address, any width, optionally `$`-prefixed as in virus.sym; '#' lines are comments
+and are kept at the top). Without --write it only reports:
   EXISTING  the target already names the address differently (the target's name is kept)
   CLASH     two input files name a new address differently (the first file's name is kept)
 Most are synonyms; a real semantic disagreement has to be settled in the code (skill section 3c).
 `addr=name` arguments override both, including existing target names. --write keeps the
-target's existing lines and comments (an override renames in place) and appends the new addresses sorted, six-digit lower-case hex.
+target's existing lines and comments (an override renames in place) and appends the new addresses sorted, in the
+target's own style: `$` plus eight digits when its lines start with `$` (virus.sym), else six-digit lower-case hex.
 """
 import sys
 
@@ -23,7 +24,7 @@ def read_sym(path):
             hdr.append(line)
             continue
         parts = line.split('\t') if '\t' in line else line.split(None, 1)
-        names[int(parts[0], 16)] = parts[1].split()[0]
+        names[int(parts[0].lstrip('$'), 16)] = parts[1].split()[0]
     return hdr, names
 
 
@@ -32,7 +33,7 @@ def main(argv):
         raise SystemExit(__doc__)
     target, rest = argv[0], argv[1:]
     write = '--write' in rest
-    over = {int(a.split('=')[0], 16): a.split('=', 1)[1] for a in rest if '=' in a}
+    over = {int(a.split('=')[0].lstrip('$'), 16): a.split('=', 1)[1] for a in rest if '=' in a}
     inputs = [a for a in rest if '=' not in a and a != '--write']
     hdr, have = read_sym(target)
     new = {}
@@ -59,14 +60,15 @@ def main(argv):
             parts = line.split('\t')
             if len(parts) >= 2 and not line.startswith('#'):
                 try:
-                    a = int(parts[0], 16)
+                    a = int(parts[0].lstrip('$'), 16)
                 except ValueError:
                     a = None
                 if a in over:
                     parts[1] = parts[1].replace(parts[1].split()[0], over[a], 1)
                     line = '\t'.join(parts)
             out.append(line)
-        out += ['%06x\t%s' % (a, have[a]) for a in sorted(added)]
+        fmt = '$%08x\t%s' if any(l.startswith('$') for l in out) else '%06x\t%s'
+        out += [fmt % (a, have[a]) for a in sorted(added)]
         open(target, 'w', encoding='utf-8', newline='').write(nl.join(out) + nl)
 
 
