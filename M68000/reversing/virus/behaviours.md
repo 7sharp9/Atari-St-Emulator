@@ -27,16 +27,51 @@ runs start from the 24-game chain's game starts `main_gNNN.snap` (`main_g001` is
 | pool | base | record | count, end pointer | append | walker | contents |
 |---|---|---|---|---|---|---|
 | actors | `$31d54` | 20 bytes: x, y, z, vx, vy, vz, life, pad (words), behaviour (long) | `$32a3e` (max 128), `$27082` | `$21722` (D0..D2 pos, A0..A2 vel, A3 life word, A4 behaviour) | `$2157c` | enemies and player rockets |
-| objects | `$302f6` | 18 bytes: life, then position, velocity and a handler | `$32a3c` (max `$177`), `$2707e` | `$1fd14` | `$1fa72` | shots, debris, falling infection, bombs, score pop-ups |
+| objects | `$302f6` | 18 bytes: x, y, z, vx, vy, vz, life (words), handler (long) | `$32a3c` (max `$177`), `$2707e` | `$1fd14` | `$1fa72` | shots, sparks, droplets, fragments, smoke, contrails, falling infection, bombs, score pop-ups |
 
 Read: the append routines and walkers are named from their bodies (`$1fa72` loads `$302f6` and compares its index with
 `$32a3c`; `$1fd14` refuses at 375 records). The README's seeder gate follows wave 0's three seeders (below).
+
+**The object walker.** For each record `$1fa72` loads x, y, z, vx, vy, vz, life into D0..D6, takes `life - 1` (negative
+removes the record), adds the velocity to the position and jumps to the handler. A handler adds gravity `$32a3a` to vy if it
+uses it, stores the record back, tests the ground (`$24754`; type 8 is water) and draws through `$1faa8` (a dot sprite),
+`$1fb18` (dot plus shadow) or `$1fbbc` (a model); `$1fc58` removes it by copying the last record over it and walking that
+slot again. The spawn entries take D0..D2 position, D3 a jitter shift applied to position and velocity together, A3 life, D4
+a life-jitter shift and A4 the handler: `$1fc8a` clears all three velocities, `$1fc8c` keeps vy, `$1fc90` keeps all three. The
+handlers (read from their bodies; census of the 1190 frames of `S1b`, record-frames, by `py/objects/pool_capture.py`):
+
+| handler | name | behaviour | census |
+|---|---|---|---|
+| `$1fd78` | `Spark` | gravity, bounces with halving damping, splash on water; dot colour 15, then 7, then 3 as life falls. Spawned by `$1fdca` (thrust exhaust: `$22e18`, `$256ee..$25716`) and `$1fdde` (explosion bursts) | 23,639 |
+| `$1fe02` | `WaterDroplet` | gravity, dot colour cycling 5, 15, 1, 6 by `vy`, removed on the ground. Spawned by `$1fe84` from the splashes `$1fe36` (16), `$1fe5c` (3) and `$1fe9c` (ship wake) | 5,474 |
+| `$1feb0` | `PlayerShot` | gated above | 1,437 |
+| `$20310` | `EnemyShot` | `$333` fuel within `$60` of the ship; objects as the player's shot | 106 |
+| `$20424` | `Fragment` | gravity, bounces, colour by `vy`, splash on water. Spawned by `$20474` (`Fragment_SpawnLong`) and `$20496` | 10,472 |
+| `$204be` | `Smoke` | no gravity, no ground test, dot by `vx`; spawned by `$204d4` (`Smoke_Spawn`, four variants by pool fill) from damaged objects, explosions and actors | 9,848 |
+| `$20592` | `Contrail` | no gravity, colour by life, life 30; spawned by `$25972` via `$205aa` when the ship's y is below `$f300` (`$25930..$2596a`) | 60,736 |
+| `$205be` | `Infection_DropFall` | gravity; on the ground `$205f6` plants, on water a small splash; gated below | 8,611 |
+| `$20766` | `ScorePopUp` | the number as text (`$173b4`), colour from `$2074c`, life `$10`; spawned by `$20798` | 33 |
+| `$207d6` | `Bomb_Fall` | `$333` fuel within `$400`, else lands and releases drops (`$2012c`) | not seen in `S1b` |
+| `$20882` | `DebrisChunk` | tumbling model (`$aa72`), bounces, splash on water; two per explosion via `$208dc` | 303 |
+| `$208f4`, `$2097a` | `SprayPlumeA`, `SprayPlumeB` | mirrored wake plumes (models `$cce2`/`$cd50`, `$cdbe`/`$ce2c` by `$32a45` bit 0), spawned by `$20958`, `$209de` when the ship skims water (`$259de..$25a6a`) | 150, 434 |
+
+The ten dot routines `$16ff4..$1735c` set one colour index each (the or/and plane ops are read: `$16ff4` 15, `$17044` 7,
+`$1709c` 11, `$170f4` 3, `$1714c` 5, `$171a4` 12, `$171fc` 9, `$17254` 4, `$172ac` 14, `$17304` 6, `$1735c` 1); `$16fb4` erases.
+
+**Falling infection (gated).** `py/objects/gate_infection_fall.py` models one walker pass of `$205be` records (life - 1,
+position + velocity, vy + gravity, ground `byte * 8 + $fd68` or `$420` on the pad, landing when ground - y is negative,
+then `$205f6`'s rule: plant at cell `((x + $80) >> 8, (z + $80) >> 8)` unless the ground at the next cell corner is
+above `$510` or `$420`) against the capture: records predicted to survive are in the next frame's pool byte for byte
+8319/8319; predicted landings are gone 292/292 (32 on water); predicted plants have bit 5 set 213/213 (132 newly set,
+132/132) and predicted non-plants leave the cell 47/47. Controls: gravity + 1 gives survivors 0/8319, ground + `$20` 8319/8431,
+the cell one column over 77/213 plants and 0/136 newly set. The spawn state is not modelled.
 
 The actor walker `$2157c` loads a record into D0..D6, reads the ground height under it (D7, `$24754`), or-s `$a000` into
 the life word when the ground is at or above y, and `jmp`s to the behaviour. Bit 15 of the life word is "hit", bit 13
 "hit the ground"; a behaviour that sees bit 15 takes its kill path. Most behaviours end at the common tail `$215ea`: if the
 record is inside the view box and within `$c0` of the ship point (the words at `$270bc`) on all three axes and the ship is
-not already crashing (`$62a5e`), it flags the record and sets `$62a5d` (the ship is hit); then it appends a draw record to the depth bucket. The kill path `$216d6` adds the
+not already crashing (`$62a5e`), it sets bits 15 and 13 of the record's life word (`$21648..$21650`, read), so a collision
+takes the same kill path as a ground hit and kills a multi-hit enemy at once, and sets `$62a5d` (the ship is hit); then it appends a draw record to the depth bucket. The kill path `$216d6` adds the
 award in A0 to the score through the pop-up `$20798` (which formats the number and spawns a floating score object; the
 award is not scaled), runs the explosion `$202a4` and removes the record by copying the last one into its slot. `$216e8`
 is the same without the award (the rocket).
@@ -48,7 +83,7 @@ and the listing has no other store to `16(An)` in game code (`move.w D3,16(A1)` 
 the behaviour pointer is written by exactly three kinds of code (read):
 
 1. `$21722` (`Pool_Append`) stores A4. Its three callers: the wave start `$20f18` (A4 from the wave table), the
-   mothership `$22722` (A4 = `$2279a`) and the rocket launch `$25368` (A4 = `$228de`).
+   mothership's launch call at `$22722` inside `$226ac` (A4 = `$2279a`) and the rocket launch `$25368` (A4 = `$228de`).
 2. A behaviour replaces its own pointer with `lea <next>,A3 / move.l A3,-4(A6)` (A6 is the record's end): 16 sites,
    `$2178a` to `$226a0`. A raw scan of the code region for `move.l <Dn/An/#imm>,-4(A6)` finds the same 16 and no other (the
    listing is a linear sweep and misaligns in places, `$2529a` among them, so the raw scan is the negative); the listing's
@@ -70,7 +105,7 @@ Named from the bodies (read); the census column only shows that the entry runs.
 | `$21976` | `Seeder_Landed` | life countdown; every tick `$20702` from `$5c` above the record (A1 = `-$40`); at 0: life `$64`, vy `-$10`, `$219de` | 50 | 3,444 |
 | `$219de` | `Seeder_TakeOff` | rises; at `$1c0` above the ground, random vx and vz (an RNG byte halved) and back to `$21792` | 100 | 121 |
 | `$21ae2` | `Chaser_Wait` | life countdown, cannot be hit; then life `$1ff`, `$21afe` | | 20,349 |
-| `$21afe` | `Chaser` | every `$1ff` ticks reverses its velocity; pushed up below `$100` above the ground; velocity += (ship - pos) >> 7, drag 1/64, clamp ±`$80`; every other tick a sound within `$3c00` and a debris spark (`$204d4`) within `$2300` | 400 | 1,949 |
+| `$21afe` | `Chaser` (gated, below) | every `$1ff` ticks reverses its velocity; pushed up below `$100` above the ground; velocity += (ship - pos) >> 7, drag 1/64, clamp ±`$80`; every other tick a sound within `$3c00` and a smoke puff (`Smoke_Spawn`, `$204d4`) within `$2300` | 400 | 1,949 |
 | `$21c42` | `Patrol_Wait` | life countdown; then life byte `$40` with bit 14 set ("provokable", below), `$21c64` | | 2,814 |
 | `$21c64` | `Patrol_Cruise` | within `$2800` of the ship: `$21df6`; otherwise moves in x and z only, kept at least `$400` above the ground, not drawn and not collided (it returns past the common tail); after `$40` ticks `$21d08` | 300 | 2,221 |
 | `$21d08` | `Patrol_HomeOnQueue` | gravity and drag 1/32; every fourth tick steers (`$22c1e`) toward entry 0 of the infection queue `$27134` and, within `$a00` of it, fires (`$22e38`); other ticks hold the turn (`$22d04`); thrust (`$22d5e`) unless the steer bit 11 is set, and again within `$300` of the ground; after 64 ticks back to `$21c64`, which then cruises 5 ticks before homing again | 300 | 15,232 |
@@ -78,17 +113,17 @@ Named from the bodies (read); the census column only shows that the entry runs.
 | `$21f00` | `Pursuer` | steers at the ship every tick, thrust (double near the ground), velocity += (ship - pos) >> 13, or >> 9 within `$1900`; fires every other tick within `$900`; drawn flashing | 500 | 3,880 |
 | `$2200c` | `Pursuer2_Wait` | life countdown, then `$2202c` | | 1,034 |
 | `$2202c` | `Pursuer2` | as `$21f00` but fires every tick within `$900`; on a hit: if it hit the ground (bit 13) it dies for 900, else 200 points now and `$221ac` | 900 | 3,760 |
-| `$22164` | (first-hit path of `$2202c`, a branch target, not a stored pointer) | award 200, sound 3, stun count 5, `$221ac` | | 4 |
-| `$221ac` | `Pursuer2_Damaged` | for 5 ticks drifts under gravity and drag and ignores hits; then pursues as `$2202c` (pull >> 10 within `$1900`); the next hit kills it | 700 | 596 |
+| `$22164` | `Pursuer2_FirstHit` (first-hit path of `$2202c`, a branch target, not a stored pointer) | A0 = `$384` and the kill path when bit 13 is set, else 200 points, sound 3, stun count 5, `$221ac`; seen 4, 5, 12 and 8 times in games 14, 45, 50, 93 | 200 | 4 |
+| `$221ac` | `Pursuer2_Damaged` | A0 = `$2bc`; for 5 ticks drifts under gravity and drag and ignores hits (the `tst.b` of the stun count at `$22130` skips the kill); then pursues as `$2202c` (pull >> 10 within `$1900`); the next hit kills it | 700 | 596 |
 | `$222dc` | `Bomber_Wait` | life countdown, then a random heading byte, `$22316` | | 544 |
 | `$22316` | `Bomber` | flies its heading at the matrix row's speed, a spring toward `$700` above the ground; within `$2d00` of the ship a sound and a bomb (`$2086a`) every 8th tick within `$a00` or every 16th tick over land; farther away, on 15 of every 16 ticks over land, 21 infection plants at once (`$2010a`) | 800 | 6,938 |
 | `$22486` | `Attractor_Wait` | life countdown, then 5 hits to kill, `$224a6` | | 101 |
 | `$224a6` | `Attractor` | the seeder's spring (`$280` above the ground); within `$b00` of the ship it pulls the ship's velocity toward itself by >> 6 (`$22ebe` with the ship as A3); within `$700`, unless the ship is crashing, a beam draw record (`$22a64`) and fuel `$32a2e` minus 25 a tick, empty fuel sets `$62a5d`; each hit costs one of 5, a ground hit kills | 1000 | 2,686 |
-| `$22688` | `Mothership_Wait` | life countdown, then count `$1e`, y `$f101`, `$226ac` | | 0 |
-| `$226ac` | `Mothership` | moves in x and z only at its fixed height; within `$b00` of the ship, every 32nd tick while its count is at least 10, launches a `$2279a` and decrements the count; each hit decrements it too; at 0 it dies | 2000 | 0 |
-| `$2279a` | `Mothership_Chaser` | the chaser's body with clamp ±`$70`, reversal every `$a9` ticks | 150 | 0 |
+| `$22688` | `Mothership_Wait` | life countdown (30 ticks from `$1e`; bits 15 and 13 cleared, so it cannot be hit), then count `$1e`, y `$f101`, `$226ac` in the same pass | | 0 in games 1, 14, 45, 93; 31 in game 50 (wave 5) |
+| `$226ac` | `Mothership` | moves in x and z only, y fixed at `$f101` (900/900 ticks); within `$b00` of the ship, on every tick with `$32a48 & $1f` = 0 while its count byte is at least 10, launches a `$2279a` (the call is `$22722`). The launch does not cost a count: the count is stored at `$226b8`, before the `subq.b` at `$2270c`, and the life word stayed `$1e` through 27 launches. Each hit (`Mothership_Hit` `$22666`) costs one; at 0, or on any ground-bit hit, `Mothership_Kill` `$2264e` | 2000 | 4,056 ticks in game 50 |
+| `$2279a` | `Mothership_Chaser` | the chaser's body with clamp ±`$70` and reversal every `$a9` ticks, no wait state; launched with velocity 0, `$80`, 0 and life `$1ff` (the first reversal 512 ticks on); the kill path `$22784` pays 150 for a hit or the ground | 150 | 0 (the ship was never in range) |
 | `$228de` | `Rocket` | the player's rocket: counts down its life byte; steers at the record `$2709e` (`$22ee2`), clamp ±`$a0`; within `$240` of it sets the target's bits 15 and 13 (a ground hit, which kills a multi-hit enemy at once) and explodes with no award | | 0 |
-| `$21f00` from `$20206` | (see `$201b4`) | | | 8 writes |
+| `$21f00` from `$20206` | (see `$201b4`) | | | 8 writes in game 1; 7, 9, 11, 10 in games 50, 14, 45, 93 |
 
 The waiting records are appended with y = `$f100` (the autopilot's `$2529a` skips those) and with velocity
 `(random >> D7, 0, random >> D7)`; a waiting behaviour writes only its life word, so the record does not move until it
@@ -96,7 +131,7 @@ hatches (read). The pilot census in `demo.md` counts `$21ae2` among the chosen r
 `$2529a` starts with A0 = `$31d54` (`lea` at `$2529a`) and replaces it only with a record nearer than `$7fff`, so when no
 record qualifies it returns record 0, which at a wave start is a waiting record (read; the census rows were not split by
 this case). In game 1 the census reached every kind of waves 0 to 2 and the attractor (wave index 3); the mothership
-(wave index 5 and later) and the rocket (`$25306` 0 hits) were not reached: the rocket is launched only from the bound
+(wave index 5 and later; reached in game 50 only, see "The mothership and the gated chasers") and the rocket (`$25306` 0 hits in all four games) were not reached: the rocket is launched only from the bound
 key at `$1f7ea` (`$25798..$257be`), which the demo never presses, so the autopilot's `$228de` skip never fires in a demo.
 
 The seeder is what README's seeder gate follows (447/447 on `$21792`): wave 0 appends three `$21776` records, and the
@@ -116,12 +151,58 @@ jittered plants; the bomb `$207d6` costs `$333` fuel within `$400` of the ship a
 (`$2012c`). Census of game 1: `$20702` 16,784 calls, `$206b8` 81,050, `$205f6` 82,915, `$2010a` 3,155 (the bomber's
 bursts are most of the plants), bombs `$2086a` 72, enemy shots `$22e38` 255.
 
-**Provoking** (read, census): the paths `$1ffbc`, `$2004a` and `$20092`, reached when a shot lands on an infected ground
+**Provoking** (scan gated, rest read; census): the paths `$1ffbc`, `$2004a` and `$20092`, reached when a shot lands on an infected ground
 object of type 0 to 3 (from the player's shot handler `$1feb0` at `$1ff78` and from the enemy shot `$20310` at `$203cc` and
 `$203da`; the two sources were not separated), award 40 points, call `$20702` 71, 71 or 41 times at the spot (so the code
 sprays infection from a destroyed infected object; not checked on screen) and call `$201b4`, which scans the actor pool and turns every record with life bit 14 (a
 patrol: `$21c64`, `$21d08`, `$21df6`) within `$800` on all three axes into a `Pursuer` (`$21f00`). Census: `$201b4` 7
-calls, the `$20206` store 8 times, and `$21f00` first ran 4,600 steps after the first `$201b4` call.
+calls, the `$20206` store 8 times, and `$21f00` first ran 4,600 steps after the first `$201b4` call. The scan itself is gated:
+`py/behaviours/provoke_check.py` stops at `$201b4` (impact D0 x, D2 z, the shot's y at -16(A6), and the whole pool) and at
+`$20206`, and on 6 scans of game 50 with 7 conversions every converted record was a patrol (`$21c64` once, `$21d08` six times) with life bit 14, lay
+inside -`$800` <= record - impact < `$800` on all three axes (largest offsets seen: y -1,334, x 756) and had `+16` = `$21f00`
+after the store; the converted set equals the set the window predicts on 6/6 scans, and 9 other bit-14 patrols outside the
+window were left alone (the control). Which of the three provoking paths fired was not recorded.
+
+## The mothership and the gated chasers
+
+Wave index 5 appends the mothership last (record 18 of 19, `Mothership_Wait` with life `$1e`, y `$f100`, velocity -23, 0, -2 in game 50),
+so, by the wave-end rule above (inferred; no natural run killed it), it holds the wave open until it is shot 30 times or rammed. Gate `behaviours`
+(`bash reversing/virus/py/behaviours/gate_behaviours.sh`, about 6 minutes) builds the wave-5 start of game 50 of the 100-game chain
+(`py/behaviours/build_snaps.py`) and drives it with `py/behaviours/mothership_drive.py`. The drive is poked (labelled): at every `$255d4`
+arrival the ship is placed at the mothership position minus three nose vectors with velocity 0, and `$62a5d` is cleared, so the
+ship is inside `$b00`, outside the `$c0` ship box, and its chasers cannot end the run. In 900 ticks the mothership
+launched 27 times (the 27 launches, ticks 36 and then every 32nd) with its y and life word unchanged. Each launched record equals
+`chaser_step` of `[mx, my, mz, 0, $80, 0, $1ff, 0, $2279a]` with the ship as read at the next arrival, 27/27 (`gate_launch.py`;
+launch vy 0: 0/27, life `$1fe`: 0/27). The control run without the poke ends with the ship crashing at tick 668, 0 launches and a
+closest approach of 9,128 against the `$b00` range: a natural pilot does not provoke a launch, which is why `$22722` has 0 hits in
+the census. Firing (`autofire`, 600 ticks): 30 consecutive hits, `$22666` 30 times, then `$2264e` once and the award 2000 (score +2,000
+less the shot's 1). A hit tick is not a dead tick: the hit path clears bit 15, falls into the move and the launch test, and a ship box
+collision sets bits 15 and 13 (`$21648..$21650`), so ramming it takes the ground path and kills it at once (seen once, with the earlier
+version of the drive; read for the rule).
+
+The chaser gate `py/behaviours/gate_chaser.py` predicts a record at arrival k+1 from arrival k, all nine fields, with the ship at k+1 and
+the ground from the capture's own height map. `$2279a`: 4,064/4,064 (131 passes at the clamp, 12 at a reversal; the reversal and the
+clamp are reached only through labelled poke C, which sets velocities and life words at four ticks, because these chasers die on the
+ship within about 100 ticks); controls: drag >> 5 639, pull >> 6 31, clamp `$6f` 3,949, reversal `$a8` 4,052, ship before the move 1,489.
+`$21afe` and `$21ae2` on a natural capture of game 50 wave 5: 1,069/1,069 and 1,896/1,896 waiting records; drag 416, pull 329, clamp `$7f` 72,
+ship before the move 837. With a life poke (3 at three ticks) the reversal is reached: 782/782 and 3 reversal passes, 779/782 with the
+period one short. The model is `chaser_step`: life - 1 and a negated velocity at 0, move, vy += gh - y - `$100` when that is negative (gh at
+the pre-move x, z), velocity += (ship - pos) >> 7, minus 1/64, then the clamp.
+
+The two-hit pursuer (natural captures with `capture_events.py`, which adds `$22164` as the event `p2_hit1`; observed on
+captures of game 50 from `$W/g050` snapshots at 820M and 1065M steps, not a line of the gate, whose natural capture holds two first hits and no complete chain): the first hit on a `$2202c` record raises the score by
+200 (less the shot's 1), the next hits for five ticks are ignored, and the first hit after them pays 700 at `$216d6` and removes
+the record. Four complete chains in game 50 (first hit to kill 7, 5, 5 and 5 ticks; the same pool slot throughout, no other kill between);
+the ground-bit path for 900 was not seen. Rocket and `$25306` are still unobserved.
+
+**Census on four games** (`py/behaviours/census_chunks.py <game> <steps>`, 20M-step chunks of `hits` on every entry, with the wave word read
+after each chunk and `summarize.py` splitting the sums by wave; not a gate, about 15 minutes for the four; games 14, 45, 93 are run to
+their game over at wave index 4, game 50 to wave 5, from `chain/long100/starts/main_gNNN.snap`). Hits in games 14, 45, 50, 93: `$21792` 12,428,
+18,850, 21,107, 10,346; `$21afe` 2,945, 2,515, 4,257, 2,887; `$21d08` 24,029, 22,950, 28,494, 21,582; `$21f00` 4,197, 7,633, 7,411,
+5,930; `$2202c` 14,827, 9,758, 15,913, 5,813; `$221ac` 24, 1,147, 9,363, 1,753; `$22316` 14,852, 14,560, 32,945, 12,656; `$224a6` 6,883, 6,564, 21,122,
+8,305; `$225d6` (the attractor's tractor) 31, 42, 99, 137; `$228de`, `$25306`, `$22722`, `$2279a` 0 in all four. Every entry the table lists
+except the rocket runs in some game, and the mothership only in game 50, the one game that reaches wave 5; the by-wave split puts `$21f00`
+from wave 1, `$2202c` from wave 2, the attractor from wave 3 and the mothership in wave 5 only.
 
 ## The player's shot, the targets and the ship box (gated)
 
@@ -186,9 +267,15 @@ not gated.
 `$20f82` (`Wave_CheckComplete`, once a tick from the main loop, skipped while the ship is hit or crashing) walks the pool
 from the end and returns as soon as it finds a record whose behaviour is not `$21ae2`; when every record left is an
 unhatched chaser (or the pool is empty) it falls into `$20fb4`: a sound, the wave counter `$32a50` plus 1, a count of
-the object-map cells with bit 5 (infected), a bonus from it, then `$20e74(wave)` and a restart at `$2310c` (read). The
-bonus is `max(0, base - 2 x infected) >> 2`, shifted right again by `4 - wave` while the wave is below 4, with base
-`$9000`, `$64ba` or `$cb89` on landscape 0, 1 or 2, paid in steps of 8 points (read).
+the object-map cells with bit 5 (infected), a bonus from it, then `$20e74(wave)` and a restart at `$2310c` (read). With
+n the counter after the increment, `inf` the infected count and `base` `$9000`, `$64ba` or `$cb89` on landscape 0, 1 or 2
+(`$32a4e`), the code (`$21030..$210e6`) computes `X = max(0, max(0, base - inf) - inf) >> 2`, shifts it right by `4 - n`
+when n is at most 4, and pays `8 x (floor(X / 8) + 1)` points: the loop at `$210c2` adds 8 to the score, subtracts 8 from
+X and repeats while X is not negative, so even a zero X pays 8. **Gated** (`py/landscape/gate_landscape.sh`, the score read
+from snapshots stopped at `$20fb4` and `$210e8`): 5 of 5 natural wave ends of game 050 match (n = 1 to 5: 1120, 1640, 1688,
+8, 1336, with 595 to 31,201 infected cells; n = 5 is on landscape 1's base), and on landscape 2, poked, 13,032 at n = 10, 15
+and 16 (infected 0) and 11,528 with 3000 poked infected cells; controls: infected subtracted once fails 5/5 and the poked
+case, no `4 - n` shift fails 3/5 (the two it passes have n of 4 and 5, where the shift is 0).
 
 So a wave is cleared by destroying every hatched enemy and every waiting record of the other kinds, and the chasers'
 hatch delays (3000 ticks on wave 0) are the penalty for being slow, not the wave's length.
@@ -205,9 +292,14 @@ loss (inferred from the tick: the pilot is called once a tick).
 
 ## How later waves are harder
 
-`$20e74(n)` resets the actor pool and appends the groups of block `$20e34[n & 15]` (read; the movem at `$20e92` loads
+`$20e74(n)` resets the actor pool and appends the groups of block `$20e34[n & 15]` (the movem at `$20e92` loads
 count, first life, life step, a velocity shift and the behaviour, then the loop gives the k-th record life
-`first + k x step` and a random position anywhere on the map). The blocks, as records per kind:
+`first + k x step`, y `$f100` and a random position anywhere on the map; a count of 0 ends a block). **Gated**
+(`py/landscape/pool_check.py`, run by `gate_landscape.sh` on the pool right after each build): the table decodes to 16 blocks
+(9 distinct), and the pool matches it record by record (behaviour, life, y) and in gravity at 5 of 5 natural builds
+(counters 1 to 5, 10, 15, 18, 18, 19 records) and 4 of 4 poked builds (counters 9, 10, 15, 16: 25, 29, 29, 5 records); games
+014 and 045's counters 1 to 4 match too (`chain_waves.sh`, outside the gate). Control: counter 2's pool checked as counter 3
+matches 0/18. The velocity shift is 8 for chasers and 10 for every other kind. The blocks, as records per kind:
 
 | wave index | chaser (first hatch, step) | seeder | patrol | bomber | pursuer2 | attractor | mothership |
 |---|---|---|---|---|---|---|---|
@@ -223,10 +315,11 @@ count, first life, life step, a velocity shift and the behaviour, then the loop 
 
 (entries 7, 8, 9 point at one block and 10 to 15 at another; the HUD shows the index plus 1.) The tail of `$20e74` sets
 the gravity `$32a3a` to 3 for n below 2, 4 below 4, 5 below 6 and 6 from 6 on, and builds landscape 1 at n = 4 and 2 at
-n = 9 (README). Because the table index is `n & 15`, wave 16 would get wave 0's enemies with gravity 6 (read, not run).
+n = 9 (README), comparing the unmasked n. Because the table index is `n & 15`, counter 16 gets wave 0's block with gravity 6
+and landscape 2 unchanged (poked, 5 of 5 records match; the landscape switch fires only at exactly 4 and 9).
 No code reads the wave counter elsewhere for difficulty: its readers are this routine, the HUD and the bonus (read).
 
-Some spawns depend on how full the object pool is, not on the wave: `$204d4` and `$20474` pick other spawn parameters
+Some spawns depend on how full the object pool is, not on the wave: `$204d4` (`Smoke_Spawn`) and `$20474` (`Fragment_SpawnLong`) pick other spawn parameters
 above `$bb`, `$119` and `$148` records, and the bomb's landing releases 31 drops instead of 51 above `$bb` (read).
 
 ## The demo flag and the carried queue
@@ -252,8 +345,10 @@ to the previous game's last infected objects until `$232e6` flushes the entries.
 
 The six blocks the 24-game chain flagged (`$27ce9..$27d11`, `$289c2..$28a02`, `$29703..$29769`, `$2b591`,
 `$2ca81..$2cbcb`, `$2e2c3..$2e2d3`) all lie in `$276fc..$2f6f4`, the ten depth-bucket draw lists of `$ccc` bytes each
-(bucket k from `$276fc + k x $ccc`; README "Depth sorting"). Their bytes are 8-byte draw records: a draw routine long
-(`$16fb4`, `$16ff4`, `$1735c`, ...) and the projected x and y words.
+(bucket k from `$276fc + k x $ccc`; README "The renderer", "Depth buckets and paint order"). Their bytes are draw records of
+several sizes: mostly 8-byte dots (a dot routine long, `$16fb4`, `$16ff4`, `$1735c`, ..., and the projected x and y words),
+with 32-byte model records (`$26222`) for the ship, actors and model objects, and 14-, 16- and 4-byte records from the
+landscape cells and the beam (the table is in the README).
 
 - **Read.** `$23c8c` (`Buckets_Reset`, from the main loop at `$231bc` and the crash loop at `$25b34`) copies the ten start
   pointers from `$23cfa` over the ten end pointers at `$23caa`. Every append (twelve sites: `$1fae8`, `$1fb56`, `$1fb8c`,
@@ -341,20 +436,19 @@ enough to aim at, and one outside it is known only as a radar pixel, `$400` unit
 
 ## Open
 
-1. Drive the mothership and the rocket: a played or poked run to wave index 5 (`wb 32a50 05` before a wave end, labelled
-   poke) with `hits` on `$226ac`, `$22722` and `$2279a`; a rocket key press (`$1f7ea` points at the bound key) with `bp
-   25306` and a `watch` on the target's life word for the bits 15 and 13.
+1. The rocket: a key press (`$1f7ea` points at the bound key) with `bp 25306` and a `watch` on the target's life word for the
+   bits 15 and 13 (the mothership's `Mothership_Hit` takes bit 13 as an instant kill). Whether the autopilot can ever reach and
+   kill the mothership, that is what ends wave 5 in a natural game.
 2. The attractor's tractor and fuel drain (`$225d6`: 0 hits in game 1): drive the ship to within `$700` of an attractor
    and `watch 32a2e 2` for the 25-a-tick drain.
-3. The two-hit pursuer: `$22164` ran 4 times and `$221ac` 596: check with `bp 22164` that the score rises by 200 and the
-   same record later dies for 700.
-4. Provoking: a `bp 20206` stop, then show that the converted record's `+16` is `$21f00` and that it was a patrol within
-   `$800` of the impact.
-5. Gate one enemy model the way the seeder was gated: `$21afe` (the chaser) is closed-form (pull >> 7, drag 1/64, clamp),
-   so a `bp 2157c` capture over its hatched ticks would give a match count.
-6. A census on other seeds and waves (one game here, 600M steps), and the infection rate per kind measured from the object
-   map (bit 5 cells per tick) with the bomber removed by a poke, to test the reading that its bursts plant most.
-7. The bonus formula and the table index wrap at wave 16 are read only.
+3. The two-hit pursuer's ground-hit kill (900 through bit 13) was not seen, and the gate's own natural capture holds no complete chain.
+4. Provoking: which of the paths `$1ffbc`, `$2004a`, `$20092` called each of the 6 gated scans, and the converted pursuer's later behaviour.
+5. Gate the other models the way `$21afe`, `$2279a` and the seeder are: the pursuers `$21f00` and `$2202c`, the bomber `$22316` and
+   the attractor `$224a6` (`shot.py` models the patrol only).
+6. The infection rate per kind measured from the object map (bit 5 cells per tick) with the bomber removed by a poke, to test
+   the reading that its bursts plant most. (The four-game census is in "The mothership and the gated chasers".)
+7. Counters 9 and above (landscape 2, the mothership-heavy blocks) are reached only by a labelled poke; the bonus formula and
+   the wrap at counter 16 are gated on those pokes (README Open 5 asks for a natural game that gets there).
 
 ## Scripts (`py/scan/`)
 

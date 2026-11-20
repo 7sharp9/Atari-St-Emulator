@@ -33,14 +33,16 @@ Evidence is of three kinds. **Gated:** a Python model matched against the emulat
 a broken-model control and a command in `py/README.md`. **Poked:** a result reached through a labelled poke.
 **Read:** from the code only, marked "(read)". A section says which of these it is.
 
-Gates: `uv run python tools/gates.py run virus` (`gates.toml`, one gate that runs every model on the captures;
-about 5 s). The captures are rebuilt with `bash reversing/virus/drive.sh` then `bash reversing/virus/py/capture.sh`.
+Gates: `uv run python tools/gates.py run virus -j 8` (`gates.toml`, 14 gates, about 6 minutes at eight at once). `models` re-reads
+the captures, which are rebuilt with `bash reversing/virus/drive.sh` then `bash reversing/virus/py/capture.sh`; the others run the
+emulator afresh from the snapshots their `inputs` name, the chain starts among them (`py/chain/chain.py`, "Running long").
 
 | Doc | Covers | Proof |
 |---|---|---|
-| this file | provenance, the drive, memory map, landscape generator, object scatter and RNG, renderer, flight model, the seeder behaviour, landscape selection by wave | terrain 65455/65455 on three landscapes, objects 571/571 and 1774/1774, grid 330/330 on four frames, tiles 132/132, slope table 8064/8064, flight 119/119, seeder 447/447 |
+| this file | provenance, the drive, memory map, landscape generator, object scatter, the object types and RNG, renderer (tile colour, spans, depth buckets and paint order), flight model with the mouse and ground contact, the seeder behaviour, landscape selection by wave, which code runs | terrain 65455/65455 on three landscapes, objects 571/571 and 1774/1774, object shapes by render diff, grid 330/330 on four frames, tiles 132/132, slope table 16320/16320, spans 1440/1440, buckets 39523/39523, flight 119/119, mouse 180/180, seeder 447/447, wave pools 141/141 |
+| [`frontend.md`](frontend.md) | the three frame routines, HUD, font, sound driver and effects, title, game over, hall of fame, score code | HUD digits 12/12, sound sites 5531/5531, hall of fame 10/10 |
 | [`demo.md`](demo.md) | the attract mode and its autopilot | see that doc |
-| [`behaviours.md`](behaviours.md) | the actor pool's behaviours (every enemy kind), wave completion and the per-wave spawn table, readers of the demo flag, the draw-list residue | wave ends 4/4 against the rule, residue poke 500/500, census of game 1 |
+| [`behaviours.md`](behaviours.md) | the actor pool's behaviours (every enemy kind), wave completion and the per-wave spawn table, readers of the demo flag, the draw-list residue | wave ends 4/4 against the rule, bonus 7/7 natural wave ends, chaser 4064/4064, mothership launches 27/27, falling infection 8319/8319, residue poke 500/500, census of four games |
 
 ## Provenance
 
@@ -109,20 +111,24 @@ RNG advance). The remaining emulator-side lever is the mutable `Cpu` listed in `
 |---|---|---|
 | `$c000..$27000` | game code, about 40,000 listed lines (`tools/disassemble.py --snap <snap> --all c000 28000`); the end of the text is not checked | listing |
 | `$d0fa` | sine table, 1024 words, `int(32767*sin(2*pi*k/1024))` with entry 256 = 32766 | 1024/1024 (below) |
-| `$d8fa`, `$d9fa` | arctangent and tilt tables read by the mouse routine `$254aa` | (read) |
-| `$246ba` | 81-byte launch-pad colour table (values 4, 6, 14, 15, 22) | gated through the grid gate |
+| `$d8fa`, `$d9fa` | arctangent and square-root (tilt) tables read by the mouse routine `$254aa` | `flightctl` gate |
+| `$e9fa` | the 8x9 proportional font, 10 bytes a glyph, index char - `$20` | HUD digits 12/12 (`frontend.md` "Text and the font") |
+| `$177d2` | the sound-effect table: 54 longs into 18-byte effect records at `$17406` | read (`frontend.md` "Sound") |
+| `$246ba` | launch-pad tile-type table, 75 bytes `$246ba..$24704` (values 4, 6, 14, 15, 22; `$24705` is a pad byte, code starts at `$24706`) | 96/96 reads, 0 writes ("Object scatter and the RNG", `py/objects/pad_table.py`) |
 | `$270b0` | ship state: x, y, z, vx, vy, vz (words) | flight gate |
 | `$270ce` | camera x, y, z (words) | grid gate |
-| `$270d4` | ship orientation matrix (9 words in a 3x3 with stride 6) | flight gate (mouse run) |
+| `$270d4` | the renderer's current rotation matrix (9 words, stride 6): the ship's own after the tick builds it at `$25654`, then overwritten by steering and draw ops | flight gate (mouse run), `flightctl` gate |
+| `$270ec`, `$270fe`, `$27110` | three spinning rotation matrices rebuilt each frame from the frame counter by `$2617a`, used to draw the turning models | `watch` 111 writes a 37-frame run, 0 with `$2617a` stubbed (`frontend.md` "The three frame routines") |
 | `$2706e`, `$27072` | the RNG, two longs | scatter gate |
 | `$31d54` | actor pool: the wave's enemies and the player's rockets, up to 128 records of 20 bytes; count at `$32a3e` | seeder gate, `behaviours.md` |
-| `$302f6` | object pool: shots, debris, falling infection, bombs, score pop-ups; 18-byte records, count `$32a3c` | (read), `behaviours.md` |
+| `$302f6` | object pool: shots, sparks, droplets, fragments, smoke, contrails, falling infection, bombs, score pop-ups; 18-byte records (x, y, z, vx, vy, vz, life, handler), count `$32a3c` | falling-infection kind gated 8319/8319 (`py/objects/gate_infection_fall.py`); handlers in `behaviours.md` "Two pools" |
 | `$276fc..$2f6f3` | the ten depth-bucket draw lists, `$ccc` bytes each | `behaviours.md` |
 | `$32a2e`, `$32a32`, `$32a3a` | fuel, smoothed attitude (2 words), gravity | flight gate |
+| `$32a44` | frame counter: +1 at `$23198` each frame, cleared at game start `$230e6` | read (`frontend.md`) |
 | `$32a4c`, `$32a4e`, `$32a50` | last built landscape, current landscape (0, 1, 2), wave number | below |
-| `$32a58` | object map: one byte per cell, low 5 bits the object type | scatter gate |
+| `$32a58` | object map: one byte per cell, low 5 bits the object type (1 to 12, "Object scatter and the RNG"), bit 4 destroyed, bit 5 infected | scatter gate; shapes by render diff (`objects.png`) |
 | `$42a58` | height map: 256 x 256 bytes, index `(y << 8) | x` | terrain gate |
-| `$5ab58` | slope table, longs (the signed index covers `$52b58..$62b57`; the byte `$62a58` is a flag in it) | slope gate |
+| `$5ab58` | slope table, 16,320 longs (slots -8192..8127 of the signed index, `$52b58..$62a57`; from `$62a58` the bytes are flags) | slope gate, `py/shading/slope_full.py` |
 | `$70000`, `$78000` | the two screen buffers (the shifter base alternates) | `snap_render.py` |
 | `$2f6f6` | the 64x64 four-plane minimap in the HUD corner; the radar's dot list follows it at `$2fef6` (end pointer `$27076`) | `behaviours.md` "What the radar shows" |
 
@@ -131,11 +137,12 @@ Names are in `virus.sym`.
 ## Main loop
 
 `$23198` runs once per game frame (about 2.47 VBLs: 81 calls of each frame routine in 200 VBLs, from an
-`ATARI_TRACE_EVENTS` census of the flight snapshot). In order: `$2617a`, `$1fa72` (the object pool, into depth buckets),
+`ATARI_TRACE_EVENTS` census of the flight snapshot). In order: `$2617a` (`SpinMatrices_Update`: the three rotating orientation matrices `$270ec`, `$270fe`, `$27110` the actors draw with), `$1fa72` (the object pool, into depth buckets),
 `$255c2` (the ship tick), `$2157c` (the actor pool), `$24098` (the landscape grid and the whole painter), `$23c8c`
-(`Buckets_Reset`: the ten list ends back to their starts), `$24956`, `$232e6` (`InfectionQueue_Advance`, `demo.md`), `$20f82`
-(`Wave_CheckComplete`: the wave ends when only unhatched chasers are left, `behaviours.md`), `$183f2`. The roles of `$2617a`,
-`$24956` and `$183f2` are not established (role unknown).
+(`Buckets_Reset`: the ten list ends back to their starts), `$24956` (`Score_CheckExtraLifeAndDraw`: the extra-life check and the score digits), `$232e6` (`InfectionQueue_Advance`, `demo.md`), `$20f82`
+(`Wave_CheckComplete`: the wave ends when only unhatched chasers are left, `behaviours.md`), `$183f2` (`Screen_FlipSetscreen`: the double-buffer flip and the Setscreen trap). All
+three are proved in [`frontend.md`](frontend.md) (`py/frontend/flip_spin.py`: 37 flips, 37 traps and 999 matrix writes in 37 frames,
+0 writes with `$2617a` stubbed; `py/frontend/hud_match.py`: 12/12 score renderings).
 
 ## The landscape generator (gated)
 
@@ -153,8 +160,8 @@ sum = S[x-2y] + S[3x+y] + S[3y-2x] + S[4x-5y]/2 + S[2y-5x]/2 + S[6x+5y]/2 + S[11
 
 (each term a sign-extended word, the sum a 32-bit value). The result is `base - (sum >> shift)`, clamped to at most
 `$560`, and stored as `((h + $29f) & $ffff) >> 3`. Byte 255 is the clamp (water, white in `heightmaps.png`). The nine
-by nine cells with x and y below `$900` are a launch pad: a constant byte `$d7` (height `$420`), with their colour from
-the 81-byte table at `$246ba`, not modelled.
+by nine cells with x and y below `$900` are a launch pad: a constant byte `$d7` (height `$420`), with their tile type from
+the 75-byte table at `$246ba` (modelled in "Object scatter and the RNG", subsection "The object types").
 
 The three landscapes are one routine. `$2336a` writes alternative instruction words into `$245b8` at `$24680`,
 `$24682`, `$24686` and `$24688`:
@@ -172,6 +179,10 @@ from the truncated sine is index 256, 32766 for 32767):
 - levels 1 and 2 from a **poked stub** (code at `$90000`: `moveq #n,D0 / jsr $2336a / rts` under `callcap`; the memory
   delta is applied to the snapshot): 65455/65455 each.
 - broken-model controls: one constant shifted 29124/65455; level 1's variant on level 2's data 10965/65455.
+- on **natural play** (`py/landscape/gate_landscape.sh`, game 050 of the unpoked chain): the map built for wave counter 2 is
+  level 0 (65455/65455) and the map built when the counter reached 4 is level 1 (65455/65455, the same on games 014 and 045's
+  counter-4 builds, run by `py/landscape/chain_waves.sh`); controls: level 0's model on level 1's map 10471/65455, base
+  shifted 46802/65455. Level 2 is reached only by a labelled poke of `$32a50` (below): 65455/65455 at counters 9 and 16.
 
 Command: `bash reversing/virus/py/gate_all.sh` (or one line of it). `heightmaps.png` shows the three fields.
 
@@ -184,8 +195,7 @@ is: the random word is the high word of the old `a`; then `a = a + b` and `b = s
 The scatter `$236f8(D0 = count - 1, D1 = type)` draws a random word, takes it as the cell index (high byte y, low byte x),
 and accepts the cell if its height is at most `$510`, not `$420`: then `map = (map & $e0) | type`. The builder calls it
 nine times, in this order (draws, type): (289,4) (129,1) (257,5) (769,6) (385,3) (257,2) (113,7) (97,8) (81,9). Types
-and the markers 10, 11 and 12 written afterwards (a `$b` pattern, a `$a` triple and `$236ae`'s `$c`) are not named: role
-unknown.
+1 to 9 are named below; the markers 10, 11 and 12 are written afterwards (a `$a` triple, a `$b` lattice and `$236ae`'s `$c`).
 
 Proof, `py/virus_objects.py`, with the **poked-stub** callcaps (levels 1 and 2 only; level 0's stub skips the clear):
 landscape 1 model 571 cells, RAM 571, identical type at the same cell 571; landscape 2 model 1775, RAM 1774, identical
@@ -195,6 +205,61 @@ earlier run from another snapshot (563/563, 1778/1778); each is exact for its ow
 draw short 1767/1774 identical; two types scattered in the other order 1586/1774. A one-draw shift moves every set
 against the next only at the nine scatter boundaries, so the set comparison is blind to a pure shift except there;
 the order control is the strong one.
+
+### The object types (gated by render diff)
+
+`$24098`'s vertex loop tests the object-map byte under each grid vertex (`andi.b #$1f` at `$24120`) and, for a non-zero
+type, `$23ef8` draws a 3-D shape chosen from the 64 longs at `$23f98`, indexed by `byte & $3f`: normal (0 to 15), damaged
+(bit 4, 16 to 31), infected (bit 5, 32 to 47) and both (48 to 63). The shapes are drawn by `$26278` (read). Bit 4 is
+"destroyed": a player or enemy shot over the cell sets it (`$1ff6e`, `$203d0`), and so does the ship touching it
+(`$25856`); the cell then shows a grey wreck and a smoke puff (`Smoke_Spawn`) every eighth frame (`$23f32..$23f40`).
+Bit 5 is infection, set only by `Infection_Plant` (`$20696`). What each type looks like on screen (`objects.png`: plain,
+damaged, infected):
+
+| type | name (from the drawn shape) | model | infected form | placed by |
+|---|---|---|---|---|
+| 1 | palm tree | `$ae30` | wilted pink palm (`$b23e`) | scatter 2nd call (129 draws) |
+| 2 | bush | `$b162` | pink/red plant (`$b1ca`) | scatter 6th (257) |
+| 3 | pine | `$b110` | pink cone (`$b2f6`) | scatter 5th (385) |
+| 4 | palm tree (same model as 1) | `$ae30` | withered orange palm (`$b348`) | scatter 1st (289) |
+| 5 | tall palm | `$aee8` | orange palm (`$b400`) | scatter 3rd (257) |
+| 6 | fir | `$b0be` | unchanged | scatter 4th (769), the commonest |
+| 7 | long house, red roof | `$b5e6` | unchanged | scatter 7th (113) |
+| 8 | cottage, orange-tile hip roof | `$b806` | unchanged | scatter 8th (97) |
+| 9 | archway, pink dome | `$b4e0` | unchanged | scatter 9th (81) |
+| 10 | pad marker (thin red-over-yellow pole) | `$ba54` | unchanged | three fixed cells (rows 1, 3, 5, column 7; `$234ec..$234f8`) |
+| 11 | tower (grey disc on a cyan cone; models `$c6f2`, `$c79c`) | | unchanged | an 8 by 8 lattice, one every 32 cells from (6,6) (`$23508..$23536`) |
+| 12 | bonus craft (spinning teal and grey craft; model `$ac66`, turned by the frame counter `$32a44`) | | unchanged | one try by `$236ae`: a random cell, kept only if it is water (`$236dc`) |
+
+Infection changes the shape only for types 1 to 5; for 6 to 12 the infected entries equal the plain ones and only the
+ground tint (`$244b0`) changes. A shot that reaches an undamaged cell goes to `$20218` (read): an infected type 1 to 3
+gives 40 points, 71 or 41 infection drops and provokes the patrols (`$1ffbc`, `$20092`, `$201b4`); types 4 and 5 give
+nothing; type 11 first clears an 8 by 8 block of minimap pixels (`$23c08`), so the tower is probably a radar station
+(inferred); type 12 gives 1000 points and is removed. The ship touching an undamaged non-zero cell is fatal
+(`$25846..$25ad8`), after a 40-point award for an infected type 1 to 3.
+
+Proof, `py/objects/object_shapes.py` (`gate_objects.sh`), from `demo/S1b.snap`: the ship state `$270b0` is poked at seven
+arrivals at `$255c2` (the only intervention) to put the camera in front of a cell with an empty 3 by 3 neighbourhood, in five
+poses, and the live screen is rendered twice, with the cell's byte kept and with it zeroed. The differing pixels near the
+cell are the object. The cell's projected column (`160 + (x - camx) * 256 / depth`) lies inside the object's pixel columns
+for 3/3 cells of each of types 1 to 9 and 11, and 2/2 for type 10 and for type 12 (the latter on land cells given the byte by
+a poke, because the ship cannot be posed in front of the natural water cell); the cell two columns over lies inside
+0/3 each (type 4 once in an earlier 4-cell run). With flags forced to `$10` and `$20` the column is inside the box 10/10
+and 10/10 (`shapes` of the gate). The vertical position is not proved: objects of types 2, 7 and 8 lie 8 to 15 px
+below the vertex's projected row (the diff boxes include the shadow), so "the foot is at the vertex" is not claimed.
+
+**The launch-pad table `$246ba`.** It holds 75 tile-type bytes (`$246ba..$24704`; the byte `$24705` is a pad and code starts
+at `$24706`), values 4, 6, 14, 15 and 22. Its only two readers are `lea d16(PC),A0` at `$2459e` (in `$245b8`) and `$24716`
+(in `$24754`), by a raw scan of `$c000..$27000` (no absolute reference); a write watch over 12M steps of the demo's pad
+and flight saw 0 writes (the ship state, 1698). For D6 (x) and D7 (z) both below `$900` the routines return height `$420` and
+the type `T[(((D7 << 3) & $fc00) + D6) >> 8]`, which at a cell corner (256 k, 256 j) is `T[8 j + k]`: the row stride is 8, so
+vertex (8, j) shares its entry with (0, j + 1) and entries 0 to 72 are used. So the "9 by 9" is a map of the pad's vertices
+by tile type, the same type word the tile filler takes as colour. Proof, `py/objects/pad_table.py reads`: 96 pad-region
+reads at `$245ae` and `$24726` (the instruction that loads the byte), the index in D3 equal to the model's and the byte
+equal to `T[index]` 96/96 over 73 distinct indices; controls: index + 1 28/96, row-major `9 j + k` 25/96. On screen
+(`pad_table.py screen`, from `drive/g_game2.snap`): poking one entry changes exactly one main-block type word, at grid row j and
+column k + 1 (the grid's first column is x = -256), 12/12, and the screen changes each time; the tile that changes is not
+identified (Open 8).
 
 ## The renderer
 
@@ -224,26 +289,96 @@ read two words off) 33/132.
 
 **Tile colour is a height band (gated), not slope.** The type word for a land vertex is `9 + ((D1 >> 3) & 3)`, that is
 the low two bits of the height byte (one value per four height steps, cycling: the contour stripes in the picture), 330/330
-above. Water gives type 8 and the shore type 7. The filler takes one colour index per tile, the type word of the tile's
-first vertex, and maps it through `$1f2bc` to a table of span routines (read). No slope term was found in this path.
-`$18322` and `$23a2c` (called from `$24098` just before the tile loop) were not checked, so a slope shading elsewhere is
-not ruled out. A cell whose object-map byte has bit 5 set takes its colour word from the table `$244b0` indexed by
-`(D1 >> 2) & $e` (read).
+above. Water gives type 8 and the shore type 7. A cell whose object-map byte has bit 5 set takes its colour word from the
+table `$244b0` indexed by `(D1 >> 2) & $e` (read). `$24754` reads one vertex's height byte and nothing from its neighbours,
+and the filler takes one colour index per tile, the type word of the tile's first vertex, so the colour cannot carry a slope
+term, and the shading the picture shows is the contour stripes plus the launch pad's authored colour table `$246ba`.
+`$18322` and `$23a2c`, called from `$24098` just before the tile loop, are not shading: `$18322` (`ScreenClear_Draw184`)
+zeroes 184 lines of the draw buffer `$27062` (skipped while the key-toggled byte `$62a5c` is non-zero; its sibling `$18390`,
+`ScreenClear_Window`, clears an 80-byte-wide, 128-line window and is called at `$24c60` and `$24d28`, read) and `$23a2c` is
+the HUD radar and bars (`behaviours.md`, "What the radar shows"). Proved by a height poke from one snapshot
+(`py/shading/height_poke.py`, `scratchpad/virus/drive/g_game2.snap`, the cell at `$42b61`, outside the launch pad):
+raising the byte by 32 steps (+256 height units, the same type band) leaves the 143 type words equal, 143/143, and changes
+513 of 58880 screen pixels, all 513 to a colour already among the frame's tile colours or 0; raising it by one step (a new
+type band, the positive control) changes the type word (142/143) and 143 screen pixels from colour 9 to 10; an unpoked
+repeat matches 58880/58880.
 
-**Slope table `$5ab58` (gated).** `entry[(dx << 7) + dy]` (the index is a signed word: dx from -64 to 63, dy from 1 to 63)
-equals minus the truncated `dx * 65536 / dy` with its low eight bits cleared, in 16.16: 8064/8064 (`py/virus_slope.py`); control
-(low byte kept) 1431/8064. The entries for dy 64 to 127 do not follow this formula (63 of 127 per dx match) and are not
-understood. The filler uses the table to step an edge's x per scanline without dividing.
+**Slope table `$5ab58` (gated).** The index is the signed word `s = (dx << 7) + dy`, the entry at `$5ab58 + 4s`; writing
+`s = dx*128 + dy` with dy in -64..63, the entry is 1 for dy = 0 and otherwise minus the truncated `dx * 65536 / dy` (the
+sign of the quotient taken first) with the low eight bits of its magnitude cleared, in 16.16: 16320/16320 slots, slots -8192
+to 8127 (`py/shading/slope_full.py`; control, low byte kept, 3111/16320). What was once read as "dy 64 to 127" is the dy
+-64..-1 half of the next dx row, so there is no second formula; the longs from slot 8128 overlay the flag bytes at
+`$62a58..` and are not table. `py/virus_slope.py` gates the dy 1..63 half alone, 8064/8064. The filler uses the table to
+step an edge's x per scanline without dividing. In the pad frame every edge the filler walks lies in range, dx -64..63 and
+dy 0..63, 348/348 (`py/shading/tile_gate.py`); the negative-dy slots are then not read by the filler, which sorts by y
+(inferred from that frame), and an edge outside the range would alias into another dx row (not checked on other frames).
 
-**Tile filler `$26b78` (read).** Rejects a quad if any of its four vertices is outside 320 x 184, sorts the vertices by y,
-steps two edges with the slope table, and calls a span routine per scanline through `jsr 0(A0,A2.w)`, indexed by span
-width, from the colour's table.
+**Tile filler `$26b78` and the span routines (gated).** The filler rejects a quad if any of its four vertices is outside
+320 x 184, rotates the vertices (v0, v1, v3, v2 around the perimeter) until v0 has the smallest y, steps two edges with the
+slope table and calls a span routine per scanline through `jsr 0(A0,A2.w)`. The table `$1f2bc` (`ColourSpanWidthTables`) holds
+24 longs, one per colour index; each points at 330 word offsets indexed by span width, relative to that table, and the
+routines follow it: five per colour for widths 0, 1..17, 18..33, 34..49, 50..65 and 66..320 (widths 321..329 reach a few
+other targets, unread). Entered with D4 the first pixel's x, D5 the width, A3 the scanline and A1 = `$ceba` (a table of word
+masks by start and end pixel within a 16-pixel group), a routine does `or.w` (set) or `and.w ~mask` (clear) on each plane of
+each group the span touches. Indices 0..15 are flat colours, each plane set or cleared by the bits of the index (24 tables
+decoded, plane ops matching the index, 24/24: `py/shading/span_colours.py`); indices 16..23 set planes 0..2 from `c - 16` and
+take plane 3 from the word `$1cb78` (`$aaaa`, inverted on every call), a one-pixel checker of colours `c - 16` and `c - 8`
+that flips each scanline (the launch pad's colour 22 is a 6/14 grey). Called directly through `stserver` on a line of random
+words, 1440/1440 span calls (24 colours, widths 1 to 300) colour exactly pixels x..x+width-1 and leave the rest of the line
+(`py/shading/span_gate.py`; control, one pixel too wide, 93/1440). Replaying the 135 real tile calls of the pad frame
+(`py/shading/tile_capture.py`, `tile_gate.py`) onto a zeroed buffer, 3491/3491 pixels at least 1.5 px inside the quad carry
+the tile's colour and 31026/31026 pixels at least 1.5 px outside stay 0, with no tile missing; control (the bow-tie vertex
+order) 721/724 and 61 tiles missing. So a tile is a flat fill of its type word's colour; the filler's exact edge-pixel rule
+and its triangle and degenerate branches (`$26d44` on) are not modelled. All of this runs from `py/shading/gate_shading.sh`.
 
-**Depth sorting of objects, shadows and actors (read, not gated).** `$1fa72` (the object pool `$302f6`) and `$2157c` (the actor pool)
-subtract the camera, take a bucket `D6 = ((z - $900) >> 5) & $fff8` (ten buckets, 8-byte slots at `$23caa`, initial values
-copied from `$23cfa`), project the point with the same two `divs` (`+$a0`, `+$46`) and append an 8-byte record, whose first
-long is a draw routine, to that bucket's list. After each row of tiles the painter (`$243ec..$24474`) draws the list of the
-matching bucket by `jsr (A0)` on each record. So the order is a painter's algorithm with one bucket per tile row, far to near.
+**Depth buckets and paint order (gated).** Ten lists of `$ccc` bytes at `$276fc + k*$ccc` (bucket 0 nearest, 9 farthest) hold
+draw records. `$23caa` holds `{end pointer, limit}` per list and `$23cfa` `{start, area end}`; an append writes at the end
+pointer if the record fits below the limit, then advances it; `Buckets_Reset` `$23c8c` copies the starts over the ends once
+a frame. A record starts with the long address of its draw routine and its size follows from that routine:
+
+| record | size | layout | made by |
+|---|---|---|---|
+| dot (`DrawRec_Dot_ColourN`, `$16fb4..$1735c`) | 8 | routine, sx, sy | object tails `$1faa8` (one dot) and `$1fb18` (a `$16fb4` shadow at the ground's sy, then the sprite, same sx, same bucket) |
+| pop-up text `$173b4` | 8 | routine, sx, sy | handler `$20766` through `$1faa8` |
+| model `$26222` | 32 | routine, model pointer, 3x3 matrix (9 words), (dx, dy, depth) | ship (`$258dc`), actor tail `$2167a`, object tail `$1fbbc`, cell objects `$23d88`/`$23e00` |
+| `$261d2` | 32 | the same, drawn through `$2628c` (sets `$62a69`) and the A5 it leaves is kept at `$27086` | cell object `$23e00` |
+| model without matrix `$26278` | 14 | routine, model pointer, (dx, dy, depth) | landscape cells `$23e76`, `$23f64` |
+| `$2620e` | 4 | routine only: runs `$264c4` on the A5 saved at `$27086` | `$23ec0` |
+| beam `$22a64` | 16 | routine, 6 words (two 3D points), three interpolated segments through `$22bbe` | `$225ac` |
+
+Parse: every list of 780 captured frames (`$24098` entry; `reversing/virus/py/painter/analyze.py`) is a whole number of
+records, 7800/7800. The records and their append sites are read; the record shapes are gated through that parse.
+
+Bucket index, objects (`$1fa72`; the pool's update runs first, with the camera of the previous frame). With
+`d2 = z - camz + $500` a record is queued only if `(x - (camx - $580)) & $ffff < $b00` and `d2 & $ffff < $a00`; the
+bucket is `d2 >> 8`; `depth = d2 + $900`; `sx = ((x - camx) << 8) / depth + $a0` and `sy = ((y - camy) << 8) / depth + $46`
+(two `divs`, truncating). `analyze.py` predicts every post-walk pool object from the pool and the walker's entry camera and
+walks each bucket's dot records in pool order: 39,523 of 39,523 objects matched on 780 of 780 frames (flight `fl/f1.snap`,
+demo `demo/S1b.snap`, chain game 50 from frame 600); controls: bucket shifted by `$100` 3, reversed (9 - b) 0, `d2 >> 9` 473
+of 39,523. The shadow's sy (ground height from `$245b8`) is not gated, only its sx, order and bucket.
+
+Bucket index, models (actor tail `$2165c`, ship `$258be`, `$1fbbc`, cell objects): `((depth - $900) >> 5) & $fff8` with
+`depth = z - camz + $e00`, clamped (0 when negative, 9 when `>= $50`) instead of skipped: 1215 of 1215 model records sit in
+the bucket their own depth word gives; without the clamp 1184 of 1215. The ship record is in every frame (780/780); object
+model records (`$1fbbc` tails of the handlers at `$20882`, `$208f4`, `$2097a`) 149/149; actors in the window (`behaviours.md`)
+286 of 291 have a record (the five others are inferred to be in a non-drawing state; not checked).
+
+Paint order (`$243b6..$24474`). The loop draws a row of 12 tiles, then bucket `11 - row` (buckets 11 and 10 are skipped by
+`cmp #$a`), so bucket 9 follows the third row and bucket 1 the last; bucket 0 is drawn after all rows. Within a bucket, list
+order. `gate_order.py` stops at `$26b78`, `$243ec`, `$24436`, `$24478`: the order `T B11 T B10 T B9 ... T B1 B0` on 40 of 40
+frames (consecutive tile stops under 64 steps apart are deduplicated by the harness, so tile counts per row are not read).
+A bucket's dots use the mask table `$24488[b]`: bucket 0 the 3-pixel masks `$16f92`, buckets 1 to 6 the 2-pixel `$16f72`, 7 to 9
+the 1-pixel `$ce9a`; `sgt $16fb2` makes buckets 5 to 9 paint one scanline and buckets 0 to 4 two (the shadow `$16fb4` always
+one). Each dot routine paints one definite 4-plane colour (`or.w D2,(A0)+` sets a plane bit, `and.w D1,(A0)+` clears it), so
+where two dots overlap the later one survives. `analyze_order.py` reads the screen at `$24478` and models every dot: of 4946
+pixels covered by dots of different colours the screen shows the last-drawn dot on 4881 and the first-drawn on 15 (control);
+the other 65 are inferred to be overdrawn by a model record (the ship), which is drawn later in the same or a nearer bucket.
+Cross-bucket pairs (a far dot, then a nearer one): the nearer shows on 1262 of 1263 and the farther on 0. Example, `S1b.snap`,
+pixel (157, 100): a bucket 5 `$170f4` (colour 3) then a bucket 4 `$17044` (colour 7); the screen shows 7. Colours, from the
+routines' code: `$16fb4` 0 (shadow), `$16ff4` 15, `$17044` 7, `$1709c` 11, `$170f4` 3, `$1714c` 5, `$171a4` 12, `$171fc` 9,
+`$17254` 4, `$172ac` 14, `$17304` 6, `$1735c` 1. A tile row painted after a bucket overdraws it (read from the loop; not
+separately gated). `$173b4` is the pop-up text: it stores sx, sy at `$20756` and prints the string after them through `$182ea`
+(read). Run `bash reversing/virus/py/painter/gate_painter.sh` (about 1 minute).
 The actor loop queues only the records inside a window around the camera (gated: `behaviours.md`, "What the 3D view shows").
 
 ## The flight model (gated, mouse run; autopilot poked)
@@ -266,16 +401,35 @@ The clamp on the negative side is unreachable (`bcc` is unsigned), so a large ne
 reads 120 `bp 255d4` stops from `fl/f1.snap` with a mouse nudge at the start and thrust held: 119 consecutive ticks,
 position 119/119, velocity 119/119, attitude 119/119, matrix 119/119 (20 thrust ticks, 99 without). Control (thrust term
 `>> 4`): 99/119, failing exactly on the 20 thrust ticks. The gravity `g` is read to be set to 3, 4, 5, 6 at wave thresholds in
-`$20f26..$20f64` (read; only the value 3 is seen in the run). The mouse routine `$254aa` is read, not modelled: mouse offsets about `$80` become a heading (any word, table `$d8fa`) and a tilt, D0 = 2 x
-min(table `$d9fa`, `$3fff`), so even values 0 to `$7ffe`. The tick takes both as plain words with no range check.
+`$20f26..$20f64` (read; only the value 3 is seen in the run). The tick takes the target tilt and heading as plain words with no range check.
+
+The mouse routine `$254aa` (`Input_Mouse`) tests `$62a5b` (nonzero: the keyboard reader `$2554a`), else reads the accumulated
+mouse position through `$1fa54`: x and y words at `$1fa4a` (start `$80`, each IKBD packet added, no clamp), buttons in D2. A
+displaced mouse is a held target, not a rate: the accumulator is recentred (`$1fa38`) only by the pad path, game start and a
+new life. Each offset `(v - $80) << 8` is a word whose sign goes into an octant word; the heading is that octant word plus
+`$d8fa[((min << 16) / max >> 8) & $fe]` (an arctangent table of 128 words, 1.0 at `$2000`), and equal magnitudes (a centred
+mouse included) give `$2000`. The tilt is D0 = 2 x min(`$d9fa[((dx^2 + dy^2) >> 20) & $fffe]`, `$3fff`) (a square-root table),
+so even values 0 to `$7ffe`. Proved by `py/flightctl/mouse_model.py` (gate `flightctl`) on `fl/f1.snap`, 300 random `mouse move`
+inputs of up to 127 per axis, 180 of which reached `$255d4` (the rest gave up at the cap while the ship died): the model equals
+the game's D0 and D1 on 180/180 stops (171 with a non-centred target); controls: axes swapped 10/180, wrong tilt shift 9/180;
+the accumulator equals the previous one plus the move on 170/170 adjacent stop pairs. The keyboard path `$2554a` is read only.
 
 `$2538c` is a second input routine that picks the target and flags from the ship's position against a target list at
 `$270a6`, and `$62a5f` selects it in place of the mouse routine. **Poke:** `wb 62a5f ff` on `fl/f1.snap`. A `hits` run
 of 300,000 steps then counts 10 entries of `$2538c` and 0 of `$254aa`, and the same tick model matches position, velocity
-and attitude 119/119 (the thrust ticks 14/14, the others 105/105); control (thrust `>> 4`) 105/119. The orientation matrix
-matches 4/119 in this run (119/119 in the mouse run); the cause is not established. One other writer of `$270d4` is known: a
-patrol's steering builds its own matrix there on every actor pass (`behaviours.md`, read), so the attitude words, not `$270d4`,
-are the ship's orientation at a tick boundary. This is a poked result, not a played one.
+and attitude 119/119 (the thrust ticks 14/14, the others 105/105); control (thrust `>> 4`) 105/119. This is a poked result, not
+a played one.
+
+`$270d4` is the renderer's current rotation matrix, not a stored ship property, so its match count depends on where it is read.
+The tick builds it from the new attitude at `$25654` (`jsr $1f646`) and the model equals it exactly: 119/119 on `S1b.snap`
+read at `$25660` (control, yaw and pitch exchanged, 5/119: the identity attitude at the start). Before the next tick it is
+rewritten by `Autopilot_Steer` `$22c1e` (a `$1f646` call once per patrol actor), and by the draw records `DrawRec_ModelDeferred` `$261d2` and `DrawRec_Model` `$26222`
+(which load a 9-word matrix from the draw stream), and `$26256` builds it from two angles. A `watch 270d4 18` over 3,000,000
+steps names no other writers. At 114 of 118 `$255d4` stops of the demo the last writer was a steering build and the matrix
+equalled the model once (an identity coincidence); the other 4 stops are the identity attitude (`py/flightctl/matrix_writers.py`,
+gate `flightctl`). So the 4/119 above is a measurement point after other writers, and the attitude words are the ship's
+orientation at a tick boundary. The mouse run matched 119/119 because nothing else wrote the matrix after the tick there
+(inferred: no patrol steering on the pad snapshot's side).
 
 ### Off the capture, and where free flight ends (gated)
 
@@ -303,12 +457,40 @@ The model is exact until one of these, with c = ground(x, z) - `$56` - y after t
 - **0 <= c <= `$170` over an object cell** (3 deaths, 475 safe ticks): the byte at `$32a58 + ((x + $80) >> 8) + ((z + $80) &
   $ff00)` with any of its low five bits set and bit 4 clear.
 - **On the pad** (`$25a6e`; 39 ticks, one run): latch clear and no thrust refuels by `$19` a tick up to `$1000`, holds y and ignores
-  the inputs; thrust sets the latch and the normal tick resumes.
+  the inputs (the poked refuel run is in the table below); thrust sets the latch and the normal tick resumes.
 - **Above the ceiling**, y < `$c900`: the thrust bit is dropped for that tick. **Fuel**: thrust needs 3 and costs 3, fire
   costs 1; with less there is no thrust and fuel becomes 0 (6/6 ticks, fuel poked to 7).
 
 No code outside the tick wrote the ship's state, attitude or fuel in these replays; enemy contact is in `behaviours.md`,
 "The player's shot, the targets and the ship box". Landscapes 1 and 2 and g other than 3 were not flown.
+
+The ground the tick tests is the sum-of-sines height `$245b8` (`Landscape_SumOfSines`), not the cell height map. A raw scan of
+code `$c000..$27ffe` for the longword `$42a58` finds the builder's `$23424` and `$24730`/`$2475e` (inside `$24754`,
+`Landscape_HeightAt`) only; `$245b8` is called from the tick at `$257ee` and from the ship's vertex test at `$26378`, and none of
+the 19 `bsr`/`jsr $24754` callers lies in the tick (read: raw scan and `tools/find_ram_callers.py`). `$245b8` returns the height
+in D1 and a surface type in D3 (9 land, 7 shore for `$510 < h <= $560`, 8 water: h clamped to `$560`, the pad cells from
+`$246ba`); the tick ignores D3, so a crash into water is the same branch as one into land, with D1 = `$560`.
+
+The exits of the tick, each a code address and an entry count (`py/flightctl/death_census.py`, `hits` over an unpoked attract
+game, taken branch = count at the branch minus count at its fall-through; gate `flightctl`):
+
+| exit | address | what leaves the tick there |
+|---|---|---|
+| ceiling cut | `$255de` | `bclr #1,D2` while y < `$c900`; D2 `$2` becomes `$0` on `fl/f4.snap` at y `$9bb0` (proved, `py/flightctl/pad_ceiling.py`) |
+| pad | `$25a6e` `Ship_PadHold` | latch clear and no thrust: `Mouse_Recentre` `$1fa38` when the target is not within `$19` of 0 (the mouse heading `$2000` always is), sound `$1d`, fuel + `$19` stored at `$25aae` while the sum is at most `$1000`, y := `$3ca`, vy := -g, back into the tick at `$25654` |
+| enemy | `$257fa` | `$62a5d` nonzero (set by enemy contact) goes to `$25ad8` |
+| vertex | `$257fe` | `$62a62` nonzero goes to `$25ad2` |
+| object cell | `$25846` | the object-map byte kills (read; `$25850` calls `$23c08` for type 11, `$2004a` when bit 5 is set) |
+| ground contact | `$25870` `Ship_GroundContact` | c < 0: vy > `$28` dies at `$25ad2`, else `$25c28` `Ship_LandingTest` lands (`$25c52`) or dies |
+| death | `$25ad2` `Ship_DieLowered`, `$25ad8` `Ship_Die` | y -= `$56`; clears `$62a5d`, `$62a62`; sets latch `$62a63` and `$62a5e`; explosion `$202a4`; 50 frames of the frame routines (`$25b12`, SPACE skips them); `$25ba0` takes a life |
+
+Proved on the pad snapshot `drive/g_game2.snap` (`py/flightctl/pad_ceiling.py`): unpoked, 2 pad ticks and 0 refuel stores (fuel
+`$0ff4` plus `$19` exceeds `$1000`); with the fuel word poked to `$0100`, 2 pad ticks and 2 stores, fuel `$0132`; with the left button
+held, 0 pad ticks and 5 thrust-path entries in 5 ticks. The landing and the 39 pad ticks are the `mpc_flight` replay (618/618).
+In three unpoked attract games (`chain/long100/starts/main_g001..003`, 600 to 640 million steps) the 16 lives lost split as 6
+enemy exits, 8 ground contacts at vy > `$28` (one of them over water, `D3` 8, `D1` `$560`, y `$520`), 1 ground contact that
+failed the landing test (vy `$21`, speed sum `$36`, over water, x above `$800`), and 1 vertex exit; no object-cell kill and no
+landing occurred in them. The gate `flightctl` reruns games 1 and 3.
 
 A plain floating-point copy of this tick is not a usable stand-in for it. `x - (x >> 6)` floors, so each tick keeps on average
 about half a unit more velocity per axis than `x - x/64`: a 300-tick flight planned through the float copy to end within 216
@@ -339,15 +521,34 @@ in vy. Not covered: the other behaviours present (`$21ae2`, `$21c42`, `$21c64`, 
 read in `behaviours.md`), the seeder's descent and landing (`$21894`, `$21976`: read, run in the census only), removal, and the
 infection it drops (`$20702`) and the shadow record it appends.
 
-## Landscape selection by wave (code read; poked-stub run)
+## Landscape selection by wave (gated on natural play; landscape 2 poked)
 
-`$32a50` is the wave number: it is incremented at `$20fd0`, passed to the wave-start routine `$20e74` at `$210ee`, and read
-for the HUD at `$24906`; it is 0 at the start of wave 1. `$20e74(n)` appends the wave's waiting enemies from a table of 16 parameter
-blocks at `$20e34` indexed by `n & 15` (per kind in `behaviours.md`) and then, in its tail at `$20f4a..$20f78`, calls `$2336a(1)` when `n == 4` and `$2336a(2)` when
-`n == 9`; game start and restart call it with 0 (`$23092`, `$230b4`, `$25bf6`). **Poked stub** (`moveq #n,D0 / jsr $20e74 / rts`
-under `callcap` from `fl/f1.snap`; `capture.sh` writes `cap/cc_n<n>.json`): `$32a4e` and `$32a4c` stay 0 for n = 3, 5, 10, become 1
-for n = 4 and 2 for n = 9. The route by which a played game reaches wave 5 or 10 was not run, and `$32a3a`'s per-wave
-values are read. A wave is completed by destroying every enemy except the unhatched chasers (`$20f82`, `behaviours.md`).
+`$32a50` is the wave counter: `$20fd0` increments it (wave-end code `$20fb4`, `behaviours.md`), it is passed to the wave-start
+routine `$20e74` at `$210ee` and read for the HUD at `$24906`, and it is 0 at the start of wave 1 (game over zeroes it at
+`$25bf0`). `$20e74(n)` appends the wave's waiting enemies from the 16 blocks at `$20e34` indexed by `n & 15` (per kind in
+`behaviours.md`) and then, in its tail at `$20f24..$20f80`, sets the gravity `$32a3a`, calls `$2336a(1)` when `n == 4` and
+`$2336a(2)` when `n == 9`. Both tests compare the unmasked `n`. Game start and restart call `$2336a(0)` (`$23092`, `$230b4`,
+`$25bf6`).
+
+`$2336a` stores its argument in `$32a4e` (the selector) and, when `$32a4e` equals `$32a4c`, branches past the instruction
+patching and the height loop to `$23452` (`$23376..$2337c`; read). `$32a4c` is written only at the end of the height loop
+(`$23448`), so it names the landscape whose height map is in RAM. Every call, skipped rebuild or not, still clears the object map
+at `$23452` and runs the scatter (`jsr $236f8` from `$2346c` on), which is why the restart's second call (scatter B, `demo.md`
+"Natural death and game over") lays out a new map on the landscape already built.
+
+**Natural play** (`py/landscape/natural.sh`, game 050 of the unpoked chain, `watch 32a4c 6`; output through
+`py/landscape/gate_landscape.sh`): the counter is written 1, 2, 3, 4, then `$32a4e` = 1 at `$2336a` and `$32a4c` = 1 at
+`$23448`, then the counter 5: exactly seven writes, so a played game reaches counter 5 and landscape 1. A longer unpoked run
+of the same game (continued through the game over; not in the gate) wrote `$32a50` = 0 at `$25bf0` and rebuilt landscape 0
+through `$2336a(0)` (both selector words 0), then called `$2336a(0)` again at `$230ae`, which wrote neither selector word (equal words: the height loop is skipped). Games 014 and 045 reach counter 4 with
+landscape 1 built (`py/landscape/chain_waves.sh`: map 65455/65455 against the model for each; run once, outside the gate).
+
+**Poked** (labelled: `py/landscape/poked.sh`, `ww 32a50 0008` at a natural `$20fb4` stop, then an emptied pool so the wave
+ends): the counter 9 builds landscape 2 (`$32a4e` = `$32a4c` = 2, map 65455/65455 against the model), and counters 10, 15
+and 16 leave both words at 2 (counter 16: `n & 15` = 0 gives wave 0's block, 5 records, gravity 6, landscape unchanged). The
+earlier poked-stub run (`moveq #n,D0 / jsr $20e74 / rts` under `callcap`, `capture.sh`'s `cap/cc_n<n>.json`) agreed: both
+words stay 0 for n = 3, 5, 10 and become 1 for n = 4 and 2 for n = 9. A wave is completed by destroying every enemy except
+the unhatched chasers (`$20f82`, `behaviours.md`).
 
 ## Demo mode and the autopilot
 
@@ -357,20 +558,59 @@ the demo is entered, the pilot's routines and rules, runs to the pilot's natural
 with no pokes (no trend in survival or score; a weak test), and what carries over a game over (the high-score table,
 the infection target queue at `$27134`, the random state). Its scripts are in `py/demo/`.
 
+## Which code runs
+
+A call census of one complete unpoked attract game (chain game 050, `scratchpad/virus/chain/long100/starts/main_g050.snap`:
+waves `$32a50` = 0 to 5, 1.23 billion steps including the game over and the start of the next attract game), plus the
+game-over path from `demo/death/long7.snap` to the next `$230c0` (49,998,717 steps) and 12M-step windows of
+`drive/g_title.snap` and `drive/g_press.snap`. The call and branch events come from `ATARI_TRACE_EVENTS` (DEVELOPING.md),
+taken in 10M-step chunks chained through a rolling snapshot and reduced to counts; the chained run reproduces
+`chain.jsonl`'s life losses (chunks 19, 30 and 62 against steps 194.8M, 304.7M and 478M).
+
+- **217 routine entry points** (targets of `jsr`/`bsr`) lie in `$c000..$27ffc`; 92 are reached by direct calls and 125
+  only through `jsr (An)`, so the static listing's 154 direct targets miss every behaviour-table and span routine. 21.6M
+  calls in all; 42.6% are indirect, and 49.5% go to routines with no `.sym` name.
+- **Executed code is 31,228 of the 114,686 bytes in `$c000..$27ffd` (27.2%)**, nothing below `$16fb4` (that range is
+  tables and data) and 44.8% of `$16fb4..$27ffd`. The figure is a lower bound: a flow-only log does not count the operand
+  words of the terminating `jsr`/`jmp`. A flight wave runs 20 to 23% of the window, the game-over path 7.0%, the title 5.3%,
+  the "press" page 16.0%.
+- **No new routine appears after wave 3** (`$32a50` = 3): 131 targets run in every wave, 17 first appear in wave 1, 3 in
+  wave 2 and 3 in wave 3, none after. 19 targets run only outside flight (title, press, game over, attract restart).
+- Measured (`py/census/`, counts above from one game): the numbers are one game's bound, and a routine entered by `jmp`
+  or a branch, never by a call, is not in the 217.
+
+Commands (from `M68000/`; `py/census/gate_census.sh` runs the bounded window below, about a minute, into
+`scratchpad/virus/census/gate/`):
+
+```
+bash reversing/virus/py/census/run_chunks.sh g050 scratchpad/virus/chain/long100/starts/main_g050.snap 123 10000000
+bash reversing/virus/py/census/run_chunks.sh over scratchpad/virus/demo/death/long7.snap 1 49998717
+bash reversing/virus/py/census/run_chunks.sh title scratchpad/virus/drive/g_title.snap 1 12000000
+bash reversing/virus/py/census/run_chunks.sh press scratchpad/virus/drive/g_press.snap 1 12000000
+.venv/bin/python reversing/virus/py/census/aggregate.py
+```
+
+The full run (about 8 minutes, one process) writes `scratchpad/virus/census/routines.csv` (calls per wave, `.sym` name, doc
+mention count, call-site count), `ranked_unnamed.txt` (the to-do: unnamed targets in call-count order, led by the
+span-cap and point-plot families) and `coverage.txt`. The gate window (game 050 to its first wave change, 50M steps, plus
+the game-over path) gives 194 targets in the code window and 21.9% of the window executed. `virus.sym` names 101 of the 217
+targets of the full run (`aggregate.py`'s first line; the `named` column of `routines.csv`); the 116 unnamed ones are mostly the
+span-cap routines of the tile filler.
+
 ## Open questions
 
-1. Slope shading: `$18322` and `$23a2c` (called before the tile loop) and the span routines behind `$1f2bc` are unchecked,
-   so whether the picture's shading has a slope term is open. Prove it by a callcap diff of the screen with one tile's
-   vertex height changed.
-2. The slope table's dy 64 to 127 entries.
-3. The depth-bucket scheme is read, not gated: gate it by dumping a bucket's records at the start of the painter.
-4. The matrix under the autopilot (4/119): trace the writers of `$270d4` with `watch`.
-5. Landscapes 1 and 2 and the wave switch are from poked stubs: reach wave 5 played (or drive `$32a50` through the wave
-   completion code `$20fd0`) and `watch` `$32a4e`.
-6. The mouse routine `$254aa` and the ground-contact paths of the tick are unmodelled.
-7. The object types 1 to 9 and the markers 10 to 12 are unnamed; the actor behaviours are named from their bodies in
-   `behaviours.md`, gated only for the seeder.
-8. The launch-pad table `$246ba` is not modelled (its 81 colour bytes are read from RAM).
+1. The model drawers behind `$26296`, `$2629c`, `$264e2` and `$26780` (rotation, projection, polygon fill) and the layout of the model data are unread; the landscape-cell records (`$26278`, `$261d2`, `$2620e`) are not gated against the object map.
+2. Landscape 2 is reached only by a poke of `$32a50` (no chain game gets past counter 5): a natural game to counter 9
+   (landscape 2, wave HUD 10) would close it.
+3. The tick's exits are named and counted (section above), but the enemy exit `$257fa` (6 of 16 deaths in three games) was not
+   stepped into to name which of its writers (`$20360`, `$2083c`, `$21654`, `$225e6`) set `$62a5d`; the object-cell kill
+   `$25846` had no event in three demo games; the keyboard input `$2554a` is read only.
+4. The type names come from the shapes drawn; the radar role of type 11, the natural type-12 cell on screen and the
+   vertical foot offset of types 2, 7 and 8 are open. The actor behaviours are named from their bodies in `behaviours.md`;
+   the seeder, the chaser and the mothership's chaser are gated, the pursuers and the patrol states are not.
+5. The pad table is modelled and read-gated (below); which tile each entry recolours is open: the changed pixels of a poked
+   entry lie nearer than the main grid block's first row, so the front and side vertex blocks of `$24098` (`$24168..`) draw
+   the pad cells too and were not read.
 
 ## Files
 
@@ -381,11 +621,15 @@ the infection target queue at `$27134`, the random state). Its scripts are in `p
 | `gates.toml` | the gate `tools/gates.py` runs |
 | `behaviours.md` | the actor pool's behaviours, waves, demo-flag readers, draw-list residue |
 | `py/scan/` | that doc's census, wave-end, watch and residue scripts |
+| `frontend.md` | the three frame routines, HUD, font and text, sound driver and effect sites, title page, game over, hall of fame, score code |
+| `py/frontend/` | that doc's scripts and `gate_frontend.sh` |
 | `virus.sym` | names |
 | `py/README.md` | each script, its command and expected line |
 | `py/capture.sh`, `py/gate_all.sh` | fresh captures; every model with its control |
 | `py/mpc/` | the replay harness, the tick, shot and actor models as functions, and gates `mpc_flight` and `mpc_shot` |
 | `py/virus_terrain.py`, `virus_objects.py`, `virus_grid.py`, `virus_tiles_check.py`, `virus_slope.py`, `virus_flight.py`, `virus_particles.py` | the models and gates |
 | `py/render_heightmaps.py`, `py/vcommon.py` | the heightmap renderer; shared paths |
+| `py/shading/`, `py/painter/`, `py/flightctl/`, `py/landscape/`, `py/objects/`, `py/behaviours/`, `py/census/` | one gate each (`gate_<dir>.sh`, gates of the same names): tile colour and spans, depth buckets and paint order, mouse and ground contact, wave table and bonus, object types and the object pool, mothership and chasers, which code runs |
+| `objects.png` | object types 1 to 9 and 11 as the game draws them, and their damaged and infected forms (`py/objects/objects_montage.py`) |
 | `heightmaps.png` | landscapes 0, 1 and 2 from the model (256 x 256 cells each, 2x; white is water) |
 | `title.png`, `pad.png`, `flight.png` | the title picture, the wave-1 launch pad, a flight frame with exhaust |

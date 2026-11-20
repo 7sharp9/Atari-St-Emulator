@@ -27,8 +27,8 @@ they read are built by `bash reversing/virus/py/demo/capture.sh` into `scratchpa
 
 ## How the demo is entered
 
-The title and "Press R" pages hand over to the attract loop `$24baa`. It runs a flying-camera scene one frame per
-pass, counting D3 down from `$300` (`move.w #$300,D3` at `$24c1c`, `dbf D3` at `$24d10`: 769 passes, read). Inside the
+The title page is the attract loop `$24baa` itself (`frontend.md` "Title page and attract loop"): it draws the title and
+"Press R" text, then runs a flying-camera scene one frame per pass, counting D3 down from `$300` (`move.w #$300,D3` at `$24c1c`, `dbf D3` at `$24d10`: 769 passes, read). Inside the
 loop the first of these that fires wins (read):
 
 - key `$1f9ed` (SPACE) or the mouse button read by `$1fa54` goes to `$24cfc` and writes `$62a5f = 0`, a human game;
@@ -55,8 +55,10 @@ bit 1 thrust); control then reaches `$255d4`, where the flight model (`README.md
 `$254aa` tests `$62a5f`'s neighbour `$62a5b`: nonzero goes to the keyboard reader `$2554a` (`$1f7d2..$1f7ee` hold the
 bound-key pointers; it adds `$600` to D0 on one key, subtracts it on the opposite, steps D1 by `$c00`, and sets D2 bits 0
 and 1 from two more keys); zero reads the mouse through `jsr $1fa54`, which returns the accumulated x and y in D0 and
-D1 and the buttons in D2 (state words at `$1fa4a`, buttons byte `$1fa4e`) and converts the offsets from `$80` to an
-angle and a magnitude with `$d8fa` and `$d9fa`. All read.
+D1 and the buttons in D2 (state words at `$1fa4a`, buttons byte `$1fa4e`) and converts the offsets from `$80` to a
+heading and a tilt with `$d8fa` and `$d9fa`; that conversion is modelled (README, "The flight model"; 180/180 stops,
+`py/flightctl/mouse_model.py`). The accumulated position is not reset in flight: it is the held target. On the pad the tick's
+pad path recentres it (`$1fa38`) every tick. The keyboard reader is read only.
 
 Virus installs its own IKBD handler: `$1f8c4` is stored into the kbdvbase vector at offset 32 (`$1f858`), the old vector
 is kept at `$1fa34` and restored by `$1f8a0`. It reads `$fffc02`; scancodes below `$f6` go to a 128-byte key table at
@@ -175,14 +177,15 @@ Named from the code that reads and writes them (read; the first two also from th
 |---|---|---|
 | `$2708e` | score (long); cleared at `$2301e` and `$230cc`; awards added at `$1ffd6`, `$20066`, `$20240`, `$210c6`, `$216dc`, `$22180` (sign-extended word from A0); minus 1 per shot at `$25752`, so it goes negative | `$25f0c` compares it with the high score and stores it there |
 | `$2709a` | high score; updated only when `$62a5f` = 0 (`$25f04`) | read; 0 after 400M steps of demo |
-| `$27092`, `$27096` | last score seen and the next extra-life threshold (steps of `$1388`); crossing it adds one to `$32a54` and `$32a40` (`$24974`) | read |
-| `$32a54` | lives; decremented at `$25ba0` after the crash animation, 0 goes to `$25bc0` (game over) | read; 3 in every measured window |
-| `$32a40` | rockets | read; 3 in every measured window |
-| `$32a50` | wave number; the HUD draws it plus 1 (`$24906`) | `README.md`; 0 in every measured window |
+| `$27092`, `$27096` | last score seen and the next extra-life threshold (steps of `$1388`); crossing it adds one to `$32a54` and `$32a40` (`$24974`, `Score_CheckExtraLifeAndDraw` `$24956`); the HUD redraw re-enters the check, so a threshold far below the score repeats the step | proved: `py/frontend/hud_match.py`, lives and rockets +1 in 12/12 trials (`frontend.md`) |
+| `$32a54` | lives; decremented at `$25ba0` after the crash animation, 0 goes to `$25bc0` (game over); the HUD draws min(lives-1, 7) ship icons (`$248a2`) | proved by `py/frontend/hud_icons.py` (7/7 steps); 3 in every measured window |
+| `$32a40` | rockets; the HUD draws min(rockets, 8) icons | `hud_icons.py` (steps 2 to 4, 7, 8 exact); 3 in every measured window |
+| `$32a50` | wave number; the HUD draws it plus 1 (`$24906`) | proved: `hud_match.py` 12/12 wave renderings; 0 in every measured window |
 | `$32a2e` | fuel; `$e00` at `$23118`, `$1000` cap, refilled by `$19` a tick while landed (`$25a9e..$25aae`) | the other analysis's name; falls from 3269 to 2112 over 1000 ticks of flight 1 |
 
 `$25f04`, `$25f3c` and `$260f4` are the only other tests of `$62a5f`: they skip the high-score update, the name entry
-and the score-code line for a demo. No test of `$62a5f` guards collision, fuel, the enemies or the waves (a raw scan of
+and the score-code line for a demo (`$260f4` also skips when `$62a6c` is non-zero or the score is below `$3039`; the demo game
+over returns at `$26178` without drawing, `py/frontend/gameover_seq.py`). No test of `$62a5f` guards collision, fuel, the enemies or the waves (a raw scan of
 RAM for the address finds eight references, these four reads and the four writers), so the demo is not made immune by
 that flag, and it does crash (next section).
 
@@ -197,16 +200,19 @@ the game-start code, which re-initialises the ship, the fuel (`$e00`), `$270a2`,
 ESC enters, which runs the game over in this order:
 
 1. `$32a52 = $32a50` (the wave reached; read only by the human-only score-code line `$260f4`), scatter A (`jsr $2336a` with D0 = 0 at
-   `$25be8`, return address `$25bee`), `$32a50 = 0`, the wave start `$20e74(0)`, then the game-over screen at `$25e44`.
+   `$25be8`, return address `$25bee`), `$32a50 = 0`, the wave start `$20e74(0)`, "GAME OVER" with a wait of up to 1000 frames
+   (`$1f7ee`), then the game-over screen at `$25e44`.
 2. `$260f4` (the score-code line: for a human score of at least 12345 it prints two numbers mixed from the score, the tick
    counter and `$32a52`, inferred to be a verification code) returns at once for a demo (`$62a5f` test, `$26178`). The score `$2708e` is compared with the
    tenth entry of the high-score table at `$25ccc` (10 entries of 28 bytes: a long score, then a name field), for any game,
    demo included, and inserted by shifting the lower entries down (`$25e60..$25eb8`). A human game then updates `$2709a`
    (`$25f04`) and runs the name entry; a demo copies the stock name at `$25e14` into the entry (`$2607c`).
-3. `$26048` waits up to `$3e8` (1000) frames for the button or SPACE (`$1f7ee`). A key clears `$62a5f` and starts a human game
-   at `$230c0` (`$26050`). A timeout runs `$230a4`: scatter B (`jsr $2336a` at `$230a6`, return `$230ac`), `$20e74(0)`, and a jump
+3. `$26048` waits up to `$3e8` (1000) frames for the button or SPACE (`$1f7ee`) with the hall of fame on screen. A key clears
+   `$62a5f` and starts a human game at `$230c0` (`$26050`). A timeout redraws the background and waits up to 1000 frames once more
+   (`$2606c`); a second timeout runs `$230a4`: scatter B (`jsr $2336a` at `$230a6`, return `$230ac`), `$20e74(0)`, and a jump
    to the attract loop `$24baa`, whose timer starts the next demo at `$230c0` (`$62a5f = $ff`). The map of the next flight is
-   the one scatter B builds.
+   the one scatter B builds. The three waits cost 12.6M, 12.0M and 12.4M steps of the 49.6M from the last life's decrement to the
+   next demo start (`frontend.md`, "Game over and the hall of fame", `py/frontend/gameover_seq.py`).
 
 Writes on this path that are not plain re-initialisation: the high-score table (`$25ccc..$25de3`, in the code image, so it
 persists for the rest of the session), `$32a52`, and the human-only `$2709a`. Everything else it writes is cleared or
@@ -223,7 +229,7 @@ loss is at 4186, which is consistent with the ship running out of fuel and falli
 fuel, so a fuel of 0 at a stop shows nothing; the cause of the later losses was not examined).
 
 The high-score table changed: after the game over its second entry holds 17526 (the last life's score) with the stock name
-`David`, where the first demo's start state had 10000 and `Me...`; the lower entries moved down one place, so the tenth now
+`David Braben / Atari ST` (`$25e14`; `py/frontend/hof_match.py` matches the rendered page to the table, 10/10), where the first demo's start state had 10000 and `Me...`; the lower entries moved down one place, so the tenth now
 holds 500 `Cabbage` where it held 0 `Suicidal` (RAM at `$25ccc..$25de3` of `N1` against `S1b`; `py/demo/memdiff.py` over
 `c000..27000` lists differences at `$25cea`, `$25d5a` and `$25dca`); the first entry, 20000 `Acceptable`, is unchanged. So a demo's score is recorded for the rest of the session; nothing the pilot reads depends on the table.
 
@@ -293,8 +299,8 @@ Wave 2: 6 games, wave 3:
 17, wave 4: 1 (game 14, tick 16712, seven life losses). Rank correlation with the game number (`table.py`, 20,000
 permutations, n = 24): wave +0.09 (p 0.68), game-over score -0.04 (p 0.85), game-over tick +0.16 (p 0.46), flight steps +0.16 (p 0.47);
 medians of the first and second twelve games: wave 3 and 3, score 14089 and 15657, tick 10842 and 13466. The wave is nearly constant, so
-the test has little to rank; it could detect a monotone rise of about 0.4 in rank correlation, not a small drift, and says nothing
-about 100 games. Each game spends 50.0M steps (49.4M to 56.9M) between the last decrement and the next `$230c0` (game-over screens and
+the test has little to rank; it could detect a monotone rise of about 0.4 in rank correlation, not a small drift (the hundred-game
+chain below is the stronger test). Each game spends 50.0M steps (49.4M to 56.9M) between the last decrement and the next `$230c0` (game-over screens and
 the title idle), 8.2% of all steps.
 
 What carries from game to game, from `startdiff.py` and `trend_bytes.py` over the 24 start snapshots (RAM outside the stack,
@@ -307,6 +313,44 @@ that are 0 at game 1 and then step up a few times (`$27ce9..$27d11`, `$289c2..$2
 `$2ca81..$2cbcb`, `$2e2c3..$2e2d3`). The last group is residue in the ten depth-bucket draw lists `$276fc..$2f6f3`: bytes past a
 list's current end, left by the fullest frame so far and never read; a `watch` shows only the bucket appends writing them, and
 zeroing or `$ff`-filling the whole area leaves game 2 identical on 500 of 500 samples (`behaviours.md`, "The blocks that stepped up").
+
+### A hundred games
+
+`uv run python reversing/virus/py/chain/chain.py scratchpad/virus/demo/S1b.snap 100 scratchpad/virus/chain/long100/chain.jsonl main`
+(DLL `b17b5ad1`, HEAD `8eb8162`; 3.1 hours, 63.5 billion steps, one lineage from `S1b`, nothing poked; start snapshots in
+`long100/starts/`). Games 1 to 24 repeat the table above exactly (wave and over tick, 24 of 24). Wave reached at the game over
+(the HUD shows one more):
+
+| wave | 1 | 2 | 3 | 4 | 5 |
+|---|---|---|---|---|---|
+| games | 2 | 21 | 69 | 7 | 1 |
+
+So the demo ends in wave 3 (HUD level 4) about seven times in ten, gets to wave 4 (HUD 5) in 8 of 100 games and to wave 5 (HUD 6)
+once: game 50, tick 25408, score 39178, ten life losses. Rank correlation with the game number: wave +0.19 (p 0.052), score +0.14
+(p 0.16), over tick +0.14 (p 0.16), flight steps +0.17 (p 0.10); five of the eight wave-4-or-later games are in the second fifty. With
+four tests and none under 0.05, and nothing that persists across a game over able to feed the pilot ("What persists across a natural
+game over"), this is not read as a trend; a 200-game chain would settle it.
+
+What sets a long game apart is the life budget at wave 3, where nearly every game dies. Lives start at 3 and an extra one comes
+every 5000 points (`$27096`, table above), so the number of life losses is 3 plus the extra lives earned: 3 to 10, median 6. Wave 3
+takes at least one life in all 77 games that reach it and three or more in 57, the eight that leave it included (two to five
+each), so what gets a game out is the lives it brings in: 4 of the 8 held four or five at their first wave-3 death, against 9 of
+the 69 that ended there. Lives held at the first wave-3 death (the `lives` field of `losses`, the count before
+the decrement), against games that went on to wave 4:
+
+| lives held | 1 | 2 | 3 | 4 | 5 |
+|---|---|---|---|---|---|
+| reached wave 3 | 9 | 23 | 32 | 11 | 2 |
+| went on to wave 4 | 0 | 1 | 3 | 2 | 2 |
+
+The earlier waves decide that budget: mean losses in waves 1 and 2 are 1.38 and 2.52 for games ending in wave 2, 0.77 and 1.77 for
+wave 3, 0.57 and 1.29 for wave 4. Wave 0 almost never kills (11 of 100 games lose a life there, none of the eleven passed wave 3), and
+the first life loss comes at about the same time whatever the outcome (median tick 3727 for games ending in wave 2, 4206 for wave
+3, 4318 for wave 4). The points that buy extra lives are scored in the same flight, so the score and the wave are one outcome, not a
+cause and an effect. Why the same pilot dies less in one game's waves 1 and 2 is the divergence result in
+`scratchpad/virus/mpc/README.md` ("chaos/"): the RNG is never reseeded, each game starts from a different landscape scatter, and
+the pilot's threshold decisions turn a small difference into a different flight within about 200 ticks (inferred from that
+measurement on wave 0, not measured in waves 1 to 3).
 
 ## The carried-over table
 
@@ -347,7 +391,7 @@ measured).
 
 ## What persists across a natural game over
 
-- The high-score table `$25ccc..$25de3`: the game-over screen writes the score into it under the stock name `David`; the table is
+- The high-score table `$25ccc..$25de3`: the game-over screen writes the score into it under the stock name `David Braben / Atari ST`; the table is
   read only by the hall-of-fame display and by the next insertion, so it cannot change how the pilot flies.
 - `$32a52` (the wave reached): written at `$25bdc`, read only by the human-only score-code line (`$26152`), so it cannot change
   the pilot or a demo.
