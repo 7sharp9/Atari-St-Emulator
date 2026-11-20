@@ -1,0 +1,11 @@
+ww 1f00c 0005
+kbd ff 88
+s 300000
+kbd ff 81
+s 100000
+kbd ff 88
+s 300000
+kbd ff 89
+s 100000
+kbd ff 84
+s 200000

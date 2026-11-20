@@ -97,6 +97,33 @@ every packet at least 30,000 steps. Later levels: the game's own level skip (hol
   their data under `scratchpad/black_tiger/agents/<area>/` (`BT_WORK` override); each directory has a
   README table of script / what it proves / expected output / runtime.
 
+## Code each level adds
+
+Levels 2 to 8 run no subsystem that level 1 lacks (level index k is level k + 1). A code census (`py/census/`, `tools/code_census.py`) ran each level index
+from its `lvl<k>.snap` for 30M steps with a fixed joystick loop and 10M with no input, and from its `boss<k>_fight.snap` for
+10M, about 50M steps per level, against a level-0 base of the same three runs plus a forced timeout death (labelled pokes:
+lives and TIME, `py/census/README.md`). Over `$a2fc..$1f274` (BL_TIGER plus COMMAND's text and data) level 0 ran 11,610 bytes,
+each other level 10,026 to 12,500, and all eight together 14,266. The bytes some later level ran and level 0 did not are
+2,630 in 37 spans, and every span lies inside a routine `black_tiger.sym` already names. 1,966 of those bytes are in routines
+a `py/` script cites, 594 in routines only a doc mentions (the hostile-shot handlers `$10e94`, `update_hostile_shots`, the
+effect table `$10b84`, `level_init`'s tail), and 70 (`$10d9c..$10dea`, inside the effect-kind-8 handler `$10d94`) in
+neither. The largest are the ones the type and boss tables predict (`ai.md` sections 5 and 9): the P-shot handlers
+`$10e94` (290 bytes on levels 2 to 8, 146 more on levels 6 and 8), the aimed shot `$df12` (260, levels 5, 6 and 8, the BTA and BTB bosses),
+the ambient spawners `$c972`/`$ca48`, `spawn_hostile_shot_d4_kind` `$10e0c`, the AI handlers at `$ddb8` and `$dce8`, the
+sprite-piece blitter's mirrored and stored paths `$ed4c`, and `newton_sqrt_plus1` `$db1c` (levels 6 and 8, with the aimed shot).
+
+The census bounds this. The joystick loop follows no route, so each run covers the start of its level and its boss arena,
+not the level's length; the walk runs of levels 2, 4, 7 and 8 still found 740 to 944 new bytes in their second 15M steps
+(levels 1, 3, 5 and 6: 0 to 114), so those four are not saturated. Coverage is from flow events, a lower bound per byte, and the
+window holds data as well as code, so 16.6% is not a share of the code. Controls: on level 0 the walk run reaches 5,330
+bytes the idle run does not (input matters far more than level), and the boss arena adds 364 bytes to the level start.
+Before the timeout control was added, the death and retry path (`$c566`, `$c582`, `level_init`) read as level-only code
+in the four levels whose runs had died; it is in the base now. Run: `bash reversing/black_tiger/py/census/run_levels.sh`,
+then `report_levels.sh`.
+
+So the open items "kill bosses 2 to 8" and "walk levels 2 to 8 naturally" are play-driving problems: what they would reach is
+the routines above, already named, and whatever the unsaturated four levels hold beyond their starts.
+
 ## Files
 
 | path | what |
@@ -105,6 +132,7 @@ every packet at least 30,000 steps. Later levels: the game's own level skip (hol
 | `black_tiger.sym` | merged names |
 | `system.md graphics.md mechanics.md ai.md sound.md` | topic documents |
 | `py/systems py/graphics py/mechanics py/ai py/sound` | gates, drives, decoders, renderers |
+| `py/census` | per-level code census (section above) |
 | `img/<area>/` | committed proofs: title/attract/boss/shop/ending screens, level sheets, 8 whole-level renders, tileset and sprite-bank atlases, picture banks, collision map, actor-type crops, sound sheet |
 
 ## Not exercised
