@@ -929,8 +929,11 @@ results give them as `"$hex"`.
 (`server/Server.fs`, `run`): code entered through a flagged action-table `jsr` keeps the top bit in every
 `bsr` target (Midwinter's `$ec8c` runs at `$8000ec8c`), so pass both `a` and `a | 0x80000000`
 (`reversing/midwinter/py/army/gate_period.py`). `run` stops twice at a breakpoint when an interrupt is taken
-there (the RTE returns to it): count a return well inside the routine's period as the same stop (Virus: 181
-to 243 steps against a 19,900-step tick, `reversing/virus/py/mpc/replay.py`).
+there (the RTE returns to it): a stop at the same PC well inside the routine's period is the same stop only
+when D0 to D7 and A0 to A6 also equal the last stop's (Virus: the re-stop comes 181 to 243 steps later against a
+19,900-step tick; a bound of 2,000 steps alone dropped a real second visit, two actors through `$21654` in one
+tick, and the earlier 64-step bound kept a spurious tick row; `reversing/virus/py/mpc/shot_capture.py`,
+`reversing/virus/behaviours.md` "The pursuers and the patrol").
 
 A watch with `stop: true` ends `run` after the instruction that made the matching access. Watches
 and breakpoints persist across `load`, `restore` and `step`. An unknown method, a bad parameter or an
