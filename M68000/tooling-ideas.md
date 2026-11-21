@@ -11,6 +11,11 @@ driving games by hand and rebuilding state that broke. Ideas 1 to 4 are cheap an
 trap recorded more than once. Ideas 5, 7 and 8 pay only once the driver library (2) and the memory
 schema (4) exist.
 
+Ideas 13 to 17 look at two other questions: how much a gate really proves, and what it would take to carry
+the method to machines other than the ST. They are ranked among themselves. Ideas 13 and 14 test the
+evidence the gates already give, using records the repo already has, and are cheap. Idea 15 has to come
+before any console or arcade work can reuse the tools above. Ideas 16 and 17 are speculative.
+
 ## 1. Snapshot provenance and argv that cannot fall through
 
 Every `snap`/`save` also writes `<snap>.prov.json`: the DLL's content hash and git commit, the
@@ -151,7 +156,9 @@ reversing harness.
   routes are 29- to 42-leg hand scripts. Commander rollouts spawn one process per candidate
   (`sessions/commander.md`).
 - **Exists.** `fork`/`restore` at about 1 MB per checkpoint (DEVELOPING.md "Record and replay").
-- **Cost.** Medium; recording spill to disk (`sessions/emulator.md` Open 1) first, for memory.
+- **Cost.** Medium. Memory no longer blocks it, because recordings now spill to disk (`record_start`
+  with `dir`, DEVELOPING.md "Record and replay"). The emulator workstream ranks it last among its open
+  items (`sessions/emulator.md` Open 6), so building it first is a change of priority.
 - **First experiment.** From `pass108/nohop/BEST/seg3_pit_a.snap` (wx 692, health 12), the same
   wall time as one hand pass; furthest wx at each health level against `route_hop1_2.py`. Falsifier:
   no better than the hand route.
@@ -216,6 +223,164 @@ under that gate. Unconventional.
   come from the emulator.
 - **First experiment.** Lift the `LSD!` hook `$242..$3c2`; byte-identical output on the files
   `lsd.py` handles.
+
+## 13. A coverage report for every gate's corpus
+
+A callcap gate reports how many captured states the model matched, such as 750 of 750, but not how
+much of the routine those states actually ran. This tool would run a gate's corpus with an execution
+profile switched on, take the union of the PCs it executed, and set that against a static listing of
+the routine from its entry to its returns. The report would name every block the corpus never reached
+and give a percentage for each gate, so a match count could be read next to the code it covers.
+
+**Evidence.** Several gates already record arms their corpus misses, and each was found by reading the
+code rather than by measuring. Captain Blood's rule interpreter gate never reaches a condition that holds
+and is followed directly by an empty action (`$e4fe` then `$e56c`, `reversing/captainblood/rules.md`,
+`sessions/captainblood.md` Open 5). Midwinter's AI gate does not cover a full slot table or the end of an
+engaged object's script (`reversing/midwinter/ai.md`). PowerMonger's reconstruction raises an error in
+the arms its corpus does not reach (`reversing/powermonger/README.md`), which marks them but does not count
+them. The emulator workstream already lists coverage against a static listing as an open item
+(`sessions/emulator.md` Open 6).
+
+**Exists.** `stserver`'s `profile_start` and `profile_stop` record the executed PCs (idea 5),
+`tools/rdis.py` and `tools/disassemble.py --all` give the static side, and `tools/capture_hits.py` writes
+the corpora. Most gates run `callcap` through the REPL, which has no profile, so the tool would replay each
+corpus through the `call` method of `tools/stclient.py` instead.
+
+**Cost.** Small. It is Python only and needs no emulator change. The static listing has the usual limit:
+`rdis.py` does not follow longword state tables, so a routine that dispatches through one needs its
+targets added by hand or taken from the profile itself.
+
+**First experiment.** Run the corpus of Captain Blood's `rules` gate under a profile. As the positive
+control, the report must list the path from `$e4fe` to `$e56c` as unreached. Any other unreached block it
+lists is new information. If it calls a block unreached that `hits` shows the same corpus running, the
+tool is wrong.
+
+## 14. A whole-frame compare for composed models
+
+Per-routine gates test each routine from captured entry states. A model that is right one routine at a
+time can still be wrong once its routines run in sequence, because one call leaves state behind for the
+next. A whole-frame compare would run the composed model and the emulator side by side from one snapshot
+for many ticks, and compare the full game state after every tick: first every field the memory schema
+names, then the raw bytes it does not cover. The first tick that differs, and the fields that differ on
+it, say where to look.
+
+**Evidence.** In Virus, the per-routine gates passed while a whole-game compare found two bugs
+(`sessions/virus.md`, "Known traps"). One was a queue y taken from the wrong register. The other was the
+near-drop jitter that D0 to D2 carry from one drop to the next, because `$1fc8c` changes them and `$20702`
+does not restore them (`reversing/virus/behaviours.md`). Both bugs live between routines, and no single
+routine's corpus varied the state they depend on.
+
+**Exists.** Virus's F# simulator has a whole-game gate (`gate_game.sh`), uncommitted under
+`scratchpad/overseer/virus_fsim2/`. PowerMonger's port is scored pixel for pixel
+(`reversing/powermonger/py/`). `tools/layout.py` and `tools/snapdiff.py` already name the fields that
+changed between two snapshots. What is missing is a driver that works for any game, steps a model and the
+emulator in lockstep, and stops at the first tick where they part. The lockstep co-simulation under "Not
+worth doing" is a different case: it was rejected because the PowerMonger port has no entity simulation
+to compare, and this idea applies only to models that do.
+
+**Cost.** Small to medium. The driver itself is generic, but each model needs an adapter that loads its
+state from a snapshot and reports it back in the schema's terms.
+
+**First experiment.** Put the two Virus bugs back into the model they were found in, one at a time. The
+compare must stop at the first tick each bug changes and name the field. The fixed model must run the
+same window with no difference.
+
+## 15. One oracle protocol over the F# core and MAME
+
+Every tool above `stserver` stops at the edge of the Atari ST, because it talks to one `AtartSt`. Final
+Fight and Crude Buster run under MAME, and each built its own Lua harness for jobs `stserver` already does
+on the ST. A shared protocol would let one client drive either backend for the operations both can do
+reliably: load, a run with a budget, memory reads, write taps, execution counts, `callcap` and input. Time
+travel (`fork` and `restore`, `replay_to`, `last_writer`) would stay with the F# core until MAME is shown
+to support it.
+
+**Evidence.** The repo has rebuilt the same jobs on each platform. `lua/callcap.lua` is the MAME
+counterpart of the ST `callcap`, `lua/tap.lua` and `lua/hitcount.lua` stand in for watches and `hits`, and
+`reversing/finalfight/py/gdbstub/` adds a gdb remote-protocol client (`reversing/finalfight/README.md`).
+Hatari has its own set under `reversing/learning/py/`. DEVELOPING.md states the boundary: the core is the
+ST only, and the arcade games are scripted in Lua.
+
+**What MAME allows.** The input-driven scripts, write taps among them, run without the debugger
+(`ffrun.sh`). Lua sees the debugger, and with it `callcap` and execution counts, only under `-debug`
+(`ffmame.sh`). A state loaded under `-debug` follows a different trajectory from a cold boot
+(`sessions/final_fight.md`, "Known traps", and the gdbstub README, "Proven"). A state loaded without it
+matched a fresh run's next 6 frames in the one test made. So on MAME, evidence that needs the debugger has
+to come from a cold boot plus an input journal, and a `last_writer` query would mean a replay from reset.
+The gdbstub is not a good fit for the interface. It exposes only the main 68000, accepts one client per
+process, manages about 240 stops a second, and has not been tried with the `callcap` pattern.
+
+**Cost.** Medium. Most of the work is a thin server in Lua on the MAME side that answers the same JSON
+calls as `stserver`. Below the protocol, three tools assume the 68000 or the ST. `provenance.py` decodes
+68000 instructions, the compare log behind `profdiff.py` decodes 68000 compares, and `stdrive.py` aligns
+to the ST's VBL every 12,000 steps. A Mega Drive game would keep most of this, while a Lynx game (65C02)
+or a SNES game (65816) would need new decoders. Two `stserver` defects would also carry into the protocol:
+`peek` and `read` have device side effects, and `boot` reuses machine state (`sessions/emulator.md` Open 2).
+
+**First experiment.** Before any protocol work, run one MAME probe. Load a state without `-debug`, install
+a write tap, and compare a 2,000-frame RAM trace against a cold boot driven by the same inputs. If they
+match, MAME can carry fork and restore. If not, the protocol is limited to the operations listed above.
+Then run `capture_hits.py` and one Final Fight gate through the shared client, and get the counts its
+README records.
+
+## 16. An equivalence prover in place of sampled gates
+
+A callcap gate samples. It shows that a model agrees with the routine on every captured state, and it says
+nothing about the states nobody captured. An equivalence prover would lift the routine's machine code to
+Ghidra's P-code, an intermediate language that gives every instruction an exact meaning. It would turn
+the lifted routine and the Python model into formulas for an SMT solver such as Z3, and ask whether any
+input makes them disagree. The answer is either a proof over the input domain given, or a concrete
+counterexample that then goes through `callcap` like any other state.
+
+**How it differs from idea 12.** Idea 12 generates a Python model from the code, and this one checks a
+model written by hand. The two could share the lifter. A lift from Ghidra's SLEIGH processor
+specifications is also independent of this emulator's own decoder, so a decoder bug in the F# core would
+not pass unnoticed. That is the risk idea 12 names, and the reason the Hatari oracle exists
+(`reversing/learning/hatari_oracle.md`).
+
+**Where it works.** It suits straight-line code and loops with a small bound, with tables read as
+concrete bytes from a snapshot and hardware-register reads treated as free inputs. Long loops, blits and
+anything that waits on an interrupt would make the search too large. The Python model also has to be
+something the solver can run symbolically. Many gated models are table-driven state machines that draw
+from the game's RNG, which Captain Blood's gate already handles by solving for seeds
+(`reversing/captainblood/rules.md`). Treating entry registers as free inputs would cover the kind of state
+the Virus jitter bug depended on, live values that a corpus never varied, but only inside one routine. That
+bug showed up between routines, which is the ground of idea 14 (inferred).
+
+**Exists.** Nothing in the repo. `pypcode` (4.1.0 on PyPI) lifts machine code to P-code from Python.
+Ghidra 12.1.4 on the Mac has SLEIGH specifications for the 68000, the 6502 and the 65C02, and none for the
+65816. Neither `pypcode` nor Z3 is in `uv.lock`, and nobody has checked whether the 68000 lift in `pypcode`
+agrees with this emulator.
+
+**Cost.** Medium to high, most of it in turning the Python models into solver terms.
+
+**First experiment.** Take a small gated routine that makes no RNG draws and has an unreached arm in idea
+13's report. Prove its model equal over the input ranges of its corpus. Then change one constant in the
+model and require a counterexample that `callcap` confirms. A prover that passes the changed model is
+broken.
+
+## 17. Cross-port alignment by behaviour
+
+Several games here are ports of arcade games, and MAME emulates many of the originals. Once one port is
+reversed, its named fields could suggest names on the other. Both ports would be run through matched
+situations with their RAM recorded over time. Each named field on the reversed side would then be paired
+with the address on the other side whose values move with it, such as the hero's x as he walks right, or
+a health value as he takes hits. Each pairing is a hypothesis to gate on the second port, not a finding.
+
+**Evidence.** Black Tiger is reversed on the ST (`reversing/black_tiger/`). The installed MAME 0.289 has
+the arcade original as `blktiger`, rated good and with save states, on a Z80 main CPU. Idea 6 matches code
+within one CPU and cannot cross from the 68000 to the Z80, but behaviour can be compared across them.
+
+**Exists.** Black Tiger has a `.sym` but no `layout.toml`, so the ST side needs a schema first (idea 4).
+The MAME side needs write taps and a RAM recorder, and `reversing/finalfight/` has both.
+
+**Cost.** High, and the payoff is speculative. It needs a second full harness for one game, a drive that
+reaches matched situations on both ports, and two ports whose logic is close enough to correlate. A
+conversion written from scratch may share nothing below the game design. Not checked: whether the
+`blktiger` ROM set is available here.
+
+**First experiment.** Record hero x and the zenny count on both ports during the first screen of level 1.
+If a watch does not show the arcade game writing its two strongest matches as the hero moves and collects
+coins, the idea has failed on its easiest case.
 
 ## Not worth doing
 
