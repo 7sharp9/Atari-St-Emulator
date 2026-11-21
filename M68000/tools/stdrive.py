@@ -242,7 +242,9 @@ class Drive:
         return r
 
     def run(self, max_steps, until_pc=None, count=None):
-        """stserver `run` (breakpoints, stop watches, until_pc); journalled as the steps it ran."""
+        """stserver `run` (breakpoints, stop watches, until_pc); journalled as the steps it ran.
+
+        `r['reason']` is 'until' (until_pc reached, not 'until_pc'), 'breakpoint', 'watch' or 'max_steps'."""
         kw = {'max_steps': max_steps}
         if until_pc is not None:
             kw['until_pc'] = until_pc
