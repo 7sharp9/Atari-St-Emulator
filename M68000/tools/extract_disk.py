@@ -3,6 +3,10 @@
     python tools/extract_disk.py "<image.st>" <outdir>
 
 Working data goes under scratchpad, never the repo: the game files are commercial.
+
+A chain that runs off the end of the FAT (a cracked compilation's damaged entry: Zuul #208's C.D8T) continues
+with the following clusters until the directory size is met, and that file's line says "FAT overrun": its bytes
+past the overrun are a guess. Every other file is read exactly as its chain says.
 """
 import os
 import struct
@@ -24,15 +28,25 @@ def main(img_path, out):
 
     def nxt(c):
         o = c * 3 // 2
+        if o + 1 >= len(fat):
+            return None                     # the chain has left the FAT
         v = fat[o] | (fat[o + 1] << 8)
         return (v >> 4) if c & 1 else (v & 0xFFF)
 
-    def chain(c, size=None):
+    overran = set()
+
+    def chain(c, size=None, key=None):
         b = bytearray()
-        while 2 <= c < 0xFF8:
+        while 2 <= c < 0xFF8 and (size is None or len(b) < max(size, 1)):
             o = data0 + (c - 2) * cl
             b += d[o:o + cl]
-            c = nxt(c)
+            n = nxt(c)
+            if n is None:
+                overran.add(key)
+                if size is None:
+                    break
+                n = c + 1
+            c = n
         return bytes(b if size is None else b[:size])
 
     def walk(raw, path):
@@ -52,8 +66,9 @@ def main(img_path, out):
             else:
                 os.makedirs(path, exist_ok=True)
                 with open(os.path.join(path, fn), "wb") as f:
-                    f.write(chain(c, size))
-                print(f"{os.path.join(path, fn)}  {size}")
+                    f.write(chain(c, size, fn))
+                note = "  FAT overrun" if fn in overran else ""
+                print(f"{os.path.join(path, fn)}  {size}{note}")
 
     walk(d[root:root + nroot * 32], out)
 
