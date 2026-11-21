@@ -108,6 +108,8 @@ in-game database (`objects.md` section 2):
    edge flags at `1930(A6)`.
 2. For each face it transforms three vertices (`$eeac`), shifts them right by 2, and takes `(e1 × e2) · P2`.
 3. A face is drawn when that dot product is negative, when the face's word 6 is negative, or when `701(A6)` is set.
+   `$10070` sets `701` around a call to `$fbb8` and restores it (purpose not read); H in the model viewer toggles it
+   (`frontend.md` section 4), which shows every edge of the model.
 4. A drawn face flags its vertices and edges.
 5. The flagged vertices are transformed once into the cache at `760(A6)`.
 6. Each flagged edge is drawn once through `$f8f2`. It is drawn in the colour of the last face visited, which is
@@ -182,6 +184,29 @@ Points are plotted by `$142f4` → `$142fa`:
   gate_text.py 60`: 60/60 each, controls 0/20 and 15/20.
 - `$bfb0` blits one 8-row glyph column into four planes (read, not gated). The text printer is `$bcba`
   (`frontend.md`).
+
+## 8. Dead code: stereo and the debug keys
+
+The image carries the remains of a stereoscopic display. None of these routines has a caller in a raw scan of
+`$ab8c..$56264` (branches, `jsr`/`jmp`, PC-relative and absolute longwords):
+- **`$ac70`** flips bit 0 of the video base high byte `$ff8201`, which moves the displayed screen by `$10000`, and on
+  each flip reads `$fb0000` or `$fa0000`, the two cartridge ROM select ranges. A read there is the only way the ST
+  can signal a cartridge-port device.
+- **`$d3f8`** negates the eye offset `648(A6)` (set to 10 at game start, `$e596`) and makes the same cartridge read
+  for the new sign.
+- **`$d40e`** toggles `701` (draw every face), and **`$d414`/`$d41a`** add or subtract 1 from the projection shift
+  `530(A6)` (7 for the 320-wide window, 8 for the 640-wide one: `$1382c` branches on `706` bit 1 and the two paths
+  end at `$13908`/`$139d4`), which zooms the whole view.
+
+The last three sit between the in-flight key handler `$d29a` and its practice-mode code, in the handler's style
+(`not.b` / `addq` / `rts`), but no compare in `$d29a` branches to them. The one live piece is the model viewer's 3
+key, which still adds `648` to the camera x around the draw (`$de18`) but never alternates it, so it only nudges the
+model sideways.
+
+A screen moved by 64K in step with a cartridge-port strobe and an eye offset that changes sign each frame is how LCD
+shutter glasses were driven, one eye per frame (inferred: no stereo product is named in the game). The game's screens
+are now at `$70000`/`$78000` and the cockpit picture is kept at `$60022`, so `$ac70`'s 64K flip no longer matches
+the memory layout.
 
 ## Open
 

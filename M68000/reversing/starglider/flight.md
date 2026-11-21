@@ -71,7 +71,7 @@ keys add to the fixed ones rather than replacing them, so defining X as bank rig
 | Esc | abandons the game (`$ca20`) | driven |
 | P | takes a missile while docked, up to 2 (`$d4e6`) | read only |
 | I | the interrogate screen while docked (`$d5d0`, `frontend.md`) | read only |
-| N, M | practice-mode commands (`$d4d8`, `$d4be`): N sets the pending score to `$5000` | read only |
+| N, M | practice-mode commands (`$d4d8`, `$d4be`): N sets the pending score to BCD `$5000` (5000 points), so each N moves the level on every second press (`objects.md` section 5); M toggles `711` | N driven (`py/curios/level_from_score.py`), M read only |
 
 **Proof.**
 - `gate_controls.py`: 400 random key-flag arrays and user keys, callcap of `$d29a` including the launch path and the
@@ -84,10 +84,12 @@ keys add to the fixed ones rather than replacing them, so defining X as bank rig
 It works only while the cross-hair lock is on and the throttle is 0 (`$d420`).
 - With `717` set, every pass pins energy to `$55f0`, shield to `$9c40` (40,000) and laser to `$7530`
   (`$cbc8..$cbd4`). The largest single shield cost found is a mine's `$3a98` (15,000), so practice mode should be
-  unkillable by hits (inferred; not driven).
-- With `717` set, G on the title opens the object gallery (`$dd7a`), which rotates the 17 database models. Without
+  unkillable by hits (inferred; not driven), up to level 31: from level 32 a collision crashes the game, practice
+  mode or not (`objects.md` section 4).
+- With `717` set, G on the title opens the developer model viewer (`$dd7a`, `frontend.md` section 4). Without
   it, G starts the game like any other key.
-- The pilot rating page has a CHEAT!?! grade.
+- The pilot rating's CHEAT!?! grade does not detect this mode: it is the top grade by level and accuracy
+  (`frontend.md` section 4).
 
 `gate_cheat.py` drives the toggle: 2/2 (throttle 0 sets `717`; a control with throttle not 0 leaves it clear).
 
@@ -193,4 +195,3 @@ launch with Space.
 - The enemy damage routines are gated in `objects.md`. The tables `$15a26`/`$15a62`/`$15a9e` are named there.
 - No reader of the left-button latch `$c3d8` was found by an absolute-address scan; an A6- or `$c34e`-relative reader
   would escape that scan.
-- `716` and `718` are unidentified; `718` adds `648(A6)` to the gallery's rotation.

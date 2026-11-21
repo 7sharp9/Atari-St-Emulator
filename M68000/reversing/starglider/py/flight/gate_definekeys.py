@@ -1,5 +1,5 @@
 """Gate: 'K' on the title screen runs the DEFINE AGAV CONTROLS dialogue ($ce46) and stores six scancodes; 'G' enters the
-object gallery ($dd7a) only when the practice flag 717(A6) is set; otherwise any key (G included) starts the game.
+model viewer ($dd7a) only when the practice flag 717(A6) is set; otherwise any key (G included) starts the game.
 
     cd M68000 && ATARI_NOTRACE=1 python3 reversing/starglider/py/flight/gate_definekeys.py
 

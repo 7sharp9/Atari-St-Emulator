@@ -5,6 +5,7 @@
 001258	dock_bay_record_b
 00ab8c	star_entry_stub_after_depack
 00ac3c	ice_depack_stub
+00ac70	dead_stereo_page_flip
 00ac9c	play_sound
 00acce	sound_silence
 00ad0c	sound_synth_start
@@ -61,6 +62,10 @@
 00d3b2	input_accelerate
 00d3c6	silo_launch
 00d3ec	input_decelerate
+00d3f8	dead_key_eye_swap
+00d40e	dead_key_all_faces
+00d414	dead_key_zoom_in
+00d41a	dead_key_zoom_out
 00d420	practice_code_entry
 00d4be	cmd_M_practice
 00d4e6	cmd_P_pickup_missile
@@ -72,8 +77,10 @@
 00d748	ptr_tbl_interrogate_line1
 00d790	ptr_tbl_interrogate_line2
 00d7d8	ptr_tbl_interrogate_names
-00dd7a	object_gallery
+00dd7a	model_viewer
 00e586	new_game_init
+00e944	model_viewer_keys
+00eb7e	restart_drop_return
 00eb8a	transform_model_to_view
 00ec1e	rotate_rel
 00eca0	build_object_matrix_cached
@@ -95,6 +102,7 @@
 00f938	draw_object_exploding
 00fb34	debris_fall_table
 00fb74	frame_3d
+00fbb8	level_from_score
 00fd14	print_refuelling
 010124	gunsight_draw
 0101a8	silo_phase_and_near_list
@@ -133,6 +141,7 @@
 0131f8	laser_fire
 013596	pilot_rating_screen
 0135c2	rating_screen
+0137dc	ptr_tbl_rating_grades
 01382c	display_mode_init
 013a4e	end_of_frame
 013aca	dust_colour_planes

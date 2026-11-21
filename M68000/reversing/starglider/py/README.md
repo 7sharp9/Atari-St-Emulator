@@ -31,3 +31,7 @@ quoted in the topic docs.
 | `frontend/hud_poke.py [name ...]` | poke a global and diff the rendered HUD against a control | frontend.md §6 |
 | `frontend/export_samples.py` | write the sampled sounds as WAVs (amplitude approximate) | frontend.md §3 |
 | `frontend/screens_*.py`, `text_census.py`, `fe_repl.py` | screen drivers for the title, launch, docked, interrogate, controls, game over and high scores; a `$bcba` stop census | frontend.md §4, §6 |
+| `curios/gallery_keys.py` | the model viewer's keys from `g_title` (practice flag poked), each against a no-key control; renders every model | frontend.md §4 |
+| `curios/level_from_score.py [taps] [--crash]` | practice-mode N taps vs a control: score and level; `--crash` goes to level 32 and the next collision | objects.md §5, §4 |
+| `curios/shield_level.py [levels]`, `shield_crash.py` | the collision shield cost per level (wild pointer from level 16) and the bus error at levels 32 and 34 | objects.md §4 |
+| `curios/rating_stale.py` | a no-shot game graded on a stale accuracy: CHEAT!?! vs the ROOKIE control | frontend.md §4 |

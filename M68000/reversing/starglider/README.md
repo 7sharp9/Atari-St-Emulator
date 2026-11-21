@@ -115,6 +115,17 @@ projection of every object. Both random generators mix in the mouse x total.
 - **Colour 10.** The Bresenham's colour 10 jumps into the wrong loop. No model uses that colour.
 - **Enemy steering.** Turning ignores the 0/4096 seam, so an enemy facing across it turns the long way round.
 - **Shared IKBD path.** A joystick is read as a mouse.
+- **Levels are score bands.** The level is 1 + score / 10,000, up to 34, and each step reloads the pool from that
+  level's list (`objects.md` section 5).
+- **The level-32 crash.** The collision shield cost comes from a 16-entry table indexed by that level. Missile hits
+  cost nothing on levels 16 to 30 (150,000 points on) in this emulator, and from level 32 (310,000) the first collision is a
+  bus error that ends the game (`objects.md` section 4).
+- **The rating.** CHEAT!?! is simply the top grade, level × accuracy ≥ 1000, and a game with no shots is graded on
+  an earlier game's accuracy (`frontend.md` section 4).
+
+**Left in the game.** A developer model viewer with its own keys (G on the title in practice mode, `frontend.md`
+section 4), and unreferenced code for a stereoscopic display that strobes the cartridge port each frame
+(`graphics.md` section 8). The credits name the graphics textbook authors Newman, Sproull, Foley and van Dam.
 
 ## What the emulator needed
 
@@ -123,7 +134,8 @@ the game ran on the existing build (commit `54efe30`).
 
 ## Not exercised in the emulator
 
-- Levels 2 to 4 in play: their object lists were read and `$1523a` gated on them, but no level was completed.
+- Levels 2 to 4 reached by flying and shooting: their object lists were read and `$1523a` gated on them, and levels
+  up to 32 were reached through practice mode's N key (`objects.md` section 5), but not by kills.
 - The radar/scanner view and the gunsight sprite.
 - The synthesised sound effects.
 - Monochrome mode.
@@ -138,7 +150,7 @@ the game ran on the existing build (commit `54efe30`).
 |---|---|
 | `README.md` | this file |
 | `graphics.md`, `objects.md`, `flight.md`, `frontend.md` | topic docs |
-| `starglider.sym` | 224 names, merged from the four areas (`tools/merge_sym.py`) |
+| `starglider.sym` | 231 names, merged from the four areas (`tools/merge_sym.py`) |
 | `gates.toml` | 16 gates for `tools/gates.py` |
 | `drive.sh` | cold boot to flight, five snapshots |
 | `py/` | models, gates and drivers ([`py/README.md`](py/README.md)) |

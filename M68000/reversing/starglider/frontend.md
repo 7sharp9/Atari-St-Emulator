@@ -97,9 +97,34 @@ silences everything. The effect table has not been decoded.
   one page per pass of `$44c` clock ticks.
 - It restarts the music whenever it has finished.
 - K opens DEFINE AGAV CONTROLS ([`controls.png`](controls.png), `flight.md` section 2).
-- G opens the object gallery, but only in practice mode.
+- G opens the model viewer below, but only in practice mode.
 - Any other key, Space included, goes straight into flight with "YOU NOW HAVE MANUAL CONTROL!" and the LEVEL 1 banner.
   There is no launch prompt at the start of a game.
+
+**The credits page** thanks sixteen people by first name and initial and then gives "a special mention" to "Foo,
+Bod, Simon, Orlando, Yakka, Andy, Newman, Sproull, Foley, VanDam, Artwick". The last five match the authors of the
+two standard computer-graphics textbooks of the time (Newman and Sproull; Foley and van Dam) and Bruce Artwick of
+subLOGIC's Flight Simulator (inferred from the names alone). It ends "And also a big HI! to The San Clan."
+
+**The model viewer, `$dd7a`.** It is a developer tool left in the game. It draws one model at a time with its number
+and the spin angle in the top corner, and it takes its keys from `$e944`:
+
+| key | effect |
+|---|---|
+| `.` / `,` | next / previous model `504`, 1 to 28 (it opens on 14) |
+| X / S, Y / T, Z / A | spin rate about each axis `486`/`488`/`490`, ±4 per press, limit ±`$80` |
+| R | stop the spin; E also zeroes the angles |
+| H | toggle `701`: every face drawn, no back-face cull (`graphics.md` section 4) |
+| 3 | toggle `718`: shift the camera x by the eye offset `648` while drawing (`graphics.md` section 8) |
+| P | toggle `716`: each pass waits up to `$5dc` ticks for a key (`$b756`), a frame stepper |
+| Q, Esc | back to the title through `$eb7e`, which drops the caller's return address and jumps to `$ca20` |
+| mouse | moves the model: `$e944` copies the stick totals `$c3ce/$c3d0/$c3d4` into the camera `404/406/408` |
+
+The handler also has keys L/K (distance ±`$28`) and 2/4/6/8 (camera ±4), but they come after the stick copy and the
+next pass's copy overwrites them, so they have no visible effect. Driven by `py/curios/gallery_keys.py` from
+`g_title` with `717` poked: each key against a no-key control from the same state, every effect in the table seen in
+RAM (for E only the spin reset, the angle clear is read); L, K, 2, 4, 6 and 8 change nothing; `.` walks models 1 to
+28 and stops there. Q, Esc and the mouse copy are read from `$e944`, not driven.
 
 **Docked.** The docked screen ([`docked.png`](docked.png), `$cb58..$cbb0`) reads "Lasers and Shields replenished.
 Press SPACE BAR to launch, or I to Interrogate computer."
@@ -116,8 +141,14 @@ Space shows the next page and E returns to the dock. The names and the type tabl
 - An energy or shield underflow (`flight.md` section 4) shows its message (`$cd34`). The game then waits for a key or
   `$12c` ticks.
 - `$13596` shows the AGAV PILOT RATING ([`rating.png`](rating.png)): shots fired, hits scored, silo dockings, hits on
-  the AGAV and accuracy. The grades run ROOKIE, AVERAGE, ABOVE AVERAGE, ACCURATE, DEADLY, SUPER FLYER, ACE PILOT,
-  COMMANDER, plus CHEAT!?! (strings at `$13650`).
+  the AGAV and accuracy. The grades run ROOKIE, POOR, FAIR, AVERAGE, ABOVE AVERAGE, ACCURATE, DEADLY, SUPER FLYER, ACE PILOT,
+  COMMANDER, plus CHEAT!?! (strings at `$13650`). The grade is `table[min(level × accuracy / 100, 11)]` with the
+  table at `$137dc`. Accuracy `670` is `hits × 100 / shots` cut to a byte, and entries 10 and 11 are both CHEAT!?!.
+  So 100% accuracy on level 10 (90,000 points) is called a cheat, and a level-1 pilot can do no better than POOR.
+- With no shots fired, `$13596` skips the accuracy line and leaves `670` as it was. `670` has one writer (`$135fc`, raw
+  scan) and nothing clears it, so the grade uses the accuracy of an earlier game since the program was loaded.
+  `py/curios/rating_stale.py`: shots and hits 0, level 10, `670` = 100 gives CHEAT!?!; the control `670` = 0 gives
+  ROOKIE.
 - `$b99c` checks the score against the ten BCD longs at `$c31e` (names at `$c0b2..`) and asks for a name.
 - The game restarts at `$ca20`.
 
@@ -180,7 +211,8 @@ speed every pass; it would need the poke at `$103fe`'s entry.
 - The `.TRA` permutation table's role.
 - The synthesised effect table `$c3e0` and its handler `$adb4`.
 - The sampled sound checked against Hatari.
-- Esc's target `$eb7e`.
+- TOS drew three bombs for the level-32 bus error (`objects.md` section 4, vector 2); a real ST should draw two.
+  Check the emulator's bus-error frame or the bomb count against Hatari.
 - The red icon next to the compass.
 - The name-entry code `$ba2a/$ba92`.
 - A census of all 410 text calls per 68 passes.

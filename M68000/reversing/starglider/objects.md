@@ -158,8 +158,31 @@ with the two bay records.
 - the screen flashes (`578 = $555`);
 - an exploding victim that is not indestructible scores `$15a62[type]`;
 - outside missile view the bank kick `640` gets `(rng & $3e) − $20` and the shield loses `$159aa[level][type]`
-  (1000, 3000, 5000, 7500 by level; type 6 always 1000);
+  (1000, 3000, 5000, 7500 for levels 0 to 3 and the same 7500 table to level 15; type 6 always 1000). The pointer
+  table has only 16 entries, and the level runs to 34 (section 5), so from level 16 the "pointer" is whatever follows
+  it (below);
 - a shield that would go negative ends the game (`300 = 2`, "SHIELD DEPLETED").
+
+**The shield table overrun.** `$159aa` holds 16 longword pointers. The longwords after it are the start of the
+enemy-laser table `$159ea` (300, 300, ...) and what follows that, so a level of 16 or more reads a wild pointer:
+
+| level (score) | `$159aa[level]` | collision cost |
+|---|---|---|
+| 1 to 15 (to 149,999) | `$158ba`..`$1596e` | 1000 to 7500 |
+| 16 to 30 (150,000 to 299,999) | `$012c012c`, the words 300, 300 | 0 here: the emulator reads 0 at `$2c012c`; a real ST's value is not checked |
+| 31 (300,000) | 0 | a word from the exception vectors: 3324 for a missile |
+| 32 to 34 (310,000 on) | `$500050`, `$500500` | a bus error: the first collision crashes the game |
+
+The colliding types in the probes were the Egron missiles (types 24 and 25), so on levels 16 to 30 an enemy missile
+hit kicks the bank and costs no shield. At level 32 the load at `$ccc0` takes vector 2 into TOS's bomb handler and
+the machine ends at the Zuul boot sector's banner; addresses `$400000..$f9ffff` bus-error in this emulator as in
+Hatari's ST map. Driven:
+- `py/curios/shield_level.py`: levels 3, 16, 20 and 31 poked into `662`, three collisions each from `g_game1`: shield
+  −7500 at level 3, unchanged at 16 and 20, −3324 at 31.
+- `py/curios/shield_crash.py`: levels 32 and 34 step from `$ccc0` to `$02fc0a1a`, the TOS bus-error stub; level 3
+  steps to `$ccc4`.
+- `py/curios/level_from_score.py 8 --crash`: no level poke. The practice-mode N key alone takes the score to
+  310,000 and the level to 32, and the next collision bus-errors at `$ccc0` (27M steps later).
 
 **The player's laser, `$131f8`** (hit part `$13294..$13386`).
 - It projects each active record's box to the screen with the same `(v << 530) / z + centre` as the renderer and
@@ -183,10 +206,23 @@ type 1 → 1500, type 27 → 7500).
 
 ## 5. Levels and spawning
 
-**Level lists.** `$1523a` initialises a level from the list pointed to by `$22814[662]`. Entries 0 and 1 point at the
-same list, and so do entries 4 and 5. Levels 1 to 4 therefore each have their own list, and level 5 reuses level 4's
-(the table was read for entries 0 to 5 only). Each entry is four words: type, x grid, z grid (position = grid ×
-`$290`), and hit points.
+**Level lists.** `$1523a` initialises a level from the list pointed to by `$22814[662]`. The table has 36 entries:
+0 and 1 point at the same list, and 4 to 35 all point at a fourth. Levels 1 to 4 therefore each have their own list,
+and every later level replays level 4's. Each entry is four words: type, x grid, z grid (position = grid × `$290`),
+and hit points.
+
+**Level progression.** A level is a score band. `$fbb8`, in the frame, compares the score's ten-thousands byte `$c099`
+with the copy in `725(A6)`. On a change it adds 1 to the level `662`, sets the banner timer `664`, and sets `727`,
+which sends the main loop back through `$ca92` to `$1523a`: the pool is rebuilt from the new level's list wherever the
+player is. So the level is 1 + score / 10,000, and it stops at 34 (a 35 is set back to 34). The per-level tables are
+sized for different ranges:
+- the missile speed and lifetime tables `$12b80`/`$12be2` hold real values to level 34 (speed −350 on level 1, −200
+  from level 4, −50 from level 25);
+- the collision-cost table `$159aa` has 16 entries, which is the overrun in section 4.
+
+Driven by `py/curios/level_from_score.py`: in practice mode each N adds 5000 points (`flight.md` section 2), and the
+level steps 1, 2, 2, 2, 3, 3, 4, 4 over eight taps (one tap did not register); the control with `717` clear stays at
+level 1 and score 0.
 
 A type 4 entry expands into a six-record tower complex: three Energy Towers, a refuel hub (type 11) and two Egron
 Battle Tanks (type 9). That is why the type 4 count is three per list while the pool holds nine type 4 records.
