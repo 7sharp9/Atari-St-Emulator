@@ -24,6 +24,7 @@ continuation record: the next-session prompt is always the one line `/resume <wo
 | `populous.md` | Populous reversing (`reversing/populous/`) |
 | `populous2.md` | Populous II reversing (`reversing/populous2/`) |
 | `powermonger.md` | PowerMonger reversing and port (`reversing/powermonger/`) |
+| `starglider.md` | Starglider reversing: wireframe renderer, object AI, flight model, front end (`reversing/starglider/`) |
 | `supersprint.md` | Super Sprint reversing (`reversing/supersprint/`) |
 | `virus.md` | Virus reversing: landscape generator, renderer, flight model, particles, the attract-mode autopilot (`reversing/virus/`) |
 

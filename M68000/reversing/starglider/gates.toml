@@ -1,0 +1,137 @@
+# Starglider's promoted gates, for tools/gates.py (`uv run python tools/gates.py run starglider`).
+# Needs scratchpad/starglider/zuul208.st and the drive snapshots: README "Provenance" and "Running it"
+# (`bash reversing/starglider/drive.sh`, about 50 s). Every gate runs the emulator afresh from those snapshots and
+# writes its captures under scratchpad/starglider/<area>/. Broken-model controls are run by hand (each script's
+# `--broken`/`--break`/`--control` flag, counts in the topic doc) and are not in `expect`.
+
+# ---- flight.md ----
+[[gate]]
+name = "flight_integrator"
+cmd = "python3 reversing/starglider/py/flight/gate_integrator.py"
+expect = ["400/400", "re:branches \\{'flying': 202, '714': 84, '712': 85, '712714': 29\\}"]
+cite = "flight.md section 3"
+minutes = 1
+inputs = ["scratchpad/starglider/drive/g_game1.snap"]
+
+[[gate]]
+name = "flight_controls"
+cmd = "python3 reversing/starglider/py/flight/gate_controls.py"
+expect = ["400/400"]
+cite = "flight.md section 2"
+minutes = 1
+inputs = ["scratchpad/starglider/drive/g_game1.snap"]
+
+[[gate]]
+name = "flight_isr"
+cmd = "python3 reversing/starglider/py/flight/gate_isr.py"
+expect = ["re:isr: MATCH 30/30  \\(745 bytes\\)"]
+cite = "flight.md section 1"
+minutes = 1
+inputs = ["scratchpad/starglider/drive/g_game1.snap"]
+
+[[gate]]
+name = "flight_energy"
+cmd = "python3 reversing/starglider/py/flight/gate_energy.py"
+expect = ["re:energy drain: MATCH 59/59", "re:refuel: MATCH 16/16", "re:ground scrape: MATCH 6/6", "re:death: .*MATCH 2/2"]
+cite = "flight.md section 4"
+minutes = 1
+inputs = ["scratchpad/starglider/drive/g_game1.snap"]
+
+[[gate]]
+name = "flight_laser_messages_letters"
+cmd = "python3 reversing/starglider/py/flight/gate_laser.py; python3 reversing/starglider/py/flight/gate_messages.py; python3 reversing/starglider/py/flight/gate_letters.py; python3 reversing/starglider/py/flight/gate_cheat.py"
+expect = ["re:laser: MATCH 7/7", "re:messages: MATCH 7/7", "re:letters: MATCH 6/6", "re:cheat toggle: MATCH 2/2"]
+cite = "flight.md sections 2 and 4"
+minutes = 1
+inputs = ["scratchpad/starglider/drive/g_game1.snap"]
+
+[[gate]]
+name = "flight_definekeys"
+cmd = "python3 reversing/starglider/py/flight/gate_definekeys.py"
+expect = ["re:define keys: .*MATCH 6/6"]
+cite = "flight.md section 2"
+minutes = 1
+inputs = ["scratchpad/starglider/drive/g_title.snap"]
+
+# ---- graphics.md ----
+[[gate]]
+name = "render_math"
+cmd = "N=40 python3 reversing/starglider/py/render/gate_math.py"
+expect = ["re:ede4 +40/40", "re:eca0 +40/40", "re:ec1e +40/40", "re:eb8a +40/40", "re:eeac +40/40"]
+cite = "graphics.md section 2"
+minutes = 1
+inputs = ["scratchpad/starglider/drive/g_game1.snap", "scratchpad/starglider/drive/g_game2.snap"]
+
+[[gate]]
+name = "render_line"
+cmd = "N=150 python3 reversing/starglider/py/render/gate_line.py"
+expect = ["re:draw \\$13cb4 +150/150", "re:draw colour 10 20/20", "re:clip2d \\$14cfc +300/300", "re:clip3d \\$14f00 +300/300", "re:edge \\$f8f2 +301/301"]
+cite = "graphics.md section 5"
+minutes = 1
+inputs = ["scratchpad/starglider/drive/g_game1.snap"]
+
+[[gate]]
+name = "render_object"
+cmd = "python3 reversing/starglider/py/render/gate_obj.py scratchpad/starglider/drive/g_game2.snap 30"
+expect = ["re:f6a8 30/30"]
+cite = "graphics.md section 4"
+minutes = 1
+inputs = ["scratchpad/starglider/drive/g_game2.snap"]
+
+[[gate]]
+name = "render_all_models"
+cmd = "python3 reversing/starglider/py/render/gate_obj_all.py 3; FN=f938 python3 reversing/starglider/py/render/gate_obj_all.py 3"
+expect = ["re:(?s)poses 84/84 .*poses 84/84"]
+cite = "graphics.md section 4"
+minutes = 1
+inputs = ["scratchpad/starglider/drive/g_game1.snap"]
+
+[[gate]]
+name = "render_frame"
+cmd = "python3 reversing/starglider/py/render/gate_frame.py scratchpad/starglider/drive/g_game2.snap 1 6 20"
+expect = ["re:total 49368/49368 = 100.000%"]
+cite = "graphics.md section 1"
+minutes = 1
+inputs = ["scratchpad/starglider/drive/g_game2.snap"]
+
+[[gate]]
+name = "render_misc"
+cmd = "python3 reversing/starglider/py/render/gate_clear.py 10; python3 reversing/starglider/py/render/gate_dot.py 30; python3 reversing/starglider/py/render/gate_dust.py 12; python3 reversing/starglider/py/render/gate_bearing.py 200; python3 reversing/starglider/py/render/gate_text.py 60"
+expect = ["re:clear \\$1455c 10/10", "re:dot \\$142f4 natural 30/30", "re:dot \\$142f4 random 70/70", "re:dust 0xf336 12/12", "re:poked-camera .* 16/16", "re:bearing \\$12f1c 198/198", "re:hex_f60e 60/60", "re:digit_f634 60/60"]
+cite = "graphics.md sections 1, 6 and 7"
+minutes = 1
+inputs = ["scratchpad/starglider/drive/g_game1.snap", "scratchpad/starglider/drive/g_game2.snap"]
+
+# ---- objects.md ----
+[[gate]]
+name = "objects_pass"
+cmd = "python3 reversing/starglider/py/objects/objpass_gate.py 30"
+expect = ["re:poked 750/750", "re:natural g_game1.snap: .*tracked mismatches=0", "re:natural g_game2.snap: .*tracked mismatches=0", "re:natural hits 11/11"]
+cite = "objects.md section 3"
+minutes = 1
+inputs = ["scratchpad/starglider/drive/g_game1.snap", "scratchpad/starglider/drive/g_game2.snap"]
+
+[[gate]]
+name = "objects_rng_level_names"
+cmd = "python3 reversing/starglider/py/objects/rng_gate.py; python3 reversing/starglider/py/objects/levelinit.py; python3 reversing/starglider/py/objects/names_gate.py"
+expect = ["re:f21e 200/200", "re:f23e 200/200", "re:levelinit 5/5", "re:names 17/17", "re:view 4/4"]
+cite = "objects.md sections 2, 5 and 7"
+minutes = 1
+inputs = ["scratchpad/starglider/drive/g_game1.snap"]
+
+[[gate]]
+name = "objects_collision_laser_lists"
+cmd = "python3 reversing/starglider/py/objects/collide.py 600; python3 reversing/starglider/py/objects/laser.py 600; python3 reversing/starglider/py/objects/project.py 200; python3 reversing/starglider/py/objects/nearlist.py 40; python3 reversing/starglider/py/objects/impact.py 30"
+expect = ["re:collide 600/600", "re:laser 600/600", "re:project 200/200", "re:nearlist 40/40", "re:impact 30/30"]
+cite = "objects.md section 4"
+minutes = 1
+inputs = ["scratchpad/starglider/drive/g_game1.snap"]
+
+# ---- frontend.md ----
+[[gate]]
+name = "frontend_tra"
+cmd = "uv run python reversing/starglider/py/frontend/tra_render.py --check"
+expect = ["re:depack vs game RAM bytes equal: 32144/32144", "re:chunky body vs displayed planar screen: 64000/64000", "re:header palette == live palette: True"]
+cite = "frontend.md section 2"
+minutes = 1
+inputs = ["scratchpad/starglider/files/TITLE.TRA", "scratchpad/starglider/files/RESULT.TRA", "scratchpad/starglider/drive/g_title.snap"]
